@@ -1,0 +1,86 @@
+import express from 'express';
+import cookieParser from 'cookie-parser';
+import cors from 'cors';
+import helmet from 'helmet';
+import compression from 'compression';
+import { globalLimiter } from './middlewares/rateLimiter.js';
+import { getCorsOptions } from './config/cors.config.js';
+
+import chatRoutes from './routes/chat.routes.js';
+import commonRoutes from './routes/common.route.js';
+import driverRoutes from './routes/driver.route.js';
+import adminRoutes from './routes/admin.route.js';
+import authRoutes from './routes/user.routes.js';
+import webhookRoutes from './routes/webhook.route.js';
+import bannerRoutes from './routes/banner.routes.js';
+import webCityRoutes from './routes/webCity.routes.js';
+import webFaqRoutes from './routes/webFaq.routes.js';
+import webSocialLinkRoutes from './routes/webSocialLink.routes.js';
+import webPageRoutes from './routes/webPage.routes.js';
+import webServiceRoutes from './routes/webService.routes.js';
+import adminWalletRoutes from './routes/adminWallet.route.js';
+
+// Dev-only routes — imported lazily so they are fully tree-shaken in production.
+const loadDevRoutes = () => import('./routes/dev.route.js').then((m) => m.default);
+
+const app = express();
+
+// We sit behind a TLS-terminating proxy on Vercel/Render/Heroku/etc. Without
+// this Express thinks the request is HTTP, which leads to "Secure" cookies
+// being set against a perceived-insecure connection in some flows and breaks
+// `req.secure`, `req.protocol`, and `req.ip`.
+app.set('trust proxy', 1);
+
+// Security & Performance
+app.use(helmet());
+app.use(compression());
+
+app.use(globalLimiter);
+
+app.use(cors(getCorsOptions()));
+app.use(cookieParser());
+app.use('/api/v1/webhooks', webhookRoutes);
+app.use(express.json({ limit: '16kb' }));
+app.use(express.urlencoded({ extended: true, limit: '16kb' }));
+
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/chat', chatRoutes);
+app.use('/api/v1/common', commonRoutes);
+app.use('/api/v1/driver', driverRoutes);
+app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/banners', bannerRoutes);
+app.use('/api/v1/web-cities', webCityRoutes);
+app.use('/api/v1/web-faqs', webFaqRoutes);
+app.use('/api/v1/web-socials', webSocialLinkRoutes);
+app.use('/api/v1/web-pages', webPageRoutes);
+app.use('/api/v1/web-services', webServiceRoutes);
+app.use('/api/v1/admin-wallet', adminWalletRoutes);
+
+// Mount dev test routes in non-production environments only.
+if (process.env.NODE_ENV !== 'production') {
+  loadDevRoutes().then((devRouter) => {
+    app.use('/api/v1/dev', devRouter);
+    console.log('[dev] Test routes mounted at /api/v1/dev');
+  });
+}
+
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok' });
+});
+
+app.get('/', (_req, res) => {
+  res.send('SearchMyDriver API');
+});
+
+app.use((err, req, res, _next) => {
+  const statusCode = err.statusCode || 500;
+  const message = err.message || 'Internal Server Error';
+  console.error(`[ERROR] ${req.method} ${req.url} - ${err.stack}`);
+  res.status(statusCode).json({
+    status: statusCode,
+    message,
+    ...(err.data != null ? { data: err.data } : {}),
+  });
+});
+
+export default app;

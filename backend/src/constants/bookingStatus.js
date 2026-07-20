@@ -1,0 +1,246 @@
+/**
+ * Booking lifecycle constants.
+ *
+ * Mirrored verbatim in `frontend/src/constants/bookingStatus.js`. Keep both
+ * files in sync — any new state must land on both sides in the same change.
+ *
+ * The status machine is intentionally linear with two terminal branches:
+ *
+ *   searching → driver_assigned → awaiting_payment? → en_route → arrived
+ *             → started → completed
+ *             ↘ cancelled
+ *             ↘ no_drivers_found
+ *
+ * `awaiting_payment` only appears for `pre_ride` payment mode. Phase 4 ends
+ * the flow at `driver_assigned` (post-pay) or once `awaiting_payment` is
+ * cleared back to `driver_assigned` (pre-pay). Anything from `en_route`
+ * onward is Phase 5.
+ */
+
+export const BOOKING_STATUS = Object.freeze({
+  /**
+   * Future-scheduled hourly bookings sit here until the worker fires
+   * `kickoffScheduledAssignment` (rideTime − LONG_LEAD_HOURS). At that
+   * point the status flips to SEARCHING and the standard wave dispatcher
+   * takes over. Instant bookings skip this state entirely.
+   */
+  PENDING_ASSIGNMENT: 'pending_assignment',
+  SEARCHING: 'searching',
+  DRIVER_ASSIGNED: 'driver_assigned',
+  AWAITING_PAYMENT: 'awaiting_payment',
+  EN_ROUTE: 'en_route',
+  ARRIVED: 'arrived',
+  STARTED: 'started',
+  COMPLETED: 'completed',
+  CANCELLED: 'cancelled',
+  NO_DRIVERS_FOUND: 'no_drivers_found',
+  /**
+   * Scheduled booking that still has no driver
+   * `SCHEDULED_BOOKING.EMERGENCY_POOL_MINUTES` minutes before pickup.
+   * Surfaced on the admin/sub-admin "Emergency Pool" dashboard so a
+   * human can assign a driver by hand. Team members only see entries
+   * whose pickup is inside a zone they're assigned to.
+   */
+  IN_EMERGENCY_POOL: 'in_emergency_pool',
+});
+
+export const BOOKING_STATUS_LIST = Object.freeze(Object.values(BOOKING_STATUS));
+
+/** Statuses where a booking is still "live" (driver may have work to do). */
+export const ACTIVE_BOOKING_STATUSES = Object.freeze([
+  BOOKING_STATUS.PENDING_ASSIGNMENT,
+  BOOKING_STATUS.SEARCHING,
+  BOOKING_STATUS.DRIVER_ASSIGNED,
+  BOOKING_STATUS.AWAITING_PAYMENT,
+  BOOKING_STATUS.EN_ROUTE,
+  BOOKING_STATUS.ARRIVED,
+  BOOKING_STATUS.STARTED,
+  BOOKING_STATUS.IN_EMERGENCY_POOL,
+]);
+
+export const TERMINAL_BOOKING_STATUSES = Object.freeze([
+  BOOKING_STATUS.COMPLETED,
+  BOOKING_STATUS.CANCELLED,
+  BOOKING_STATUS.NO_DRIVERS_FOUND,
+]);
+
+/** When does the customer's card get charged. */
+export const PAYMENT_MODE = Object.freeze({
+  PRE_RIDE: 'pre_ride',
+  POST_RIDE: 'post_ride',
+});
+
+export const PAYMENT_MODE_LIST = Object.freeze(Object.values(PAYMENT_MODE));
+
+/**
+ * Whether the user wants the ride to start right away, at a future time,
+ * or is making an outstation (multi-day) booking.
+ * Decided on the very first screen of the booking flow.
+ */
+export const BOOKING_TYPE = Object.freeze({
+  INSTANT: 'instant',
+  SCHEDULED: 'scheduled',
+  /** Outstation (multi-day driver) bookings are always pre-scheduled. */
+  OUTSTATION: 'outstation',
+});
+
+export const BOOKING_TYPE_LIST = Object.freeze(Object.values(BOOKING_TYPE));
+
+export const TRIP_TYPE = Object.freeze({
+  ROUND_TRIP: 'round_trip',
+  ONE_WAY: 'one_way',
+});
+
+export const TRIP_TYPE_LIST = Object.freeze(Object.values(TRIP_TYPE));
+
+/** Payment lifecycle, independent of ride status. */
+export const BOOKING_PAYMENT_STATUS = Object.freeze({
+  /** Pre-pay flow before driver accepts; post-pay before ride completes. */
+  NOT_DUE_YET: 'not_due_yet',
+  /** Razorpay order created, awaiting user to complete checkout. */
+  PENDING: 'pending',
+  PAID: 'paid',
+  REFUNDED: 'refunded',
+  PARTIAL_REFUND: 'partial_refund',
+  FAILED: 'failed',
+});
+
+/** Dispatch policy knobs. */
+export const DISPATCH = Object.freeze({
+  /** Seconds a wave of drivers has to accept before we move to the next wave. */
+  OFFER_TIMEOUT_SECONDS: 30,
+  /** Maximum number of waves before declaring "no drivers found". */
+  MAX_ATTEMPTS: 5,
+  /** Number of drivers offered in parallel per wave. */
+  WAVE_SIZE: 5,
+  /** First (smallest) search radius, in metres. */
+  SEARCH_RADIUS_START_METERS: 1000,
+  /** How much to grow the radius each step when a wave is empty. */
+  SEARCH_RADIUS_STEP_METERS: 1000,
+  /** Hard ceiling — never search drivers further than this from pickup. */
+  SEARCH_RADIUS_MAX_METERS: 5000,
+  /** Seconds the user has to pay (pre-pay flow) before booking auto-cancels. */
+  PRE_PAY_TIMEOUT_SECONDS: 300,
+});
+
+/**
+ * Payment policy knobs.
+ *
+ *   PAYMENT_DEADLINE_SECONDS  Hard deadline — counted from
+ *                             `timeline.driverAssignedAt` — within which the
+ *                             customer MUST complete payment. The driver is
+ *                             frozen behind an overlay while this clock runs.
+ *                             If the booking is still `awaiting_payment` when
+ *                             the timer fires we auto-cancel it and release
+ *                             the driver back to the dispatcher.
+ *   PRE_PAY_WINDOW_SECONDS    Deprecated alias kept so older code paths
+ *                             continue to compile. New code should reference
+ *                             `PAYMENT_DEADLINE_SECONDS` instead.
+ *   RIDE_OTP_LENGTH           How many digits the start-of-ride OTP has.
+ *   RIDE_OTP_MAX_ATTEMPTS     Max wrong attempts before the driver must
+ *                             contact support (we surface a soft error; the
+ *                             booking is not auto-cancelled).
+ *   EXTENSION_PROMPT_LEAD_SECONDS  Seconds before booked end time at which
+ *                                  the user app surfaces the "extend the
+ *                                  ride?" prompt. Used purely on the
+ *                                  client; lives here so both sides stay
+ *                                  in lockstep.
+ */
+export const PAYMENT_POLICY = Object.freeze({
+  PAYMENT_DEADLINE_SECONDS: 60,
+  PRE_PAY_WINDOW_SECONDS: 60,
+  RIDE_OTP_LENGTH: 4,
+  RIDE_OTP_MAX_ATTEMPTS: 5,
+  EXTENSION_PROMPT_LEAD_SECONDS: 5 * 60,
+});
+
+/** Constants for the user-facing "nearby drivers" view (home page). */
+export const NEARBY_DRIVERS = Object.freeze({
+  /** Default radius shown to the customer on the home page. */
+  DEFAULT_RADIUS_METERS: 2000,
+  /** Hard ceiling the user-facing endpoint will honour. */
+  MAX_RADIUS_METERS: 5000,
+  /** Default number of driver pins shown on the map / in the bottom sheet. */
+  DEFAULT_LIMIT: 8,
+  MAX_LIMIT: 25,
+});
+
+/** Driver's response to a dispatch offer. */
+export const DISPATCH_RESPONSE = Object.freeze({
+  ACCEPTED: 'accepted',
+  REJECTED: 'rejected',
+  TIMEOUT: 'timeout',
+  CANCELLED: 'cancelled',
+});
+
+/**
+ * Scheduled-ride dispatcher policy.
+ *
+ * The user picks a future pickup time; the backend decides WHEN to start
+ * searching for a driver based on the following tiers, in order:
+ *
+ *   1. "Morning rides" (start time in [MORNING_START_HOUR, MORNING_END_HOUR))
+ *      a. pickup is TOMORROW (or today)  → search immediately so
+ *         drivers can plan their day.
+ *      b. pickup is the day-after-tomorrow or later → defer the
+ *         dispatcher to `LEAD_SCHEDULE_HOUR` of the evening BEFORE
+ *         pickup. Admins want morning rides assigned the night before.
+ *
+ *   2. Short-window rides (hoursUntilStart ≤ SHORT_WINDOW_HOURS)
+ *      → search immediately — same UX as instant once we're close.
+ *
+ *   3. Everything else
+ *      → defer: enqueue an `assign` job that fires at
+ *        `scheduledStartAt − LONG_LEAD_HOURS`.
+ *
+ * When the `assign` (or any subsequent `retry`) job runs and the wave
+ * dispatcher comes back empty, we DON'T immediately give up. Instead
+ * we re-queue another retry `RETRY_DELAY_MINUTES` later and keep doing
+ * so until we run out of runway before the emergency-pool cutoff (at
+ * `scheduledStartAt − EMERGENCY_POOL_MINUTES`). Past that cutoff the
+ * `escalate` job parks the booking in the admin-managed pool.
+ *
+ * Reminder jobs (`REMINDER_OFFSETS_MINUTES`) are NOT enqueued at
+ * booking-creation time any more — they only fire once a driver has
+ * actually been assigned to the booking (whether by the dispatcher or
+ * by an admin pulling it out of the emergency pool). All knobs are
+ * overridable per-service via `ServicePricing.scheduledDispatch`.
+ */
+export const SCHEDULED_BOOKING = Object.freeze({
+  MORNING_START_HOUR: 6,
+  MORNING_END_HOUR: 10,
+  SHORT_WINDOW_HOURS: 6,
+  LONG_LEAD_HOURS: 4,
+  /**
+   * Hour-of-day (0–23) at which the "morning ride scheduled for a
+   * future date" assignment job fires the evening BEFORE pickup.
+   * Default 18 (6 PM). Admin-tunable per service.
+   */
+  LEAD_SCHEDULE_HOUR: 18,
+  EMERGENCY_POOL_MINUTES: 120,
+  /**
+   * Minutes to wait between assignment retries when the dispatcher
+   * comes back empty. The retry loop keeps firing until we run out of
+   * runway before `scheduledStartAt − EMERGENCY_POOL_MINUTES`; after
+   * that the escalate job takes over.
+   */
+  RETRY_DELAY_MINUTES: 5,
+  /**
+   * Buffer (in minutes) padded around every booking's time window when
+   * checking for conflicts on the distipatch side. A driver is offered a
+   * new booking ONLY if none of their existing acve/scheduled
+   * bookings overlap `[newStart − RIDE_BUFFER_MINUTES, newEnd +
+   * RIDE_BUFFER_MINUTES]`. Lets drivers stack future scheduled
+   * bookings safely without back-to-back overlaps.
+   */
+  RIDE_BUFFER_MINUTES: 120,
+  REMINDER_OFFSETS_MINUTES: Object.freeze([60, 15]),
+  /**
+   * Hard floor on how far in advance a scheduled booking can be created.
+   * The emergency-pool window opens `EMERGENCY_POOL_MINUTES` before
+   * pickup, so anything sooner than that has no safety net — we
+   * require ≥ 2h lead time to keep the dispatcher honest. Users
+   * needing a ride sooner should pick "Instant".
+   */
+  MIN_SCHEDULED_LEAD_HOURS: 2,
+});

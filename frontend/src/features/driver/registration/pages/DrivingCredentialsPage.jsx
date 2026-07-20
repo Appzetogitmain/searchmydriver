@@ -1,0 +1,321 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import Button from '../../../../components/Button';
+import Input from '../../../../components/Input';
+import Select from '../../../../components/Select';
+import StepIndicator from '../../../../components/StepIndicator';
+import DocumentUploadField from '../../../../components/DocumentUploadField';
+import DriverVehicleExperienceEditor, {
+  MAX_DRIVER_VEHICLES,
+} from '../../../../components/vehicle/DriverVehicleExperienceEditor';
+import { emptyVehicleFormValues } from '../../../../components/vehicle/VehicleDetailsForm';
+import { ArrowLeft, FileText, Calendar, Briefcase } from 'lucide-react';
+import api from '../../../../utils/api';
+import useDriverAuthStore from '../../../../store/useDriverAuthStore';
+import { useDocumentsManager } from '../../../../hooks/useDocumentsManager';
+import { useDriverProfileStore } from '../../../../store/driver/useDriverProfileStore';
+import { buildCacheKey } from '../../../../store/lib/buildCacheKey';
+
+import { DRIVER_ONBOARDING_STEPS } from '../../../../utils/driverOnboarding';
+const CREDENTIAL_DOC_TYPES = ['driving_license', 'live_selfie', 'address_proof', 'police_verification', 'driver_registration'];
+
+const CREDENTIAL_DOCUMENTS = [
+  {
+    type: 'driving_license',
+    title: 'Driving licence (front)',
+    hint: 'Clear photo of the front of your valid driving licence',
+  },
+  {
+    type: 'live_selfie',
+    title: 'Live Selfie',
+    hint: 'Recent photo of your face, good lighting, no sunglasses or mask',
+  },
+  {
+    type: 'address_proof',
+    title: 'Address Proof',
+    hint: 'Upload an electric bill or rent agreement',
+  },
+  {
+    type: 'police_verification',
+    title: 'Police Verification',
+    hint: 'Clear photo of your police verification certificate',
+  },
+  {
+    type: 'driver_registration',
+    title: 'Driver Registration',
+    hint: 'Clear photo of your driver registration document',
+  },
+];
+
+const mapVehicleFromApi = (v) => ({
+  carTypeId: String(v.carTypeId?._id || v.carTypeId || ''),
+  brandId: String(v.brandId?._id || v.brandId || ''),
+  modelId: String(v.modelId?._id || v.modelId || ''),
+  fuelTypeId: String(v.fuelTypeId?._id || v.fuelTypeId || ''),
+  transmission: v.transmission || 'manual',
+});
+
+const validateVehicles = (vehicles) => {
+  const fieldErrors = {};
+  let valid = true;
+
+  if (!vehicles.length) {
+    return { valid: false, fieldErrors: { _form: 'Add at least one vehicle' } };
+  }
+
+  vehicles.forEach((v, index) => {
+    const err = {};
+    if (!v.carTypeId) err.carTypeId = 'Required';
+    if (!v.transmission) err.transmission = 'Required';
+    if (Object.keys(err).length) {
+      fieldErrors[index] = err;
+      valid = false;
+    }
+  });
+
+  return { valid, fieldErrors };
+};
+
+const DrivingCredentialsPage = () => {
+  const navigate = useNavigate();
+  const updateDriver = useDriverAuthStore((state) => state.updateDriver);
+
+  const [form, setForm] = useState({ license: '', expiry: '', experience: '', availability: '' });
+  const [vehicles, setVehicles] = useState([{ ...emptyVehicleFormValues }]);
+  const [vehicleErrors, setVehicleErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const {
+    documents,
+    loadFromApiDocuments,
+    uploadDocument,
+    isAnyUploading,
+    allRequiredUploaded,
+    toPayloadArray,
+  } = useDocumentsManager(CREDENTIAL_DOC_TYPES);
+
+  const handleSelectChange = (f) => (val) => setForm((p) => ({ ...p, [f]: val }));
+  const handleChange = (f) => (e) => {
+    let val = e.target.value;
+    if (f === 'experience') {
+      val = val.replace(/^0+(?=\d)/, ''); // Remove leading zeros before a digit
+    } else if (f === 'license') {
+      val = val.toUpperCase();
+    }
+    setForm((p) => ({ ...p, [f]: val }));
+  };
+
+  const handleContinue = async () => {
+    if (!allRequiredUploaded(CREDENTIAL_DOC_TYPES)) {
+      alert('Please upload all required documents');
+      return;
+    }
+
+    // License format validation (Indian DL format: 2 letters, 2 digits, then alphanumeric, allowing spaces/hyphens)
+    const dlRegex = /^[A-Z]{2}[-\s]?[0-9]{2}[-\s]?[A-Z0-9-\s]{7,15}$/;
+    if (!dlRegex.test(form.license)) {
+      alert('Please enter a valid Driving License number (e.g. MP09 20210000000)');
+      return;
+    }
+
+    if (form.expiry) {
+      const expiryDate = new Date(form.expiry);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (expiryDate < today) {
+        alert('Driving License expiry date cannot be in the past');
+        return;
+      }
+    }
+
+    const { valid, fieldErrors } = validateVehicles(vehicles);
+    setVehicleErrors(fieldErrors);
+    if (!valid) return;
+
+    try {
+      setIsSubmitting(true);
+
+      const payloadVehicles = vehicles.map((v) => {
+        const payload = {
+          carTypeId: v.carTypeId,
+          transmission: v.transmission,
+        };
+        if (v.brandId) payload.brandId = v.brandId;
+        if (v.modelId) payload.modelId = v.modelId;
+        if (v.fuelTypeId) payload.fuelTypeId = v.fuelTypeId;
+        return payload;
+      });
+
+      await api.put('/driver/onboarding/step', {
+        stepNumber: 2,
+        stepData: {
+          drivingLicense: {
+            number: form.license,
+            expiryDate: form.expiry || null,
+          },
+          experienceYears: Number(form.experience) || 0,
+          availability: form.availability.toLowerCase().replace(' ', '-'),
+          vehicleExperience: payloadVehicles,
+          documents: toPayloadArray(),
+        },
+      });
+
+      await useDriverProfileStore.getState().refresh(buildCacheKey('driver-profile', {}), {});
+      updateDriver({ onboardingStep: 3 });
+      navigate('/driver/register/bank');
+    } catch (error) {
+      console.error('Failed to save step 2', error);
+      alert(error.response?.data?.message || 'Failed to save credentials. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const profileRes = await api.get('/driver/profile');
+        const data = profileRes.data.data;
+        if (!data) return;
+
+        setForm({
+          license: data.drivingLicense?.number || '',
+          expiry: data.drivingLicense?.expiryDate
+            ? data.drivingLicense.expiryDate.split('T')[0]
+            : '',
+          experience: data.experienceYears?.toString() || '',
+          availability:
+            data.availability === 'full-time'
+              ? 'Full-time'
+              : data.availability === 'part-time'
+                ? 'Part-time'
+                : data.availability === 'weekends-only'
+                  ? 'Weekends Only'
+                  : '',
+        });
+
+        if (data.vehicleExperience?.length) {
+          setVehicles(data.vehicleExperience.map(mapVehicleFromApi));
+        } else if (data.carTypeExperience?.length) {
+          setVehicles(
+            data.carTypeExperience.map((t) => ({
+              ...emptyVehicleFormValues,
+              carTypeId: String(typeof t === 'object' ? t._id : t),
+            })),
+          );
+        }
+
+        if (data.documents) loadFromApiDocuments(data.documents);
+      } catch (error) {
+        console.error('Failed to fetch initial data', error);
+      }
+    };
+    fetchData();
+  }, [loadFromApiDocuments]);
+
+  const continueDisabled =
+    !form.license ||
+    !form.experience ||
+    !form.availability ||
+    vehicles.length === 0 ||
+    isSubmitting ||
+    isAnyUploading ||
+    !allRequiredUploaded(CREDENTIAL_DOC_TYPES);
+
+  return (
+    <div className="flex-1 flex flex-col bg-white min-h-dvh">
+      <div className="px-4 pt-4">
+        <button type="button" onClick={() => navigate('/driver/register/identity')} className="p-2 -ml-2 rounded-xl hover:bg-gray-100">
+          <ArrowLeft className="w-6 h-6 text-text" />
+        </button>
+      </div>
+      <div className="px-6 pt-2 pb-4">
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-lg font-bold">Driving Credentials</h1>
+          <span className="text-xs text-text-muted bg-bg px-2 py-1 rounded-full">2/5</span>
+        </div>
+        <StepIndicator steps={DRIVER_ONBOARDING_STEPS} currentStep={2} />
+        <p className="text-xs text-text-muted mt-3">
+          License, experience & up to {MAX_DRIVER_VEHICLES} vehicles you can drive for customers
+        </p>
+      </div>
+      <form className="flex-1 flex flex-col px-6 pb-8 overflow-y-auto">
+        <div className="flex-1 space-y-5 animate-fade-in-up">
+          <Input
+            label="License number"
+            placeholder="DL-XXXX-XXXX"
+            value={form.license}
+            onChange={handleChange('license')}
+            icon={FileText}
+          />
+          <Input
+            label="DL expiry"
+            type="date"
+            value={form.expiry}
+            onChange={handleChange('expiry')}
+            icon={Calendar}
+          />
+          <Input
+            label="Experience (years)"
+            type="number"
+            placeholder="Years of driving"
+            value={form.experience}
+            onChange={handleChange('experience')}
+            icon={Briefcase}
+          />
+          <Select
+            label="Availability"
+            options={['Full-time', 'Part-time', 'Weekends Only']}
+            value={form.availability}
+            onChange={handleSelectChange('availability')}
+            placeholder="Select availability"
+            openDirection="top"
+          />
+
+          <DriverVehicleExperienceEditor
+            vehicles={vehicles}
+            onChange={setVehicles}
+            fieldErrors={vehicleErrors}
+            disabled={isSubmitting || isAnyUploading}
+          />
+
+          <div>
+            <h3 className="text-sm font-semibold text-text">Verification documents</h3>
+            <p className="text-xs text-text-muted mt-1 mb-4 leading-relaxed">
+              Upload all documents below. They are required before you can continue.
+            </p>
+            <div className="space-y-4">
+              {CREDENTIAL_DOCUMENTS.map(({ type, title, hint }) => (
+                <DocumentUploadField
+                  key={type}
+                  label={title}
+                  hint={hint}
+                  variant="card"
+                  doc={documents[type]}
+                  onUpload={(file) => uploadDocument(type, file)}
+                  disabled={isAnyUploading}
+                  capture={type === 'live_selfie' ? 'user' : undefined}
+                  useLiveCamera={type === 'live_selfie'}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="pt-5">
+          <Button
+            fullWidth
+            onClick={handleContinue}
+            disabled={continueDisabled}
+            loading={isSubmitting}
+            className="mt-6 rounded-full py-4 text-base font-bold shadow-lg shadow-primary/20"
+          >
+            {isAnyUploading ? 'UPLOADING...' : 'CONTINUE'}
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+export default DrivingCredentialsPage;

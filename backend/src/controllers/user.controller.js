@@ -1,0 +1,136 @@
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { ApiResponse } from '../utils/apiResponse.js';
+import { setAuthCookies, clearAuthCookies } from '../utils/cookie.util.js';
+import * as userService from '../services/user.service.js';
+import { sendFcmNotification } from '../config/firebase.js';
+import { emitNotification } from '../utils/socketEmitters.js';
+
+export const sendUserOtp = asyncHandler(async (req, res) => {
+  const result = await userService.sendUserOtpService(req.body.phone, req.body.referralCode);
+  return res.status(200).json(new ApiResponse(200, result, 'OTP sent successfully'));
+});
+
+export const sendPasswordResetOtp = asyncHandler(async (req, res) => {
+  const result = await userService.sendPasswordResetOtpService(req.body.phone, req.body.role);
+  return res.status(200).json(new ApiResponse(200, result, 'Password reset OTP sent'));
+});
+
+export const resetPassword = asyncHandler(async (req, res) => {
+  const result = await userService.resetPasswordService(
+    req.body.phone,
+    req.body.otp,
+    req.body.newPassword,
+    req.body.role
+  );
+  return res.status(200).json(new ApiResponse(200, result, 'Password reset successfully'));
+});
+
+export const verifyUserOtpAndRegister = asyncHandler(async (req, res) => {
+  const result = await userService.verifyUserOtpAndRegisterService(req.body);
+  setAuthCookies(res, {
+    accessToken: result.accessToken,
+    refreshToken: result.refreshToken,
+  });
+  return res.status(201).json(new ApiResponse(201, { 
+    user: result.user,
+    accessToken: result.accessToken,
+    refreshToken: result.refreshToken
+  }, 'Registration successful'));
+});
+
+export const loginUser = asyncHandler(async (req, res) => {
+  const { phone, password } = req.body;
+  const result = await userService.loginUserService(phone, password);
+  setAuthCookies(res, {
+    accessToken: result.accessToken,
+    refreshToken: result.refreshToken,
+  });
+  return res.status(200).json(new ApiResponse(200, { 
+    user: result.user,
+    accessToken: result.accessToken,
+    refreshToken: result.refreshToken
+  }, 'Login successful'));
+});
+
+export const updateUserOnboardingStep = asyncHandler(async (req, res) => {
+  const result = await userService.updateUserOnboardingStepService(req.user._id, req.body);
+  return res.status(200).json(new ApiResponse(200, result, 'Onboarding step updated'));
+});
+
+export const getUserProfile = asyncHandler(async (req, res) => {
+  const result = await userService.getUserProfileService(req.params.userId);
+  return res.status(200).json(new ApiResponse(200, result, 'User profile fetched'));
+});
+
+export const updateUserProfile = asyncHandler(async (req, res) => {
+  const result = await userService.updateUserProfileService(req.user._id, req.body);
+  return res.status(200).json(new ApiResponse(200, result, 'User profile updated'));
+});
+
+export const getRegistrationStatus = asyncHandler(async (req, res) => {
+  const result = await userService.getRegistrationStatusService(req.user._id);
+  return res.status(200).json(new ApiResponse(200, result, 'Registration status fetched'));
+});
+
+// Car Controllers (Consolidated)
+export const addCar = asyncHandler(async (req, res) => {
+  const result = await userService.addCarService(req.user._id, req.body);
+  return res.status(201).json(new ApiResponse(201, result, 'Car added successfully'));
+});
+
+export const getUserCars = asyncHandler(async (req, res) => {
+  const cars = await userService.getUserCarsService(req.user._id);
+  return res.status(200).json(new ApiResponse(200, cars, 'Cars fetched successfully'));
+});
+
+export const deleteUserCar = asyncHandler(async (req, res) => {
+  await userService.deleteUserCarService(req.user._id, req.params.id);
+  return res.status(200).json(new ApiResponse(200, null, 'Car deleted successfully'));
+});
+
+// Saved (favourite) locations
+export const listSavedLocations = asyncHandler(async (req, res) => {
+  const result = await userService.listSavedLocationsService(req.user._id);
+  return res.status(200).json(new ApiResponse(200, result, 'Saved locations fetched'));
+});
+
+export const addSavedLocation = asyncHandler(async (req, res) => {
+  const result = await userService.addSavedLocationService(req.user._id, req.body);
+  return res.status(201).json(new ApiResponse(201, result, 'Location saved'));
+});
+
+export const deleteSavedLocation = asyncHandler(async (req, res) => {
+  await userService.deleteSavedLocationService(req.user._id, req.params.id);
+  return res.status(200).json(new ApiResponse(200, null, 'Saved location removed'));
+});
+
+export const deleteMyAccount = asyncHandler(async (req, res) => {
+  const result = await userService.deleteUserAccountService(req.user._id);
+  clearAuthCookies(res);
+  return res.status(200).json(new ApiResponse(200, result, 'Account deleted successfully'));
+});
+
+export const updateUserFcmToken = asyncHandler(async (req, res) => {
+  const { token } = req.body;
+  req.user.fcmToken = token || '';
+  await req.user.save();
+  return res.status(200).json(new ApiResponse(200, null, 'FCM token updated successfully'));
+});
+
+export const triggerUserTestPush = asyncHandler(async (req, res) => {
+  if (!req.user.fcmToken) {
+    return res.status(400).json(new ApiResponse(400, null, 'No FCM token registered for this user'));
+  }
+
+  await emitNotification(
+    { userId: req.user._id },
+    {
+      title: 'Test Notification',
+      body: `Hello ${req.user.name}, this is a test push notification from SearchMyDriver!`,
+      severity: 'info',
+      data: { type: 'test', timestamp: Date.now() },
+    }
+  );
+
+  return res.status(200).json(new ApiResponse(200, null, 'Test push notification sent successfully'));
+});

@@ -1,0 +1,85 @@
+import { useState } from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import Sidebar from '../features/admin/components/Sidebar';
+import AdminHeader from '../features/admin/components/AdminHeader';
+import { useSocketEvent } from '../hooks/useSocket';
+import { useNotificationSound } from '../hooks/useNotificationSound';
+import { S2C_EVENTS } from '../constants/socketEvents';
+
+const routeTitles = {
+  '/admin': 'Dashboard',
+  '/admin/users': 'Manage Users',
+  '/admin/drivers': 'Manage Drivers',
+  '/admin/tasks': 'Team Tasks',
+  '/admin/tasks/activity': 'Task Activity Log',
+  '/admin/settings/kits': 'Driver Kits',
+  '/admin/kit-orders': 'Kit Orders',
+  '/admin/bookings': 'Manage Bookings',
+  '/admin/emergency-pool': 'Emergency Pool',
+  '/admin/settings': 'Settings',
+  '/admin/account/revenue': 'Revenue',
+  '/admin/account/refunds': 'Refunds',
+  '/admin/profile': 'My Profile',
+  '/admin/banners': 'User App Banners',
+  '/admin/ads': 'User App Ads',
+  '/admin/web-banners': 'Website Banners Control',
+  '/admin/web-tickets': 'Website Support Tickets',
+  '/admin/web-cities': 'Website Cities Control',
+  '/admin/web-faqs': 'Website FAQs Control',
+  '/admin/web-pages': 'Static Pages Control',
+  '/admin/broadcast': 'Broadcast Messages',
+};
+
+const AdminLayout = () => {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
+  const { play: playAlertSound } = useNotificationSound('/audio/alert_.mp3', { volume: 0.8 });
+
+  useSocketEvent(S2C_EVENTS.ADMIN_ALERT, (payload) => {
+    const msg = payload.message || 'New Alert';
+    if (payload.severity === 'error') {
+      toast.error(msg, { duration: 5000 });
+    } else if (payload.severity === 'warn') {
+      toast(msg, { duration: 5000, icon: '⚠️' });
+    } else {
+      toast.success(msg, { duration: 5000 });
+    }
+    
+    if (!msg.toLowerCase().includes('withdraw')) {
+      playAlertSound();
+    }
+  });
+
+  const pageTitle =
+    location.pathname.includes('/admin/users/') && location.pathname.endsWith('/profile')
+      ? 'User Profile'
+      : location.pathname.includes('/admin/drivers/') && location.pathname.endsWith('/profile')
+        ? 'Driver Profile'
+        : location.pathname.match(/^\/admin\/kit-orders\/[^/]+$/)
+          ? 'Kit Order Detail'
+          : routeTitles[location.pathname] || 'Admin';
+
+  return (
+    <div className="w-full flex h-screen bg-bg overflow-hidden">
+      {/* Sidebar — sticky full height */}
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+
+      {/* Main area */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Header — sticky top */}
+        <AdminHeader
+          title={pageTitle}
+          onMenuToggle={() => setSidebarOpen((prev) => !prev)}
+        />
+
+        {/* Page content — scrollable */}
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+          <Outlet />
+        </main>
+      </div>
+    </div>
+  );
+};
+
+export default AdminLayout;

@@ -1,0 +1,296 @@
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Search,
+  MapPin,
+  Bell,
+  ChevronUp,
+  X,
+  Loader2,
+  RefreshCw,
+  Headset,
+} from 'lucide-react';
+import NotificationBell from '../../../../components/common/NotificationBell';
+import Badge from '../../../../components/Badge';
+import BannersCarousel from '../../../../components/BannersCarousel';
+import BookDriverSection from '../components/BookDriverSection';
+import { useGoogleMaps } from '../../../../hooks/useGoogleMaps';
+import { useGeolocation } from '../../../../hooks/useGeolocation';
+import { useNearbyDrivers } from '../../../../hooks/useNearbyDrivers';
+import { reverseGeocode } from '../../../../utils/geocoding';
+import NearbyDriversMap from '../../../../components/maps/NearbyDriversMap';
+import NearbyDriversList from '../../../../components/maps/NearbyDriversList';
+import AdsCarousel from '../../../../components/AdsCarousel';
+import HelpDeskModal from '../../../../components/HelpDeskModal';
+import useUserAuthStore from '../../../../store/useUserAuthStore';
+
+const NEARBY_RADIUS_METERS = 2000;
+const NEARBY_LIMIT = 8;
+const NEARBY_REFRESH_MS = 30_000;
+
+const UserHomePage = () => {
+  const navigate = useNavigate();
+  const { user } = useUserAuthStore();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showDriverSheet, setShowDriverSheet] = useState(false);
+  const [isHelpDeskOpen, setIsHelpDeskOpen] = useState(false);
+  const [selectedDriverId, setSelectedDriverId] = useState(null);
+
+  const mapRef = useRef(null);
+  const scrollRef = useRef(null);
+
+  const { maps, ready } = useGoogleMaps();
+  const { coords, loading: locating, error: geoError } = useGeolocation();
+  const [currentLocation, setCurrentLocation] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!ready || !maps || !coords) return undefined;
+    (async () => {
+      const point = await reverseGeocode(maps, { lat: coords.lat, lng: coords.lng });
+      if (!cancelled && point) setCurrentLocation(point);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [maps, ready, coords]);
+
+  const center = useMemo(
+    () => (coords ? { lat: coords.lat, lng: coords.lng } : null),
+    [coords],
+  );
+
+  const {
+    drivers,
+    loading: driversLoading,
+    error: driversError,
+    refresh: refreshDrivers,
+  } = useNearbyDrivers({
+    center,
+    radiusMeters: NEARBY_RADIUS_METERS,
+    limit: NEARBY_LIMIT,
+    enabled: !!center,
+    refetchMs: NEARBY_REFRESH_MS,
+  });
+
+  const locationLine = currentLocation?.city
+    ? currentLocation.city
+    : currentLocation?.address || (geoError ? 'Location unavailable' : 'Locating you…');
+  const locationLoading = !geoError && !currentLocation && (locating || !ready);
+
+  const driversCount = drivers.length;
+
+  // Auto-open the bottom sheet when the map crosses under the sticky header
+  // as the user scrolls down (existing UX behaviour, kept).
+  const handleScroll = useCallback(() => {
+    if (!mapRef.current || !scrollRef.current) return;
+    const mapRect = mapRef.current.getBoundingClientRect();
+    const headerBottom = 120;
+    if (mapRect.top <= headerBottom && !showDriverSheet) {
+      setShowDriverSheet(true);
+    }
+  }, [showDriverSheet]);
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return undefined;
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [handleScroll]);
+
+  const handleDriverPick = useCallback(
+    (driver) => {
+      setSelectedDriverId(String(driver._id));
+      setShowDriverSheet(true);
+    },
+    [],
+  );
+
+  return (
+    <div className="flex-1 flex flex-col bg-bg relative">
+      {/* ====== Sticky Header ====== */}
+      <div className="sticky top-0 z-30 bg-gradient-to-b from-[#FFF5D6] to-[#FFEAA8] border-b border-[#F5D169] px-4 pt-4 pb-4 rounded-b-3xl shadow-md">
+        <div className="flex items-center justify-between mb-3">
+          <div className="min-w-0 max-w-[75%]">
+            <p className="text-slate-600 text-sm font-bold tracking-wide opacity-80 capitalize">
+              Hii {user?.name?.split(' ')[0] || 'Guest'}
+            </p>
+            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wide opacity-80 mt-1">Your location</p>
+            <div className="flex items-center gap-1 mt-0.5 min-w-0">
+              <MapPin className="w-4 h-4 text-amber-700 shrink-0" />
+              <span
+                className="text-slate-900 text-sm font-extrabold truncate"
+                title={currentLocation?.address || locationLine}
+              >
+                {locationLine}
+              </span>
+              {locationLoading && (
+                <Loader2 className="w-3.5 h-3.5 text-slate-500 animate-spin shrink-0" />
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsHelpDeskOpen(true)}
+              className="p-2 text-slate-700 hover:text-slate-950 hover:bg-amber-500/10 rounded-full transition-colors"
+            >
+              <Headset className="w-5 h-5" />
+            </button>
+            <NotificationBell prefix="/auth" />
+          </div>
+        </div>
+
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
+          <input
+            type="text"
+            placeholder="Where would you like to go?"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full h-11 bg-white rounded-2xl pl-12 pr-4 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 shadow-md"
+          />
+        </div>
+      </div>
+
+      {/* ====== Scrollable Content ====== */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div className="pb-4 space-y-5">
+          <BannersCarousel />
+          
+          <div className="px-4">
+            <BookDriverSection />
+          </div>
+
+          <div className="animate-fade-in-up px-4" style={{ animationDelay: '0.2s' }}>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h2 className="text-base font-bold text-text">Nearby drivers</h2>
+                <p className="text-[11px] text-text-muted">
+                  Within {Math.round(NEARBY_RADIUS_METERS / 1000)} km of you
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant={driversCount > 0 ? 'success' : 'warning'}>
+                  {driversCount} available
+                </Badge>
+                <button
+                  type="button"
+                  onClick={refreshDrivers}
+                  className="p-1.5 rounded-full hover:bg-gray-200 text-text-muted"
+                  aria-label="Refresh nearby drivers"
+                >
+                  <RefreshCw
+                    className={`w-4 h-4 ${driversLoading ? 'animate-spin' : ''}`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            <div
+              ref={mapRef}
+              className="bg-gray-100"
+            >
+              {center ? (
+                <NearbyDriversMap
+                  center={center}
+                  drivers={drivers}
+                  radiusMeters={NEARBY_RADIUS_METERS}
+                  selectedDriverId={selectedDriverId}
+                  onDriverClick={handleDriverPick}
+                  height={256}
+                />
+              ) : (
+                <div className="h-64 flex items-center justify-center text-text-muted">
+                  {geoError ? (
+                    <div className="px-4 text-center">
+                      <p className="text-sm">{geoError}</p>
+                      <p className="text-[11px] mt-1">
+                        Allow location access to see nearby drivers.
+                      </p>
+                    </div>
+                  ) : (
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                  )}
+                </div>
+              )}
+            </div>
+
+            {driversError && (
+              <p className="mt-2 text-xs text-danger bg-danger/10 rounded-xl px-3 py-2">
+                {driversError}
+              </p>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setShowDriverSheet(true)}
+              className="w-full mt-3 flex items-center justify-center gap-2 py-2.5 bg-white rounded-2xl shadow-card text-sm font-medium text-text-secondary hover:bg-gray-50 transition-colors"
+            >
+              <ChevronUp className="w-4 h-4 text-primary" />
+              {driversCount > 0
+                ? `View ${driversCount} nearby driver${driversCount === 1 ? '' : 's'}`
+                : 'View nearby drivers'}
+            </button>
+            <div className="w-full mt-3 flex items-center justify-center">
+              <AdsCarousel />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ====== Nearby Drivers Bottom Sheet ====== */}
+      {showDriverSheet && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setShowDriverSheet(false)}
+          />
+
+          <div className="relative bg-white rounded-t-3xl w-full max-w-lg animate-slide-up shadow-xl">
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 rounded-full bg-gray-300" />
+            </div>
+
+            <div className="flex items-center justify-between px-5 py-2">
+              <div>
+                <h3 className="text-lg font-bold text-text">Nearby drivers</h3>
+                <p className="text-xs text-text-muted">
+                  {driversCount} within {Math.round(NEARBY_RADIUS_METERS / 1000)} km
+                </p>
+              </div>
+              <button
+                onClick={() => setShowDriverSheet(false)}
+                className="p-2 rounded-full hover:bg-gray-100 text-text-secondary"
+                type="button"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="px-5 pb-8 max-h-[60vh] overflow-y-auto">
+              <NearbyDriversList
+                drivers={drivers}
+                loading={driversLoading}
+                selectedId={selectedDriverId}
+                onDriverClick={(driver) => {
+                  setSelectedDriverId(String(driver._id));
+                  setShowDriverSheet(false);
+                  navigate('/user/book/service');
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <HelpDeskModal
+        isOpen={isHelpDeskOpen}
+        onClose={() => setIsHelpDeskOpen(false)}
+        userType="user"
+      />
+    </div>
+  );
+};
+
+export default UserHomePage;

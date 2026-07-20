@@ -1,0 +1,165 @@
+import express from 'express';
+import notificationRouter from './notification.route.js';
+import {
+  sendOtp,
+  verifyOtpAndRegister,
+  loginDriver,
+  updateOnboardingStep,
+  submitApplication,
+  getProfile,
+  getTraining,
+  updateTrainingProgress,
+  uploadLiveVerification,
+  reopenRejectedApplication,
+  updateOutstationAvailability,
+  updateMonthlyAvailability,
+  deleteMyAccount,
+  updateDriverFcmToken,
+  triggerDriverTestPush,
+} from '../controllers/driver.controller.js';
+import { uploadVideo as uploadVideoMiddleware } from '../middlewares/multer.js';
+import {
+  googleSignInDriver,
+  linkGoogleDriverPhone,
+} from '../controllers/googleAuth.controller.js';
+import { protectDriver } from '../middlewares/authMiddleware.js';
+import { authLimiter } from '../middlewares/rateLimiter.js';
+import { getMandatoryKit, getAvailableKits } from '../controllers/kit.controller.js';
+import {
+  createKitOrder,
+  getMyKitOrders,
+  getMyActiveKitOrder,
+  retryKitOrderPayment,
+  markKitOrderPaymentFailed,
+} from '../controllers/kitOrder.controller.js';
+import { verifyKitPayment } from '../controllers/payment.controller.js';
+import {
+  getMyWallet,
+  getMyWalletTransactions,
+  createWalletTopupOrder,
+  verifyWalletTopupPayment,
+  requestWithdrawal,
+  updateBankDetails,
+} from '../controllers/wallet.controller.js';
+import { getOnlineStatus, setOnlineStatus } from '../controllers/driverOnline.controller.js';
+import {
+  getMyOrders,
+  getMyOrderById,
+  getMyPaymentHistory,
+} from '../controllers/driverHistory.controller.js';
+import {
+  getDriverHomeSummary,
+  getDriverTripsList,
+  getDriverEarnings,
+  getDriverEarningsLedger,
+  getDriverPendingOffers,
+} from '../controllers/driverTrips.controller.js';
+import {
+  getDriverActiveBooking,
+  driverAcceptBooking,
+  driverRejectBooking,
+  driverGetBookingById,
+  driverMarkEnRoute,
+  driverMarkArrived,
+  driverStartTrip,
+  driverCompleteTrip,
+  driverCancelBooking,
+  driverDismissBookingExtension,
+  rateCustomerByDriver,
+  downloadDriverBookingInvoice,
+} from '../controllers/booking.controller.js';
+import { createSupportTicket, createPublicSupportTicket } from '../controllers/support.controller.js';
+
+const router = express.Router();
+
+router.post('/support/ticket', protectDriver, createSupportTicket);
+router.post('/support/public-ticket', createPublicSupportTicket);
+router.post('/auth/send-otp', authLimiter, sendOtp);
+router.post('/auth/verify-otp', authLimiter, verifyOtpAndRegister);
+router.post('/auth/login', authLimiter, loginDriver);
+router.post('/auth/google', authLimiter, googleSignInDriver);
+
+router.put('/onboarding/step', protectDriver, updateOnboardingStep);
+router.use('/notifications', protectDriver, notificationRouter);
+router.post(
+  '/onboarding/live-verification',
+  protectDriver,
+  uploadVideoMiddleware.single('video'),
+  uploadLiveVerification,
+);
+router.post('/auth/google/link-phone', protectDriver, linkGoogleDriverPhone);
+router.get('/training', protectDriver, getTraining);
+router.put('/training/progress', protectDriver, updateTrainingProgress);
+router.post('/onboarding/submit', protectDriver, submitApplication);
+router.post('/application/reopen', protectDriver, reopenRejectedApplication);
+router.get('/profile', protectDriver, getProfile);
+router.delete('/account', protectDriver, deleteMyAccount);
+// Driver-side preferences \u2014 currently only the outstation opt-in
+// for the admin-managed outstation queue.
+router.put(
+  '/preferences/outstation-availability',
+  protectDriver,
+  updateOutstationAvailability,
+);
+router.put(
+  '/preferences/monthly-availability',
+  protectDriver,
+  updateMonthlyAvailability,
+);
+
+router.get('/kits', protectDriver, getAvailableKits);
+router.get('/kits/mandatory', protectDriver, getMandatoryKit);
+router.get('/kit-orders', protectDriver, getMyKitOrders);
+router.get('/kit-orders/active', protectDriver, getMyActiveKitOrder);
+router.post('/kit-orders', protectDriver, createKitOrder);
+router.post('/kit-orders/:id/pay', protectDriver, retryKitOrderPayment);
+router.post('/kit-orders/:id/payment-failed', protectDriver, markKitOrderPaymentFailed);
+router.get('/orders', protectDriver, getMyOrders);
+router.get('/orders/:id', protectDriver, getMyOrderById);
+router.get('/payments/history', protectDriver, getMyPaymentHistory);
+router.post('/payments/verify', protectDriver, verifyKitPayment);
+
+router.get('/wallet', protectDriver, getMyWallet);
+router.get('/wallet/transactions', protectDriver, getMyWalletTransactions);
+router.post('/wallet/topup', protectDriver, createWalletTopupOrder);
+router.post('/wallet/topup/verify', protectDriver, verifyWalletTopupPayment);
+router.post('/wallet/withdraw', protectDriver, requestWithdrawal);
+router.post('/wallet/bank-details', protectDriver, updateBankDetails);
+
+router.get('/online/status', protectDriver, getOnlineStatus);
+router.put('/online', protectDriver, setOnlineStatus);
+
+// Dashboard: today summary, paginated trip history, earnings analytics
+router.get('/home/summary', protectDriver, getDriverHomeSummary);
+router.get('/trips', protectDriver, getDriverTripsList);
+router.get('/trips/pending-offers', protectDriver, getDriverPendingOffers);
+router.get('/earnings', protectDriver, getDriverEarnings);
+router.get('/earnings/ledger', protectDriver, getDriverEarningsLedger);
+
+// Booking lifecycle for the driver (Phase 4)
+router.get('/bookings/active', protectDriver, getDriverActiveBooking);
+router.get('/bookings/:id', protectDriver, driverGetBookingById);
+router.get('/bookings/:id/invoice', protectDriver, downloadDriverBookingInvoice);
+router.post('/bookings/:id/accept', protectDriver, driverAcceptBooking);
+router.post('/bookings/:id/reject', protectDriver, driverRejectBooking);
+
+// Post-accept trip execution
+router.post('/bookings/:id/en-route', protectDriver, driverMarkEnRoute);
+router.post('/bookings/:id/arrived', protectDriver, driverMarkArrived);
+router.post('/bookings/:id/start', protectDriver, driverStartTrip);
+router.post('/bookings/:id/complete', protectDriver, driverCompleteTrip);
+router.post('/bookings/:id/cancel', protectDriver, driverCancelBooking);
+router.post(
+  '/bookings/:id/extensions/dismiss',
+  protectDriver,
+  driverDismissBookingExtension,
+);
+// Post-trip rating — driver rates the customer they just drove.
+// Once-only; a duplicate submit hits 409 from the service.
+router.post('/bookings/:id/rate-customer', protectDriver, rateCustomerByDriver);
+
+// FCM Push Notifications
+router.post('/fcm-token', protectDriver, updateDriverFcmToken);
+router.post('/test-push', protectDriver, triggerDriverTestPush);
+
+export default router;
