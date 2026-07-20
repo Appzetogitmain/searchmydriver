@@ -152,6 +152,12 @@ import {
   approveWithdrawal,
   rejectWithdrawal,
 } from '../controllers/referralAdmin.controller.js';
+import {
+  adminListHelplines,
+  adminCreateHelpline,
+  adminUpdateHelpline,
+  adminDeleteHelpline,
+} from '../controllers/helpline.controller.js';
 
 const router = express.Router();
 const { ALL_STAFF, OPERATIONS, SUPER_ADMIN } = ROUTE_ROLES;
@@ -419,5 +425,11 @@ router.put('/platform-settings', protectStaff, restrictTo(...OPERATIONS), update
 // commission, company share of a cancellation fee, etc.) — writes are
 // done by the booking pipelines, not here.
 router.get('/revenue', protectStaff, restrictTo(...SUPER_ADMIN), listPlatformRevenue);
+
+/* ---- Helpline Numbers ------------------------------------------------- */
+router.get('/helplines', protectStaff, restrictTo(...ALL_STAFF), adminListHelplines);
+router.post('/helplines', protectStaff, restrictTo(...OPERATIONS), adminCreateHelpline);
+router.put('/helplines/:id', protectStaff, restrictTo(...OPERATIONS), adminUpdateHelpline);
+router.delete('/helplines/:id', protectStaff, restrictTo(...OPERATIONS), adminDeleteHelpline);
 
 export default router;

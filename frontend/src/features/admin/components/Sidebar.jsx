@@ -20,6 +20,7 @@ const navItems = [
     roles: ['admin'],
   },
   { path: '/admin/users', label: 'Users', icon: Users, roles: ['admin', 'sub_admin'], permission: STAFF_PERMISSIONS.USERS },
+  { path: '/admin/helplines', label: 'Helpline Numbers', icon: Headset, roles: ['admin', 'sub_admin'], permission: STAFF_PERMISSIONS.SUPPORT || 'SUPPORT' },
   { path: '/admin/incoming-registrations', label: 'Incoming Registrations', icon: LifeBuoy, roles: ['admin', 'sub_admin'], permission: STAFF_PERMISSIONS.INCOMING_REGISTRATIONS },
   { path: '/admin/tasks', label: 'Team Tasks', icon: CheckSquare, permission: STAFF_PERMISSIONS.TEAM_TASKS },
   { path: '/admin/drivers', label: 'Drivers', icon: Car, permission: STAFF_PERMISSIONS.DRIVERS },

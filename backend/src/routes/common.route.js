@@ -9,6 +9,7 @@ import {
 import { listActiveZones, checkZoneForPoint } from '../controllers/zone.controller.js';
 import { listActiveAds } from '../controllers/ad.controller.js';
 import { listActiveBanners } from '../controllers/banner.controller.js';
+import { listActiveHelplines } from '../controllers/helpline.controller.js';
 import { upload, uploadVideo as uploadVideoMiddleware } from '../middlewares/multer.js';
 
 const router = express.Router();
@@ -26,6 +27,7 @@ router.get('/training-videos', getTrainingVideos);
 router.get('/zones', listActiveZones);
 router.get('/settings', getPublicPlatformSettings);
 router.get('/zones/check', checkZoneForPoint);
+router.get('/helplines', listActiveHelplines);
 
 // Promotional ads shown on the user home (active only, sort-ordered).
 router.get('/ads', listActiveAds);

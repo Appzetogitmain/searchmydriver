@@ -208,6 +208,7 @@ const ManageReferrals = lazy(() => import('./features/admin/pages/ManageReferral
 const ManageWithdrawals = lazy(() => import('./features/admin/pages/ManageWithdrawals'));
 const ReferralSettings = lazy(() => import('./features/admin/pages/ReferralSettings'));
 const ManageBroadcast = lazy(() => import('./features/admin/pages/ManageBroadcast'));
+const ManageHelplines = lazy(() => import('./features/admin/pages/ManageHelplines'));
 
 function PageLoader() {
   return (
@@ -430,6 +431,7 @@ function App() {
             <Route path="/admin/help-desk" element={<HelpDesk />} />
             <Route path="/admin/fare-management" element={<FareManagement />} />
             <Route path="/admin/tasks" element={<ManageTasks />} />
+            <Route path="/admin/helplines" element={<ManageHelplines />} />
             <Route element={<SuperAdminOnlyGuard />}>
               <Route path="/admin/tasks/activity" element={<TaskActivityLogPage />} />
               <Route path="/admin/settings/team" element={<ManageTeam />} />
