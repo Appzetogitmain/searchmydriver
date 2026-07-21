@@ -68,6 +68,7 @@ const MENU_GROUPS = [
       { icon: FileText, label: 'Documents', path: '/driver/account/documents' },
       { icon: Building2, label: 'Bank Details', path: '/driver/account/bank-details' },
       { icon: Users, label: 'Refer & Earn', path: '/driver/refer' },
+      { icon: Building2, label: 'About Company', path: '/driver/about' },
       { icon: ShieldCheck, label: 'Privacy Policy', path: '/driver/privecy' },
     ],
   },

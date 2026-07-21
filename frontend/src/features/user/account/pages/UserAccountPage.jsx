@@ -36,6 +36,7 @@ const menuItems = [
   { id: 'payment-history', icon: FileText, label: 'Payment History', path: '/user/account/payment-history' },
   { id: 'bank-details', icon: Building2, label: 'Bank Details', path: '/user/account/bank-details' },
   { id: 'refer', icon: Users, label: 'Refer & Earn', path: '/user/refer' },
+  { id: 'about', icon: Building2, label: 'About Company', path: '/user/about' },
   { id: 'privacy', icon: ShieldCheck, label: 'Privacy Policy', path: '/user/privecy' },
   { id: 'help', icon: HelpCircle, label: 'Help & Support', path: '/user/account/help' },
   { id: 'faq', icon: HelpCircle, label: 'FAQs', path: '/user/account/faq' },

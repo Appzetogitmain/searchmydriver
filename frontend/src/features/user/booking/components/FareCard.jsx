@@ -166,7 +166,8 @@ const FareCard = ({ estimate, estimating = false, error = null, dense = false, f
               <span className="text-sm text-text">{rupees(subtotal)}</span>
             </div>
           )}
-          {serviceCharge > 0 && (
+          {/* Platform fee row hidden from user UI per configuration */}
+          {/* {serviceCharge > 0 && (
             <div className="flex items-center justify-between">
               <span className="text-sm text-text-secondary">
                 Platform fee
@@ -178,7 +179,7 @@ const FareCard = ({ estimate, estimating = false, error = null, dense = false, f
               </span>
               <span className="text-sm text-text">{rupees(serviceCharge)}</span>
             </div>
-          )}
+          )} */}
           {gst > 0 && (
             <div className="flex items-center justify-between">
               <span className="text-sm text-text-secondary">

@@ -27,7 +27,7 @@ const routeTitles = {
   '/admin/web-tickets': 'Website Support Tickets',
   '/admin/web-cities': 'Website Cities Control',
   '/admin/web-faqs': 'Website FAQs Control',
-  '/admin/web-pages': 'Static Pages Control',
+  '/admin/web-pages': 'About Company & Static Pages',
   '/admin/broadcast': 'Broadcast Messages',
 };
 

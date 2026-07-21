@@ -529,9 +529,10 @@ function FareSummaryCard({ booking }) {
       });
     }
   }
-  if (Number(breakdown.serviceCharge) > 0) {
-    rows.push({ label: 'Platform fee', value: breakdown.serviceCharge });
-  }
+  // Platform fee hidden from user UI per configuration
+  // if (Number(breakdown.serviceCharge) > 0) {
+  //   rows.push({ label: 'Platform fee', value: breakdown.serviceCharge });
+  // }
   if (Number(breakdown.gst) > 0) {
     rows.push({ label: 'GST', value: breakdown.gst });
   }

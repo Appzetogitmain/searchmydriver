@@ -107,6 +107,7 @@ const UserAccountPage = lazy(() => import('./features/user/account/pages/UserAcc
 const UserPaymentHistoryPage = lazy(() => import('./features/user/account/pages/UserPaymentHistoryPage'));
 const UserBankDetailsPage = lazy(() => import('./features/user/account/pages/UserBankDetailsPage'));
 const UserPrivacyPage = lazy(() => import('./features/user/account/pages/PrivacyPage'));
+const UserAboutCompanyPage = lazy(() => import('./features/user/account/pages/AboutCompanyPage'));
 const ReferAndEarnPage = lazy(() => import('./features/user/account/pages/ReferAndEarnPage'));
 
 
@@ -147,6 +148,7 @@ const DriverAccountProfilePage = lazy(() => import('./features/driver/account/pa
 const DriverAccountDocumentsPage = lazy(() => import('./features/driver/account/pages/DriverDocumentsPage'));
 const DriverAccountBankDetailsPage = lazy(() => import('./features/driver/account/pages/DriverBankDetailsPage'));
 const DriverPrivacyPage = lazy(() => import('./features/driver/account/pages/PrivacyPage'));
+const DriverAboutCompanyPage = lazy(() => import('./features/driver/account/pages/AboutCompanyPage'));
 const DriverOrdersPage = lazy(() => import('./features/driver/account/pages/DriverOrdersPage'));
 const DriverOrderDetailPage = lazy(
   () => import('./features/driver/account/pages/DriverOrderDetailPage'),
@@ -297,6 +299,7 @@ function App() {
               <Route path="/user/account/help" element={<UserHelpSupportPage />} />
               <Route path="/user/account/settings" element={<UserSettingsPage />} />
               <Route path="/user/privecy" element={<UserPrivacyPage />} />
+              <Route path="/user/about" element={<UserAboutCompanyPage />} />
               <Route path="/user/refer" element={<ReferAndEarnPage />} />
               <Route path="/user/account/faq" element={<UserFaqPage />} />
               <Route path="/user/wallet" element={<WalletPage />} />
@@ -378,6 +381,7 @@ function App() {
               <Route path="/driver/account/documents" element={<DriverAccountDocumentsPage />} />
               <Route path="/driver/account/bank-details" element={<DriverAccountBankDetailsPage />} />
               <Route path="/driver/privecy" element={<DriverPrivacyPage />} />
+              <Route path="/driver/about" element={<DriverAboutCompanyPage />} />
               <Route path="/driver/refer" element={<DriverReferAndEarnPage />} />
               <Route path="/driver/account/faq" element={<DriverFaqPage />} />
             </Route>

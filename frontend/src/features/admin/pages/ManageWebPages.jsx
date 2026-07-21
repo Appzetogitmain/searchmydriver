@@ -226,21 +226,42 @@ const PageForm = ({ page, onClose, onSuccess }) => {
           </div>
         )}
 
+        <div className="space-y-3">
+          <label className="text-sm font-medium text-text block">Select Page / Section</label>
+          <select
+            className="w-full bg-white border border-border rounded-xl p-3 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/30"
+            value={formData.slug}
+            onChange={(e) => {
+              const selectedSlug = e.target.value;
+              let defaultTitle = formData.title;
+              if (selectedSlug === 'about') defaultTitle = 'About SearchMyDriver';
+              if (selectedSlug === 'privacy') defaultTitle = 'Privacy Policy';
+              if (selectedSlug === 'terms') defaultTitle = 'Terms of Service';
+              setFormData((prev) => ({ ...prev, slug: selectedSlug, title: defaultTitle }));
+            }}
+          >
+            <option value="about">About Company (slug: about)</option>
+            <option value="privacy">Privacy Policy (slug: privacy)</option>
+            <option value="terms">Terms of Service (slug: terms)</option>
+            <option value={formData.slug !== 'about' && formData.slug !== 'privacy' && formData.slug !== 'terms' ? formData.slug : ''}>Custom Slug</option>
+          </select>
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
             label="Page Title"
-            placeholder="e.g., Privacy Policy"
+            placeholder="e.g., About SearchMyDriver"
             value={formData.title}
             onChange={handleChange('title')}
             required
           />
           <Input
             label="URL Slug"
-            placeholder="e.g., privacy"
+            placeholder="e.g., about"
             value={formData.slug}
             onChange={handleChange('slug')}
             required
-            helper="Only lowercase letters, numbers, and hyphens"
+            helper="Auto-filled matching the system section"
           />
         </div>
 

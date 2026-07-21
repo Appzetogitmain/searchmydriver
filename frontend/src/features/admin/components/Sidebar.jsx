@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Car, CalendarCheck, DollarSign, Settings,
   LogOut, X, ChevronRight, ChevronDown, ShieldCheck, Monitor, Package,
   CheckSquare, MapPin, Receipt, Sparkles, Navigation, Wallet, Banknote,
-  LifeBuoy, ClipboardList, Timer, Megaphone, Compass, LayoutTemplate, Headset, HelpCircle, Radio
+  LifeBuoy, ClipboardList, Timer, Megaphone, Compass, LayoutTemplate, Headset, HelpCircle, Radio, Building2
 } from 'lucide-react';
 import { APP_NAME } from '../../../utils/constants';
 import useAdminAuthStore from '../../../store/useAdminAuthStore';
@@ -37,6 +37,13 @@ const navItems = [
       { path: '/admin/user-faqs', label: 'User FAQs', icon: HelpCircle, roles: ['admin', 'sub_admin'], permission: STAFF_PERMISSIONS.SUPPORT || 'SUPPORT' },
     ],
   },
+  {
+    path: '/admin/web-pages',
+    label: 'About Company',
+    icon: Building2,
+    roles: ['admin', 'sub_admin'],
+    permission: STAFF_PERMISSIONS.SETTINGS || 'SETTINGS',
+  },
   // Web Control — manage banners and tickets raised from the public website
   {
     label: 'Web Control',
@@ -48,7 +55,7 @@ const navItems = [
       { path: '/admin/web-cities', label: 'Web Cities', icon: MapPin, roles: ['admin', 'sub_admin'], permission: STAFF_PERMISSIONS.ZONES },
       { path: '/admin/web-faqs', label: 'Web FAQs', icon: HelpCircle, roles: ['admin', 'sub_admin'], permission: STAFF_PERMISSIONS.SUPPORT || 'SUPPORT' },
       { path: '/admin/web-services', label: 'Web Services', icon: LayoutTemplate, roles: ['admin', 'sub_admin'], permission: STAFF_PERMISSIONS.SETTINGS || 'SETTINGS' },
-      { path: '/admin/web-pages', label: 'Privacy & Static Pages', icon: LayoutTemplate, roles: ['admin', 'sub_admin'], permission: STAFF_PERMISSIONS.SETTINGS || 'SETTINGS' },
+      { path: '/admin/web-pages', label: 'Company & Static Pages', icon: Building2, roles: ['admin', 'sub_admin'], permission: STAFF_PERMISSIONS.SETTINGS || 'SETTINGS' },
       { path: '/admin/web-socials', label: 'Social Links', icon: Settings, roles: ['admin', 'sub_admin'], permission: STAFF_PERMISSIONS.SETTINGS || 'SETTINGS' },
     ],
   },
