@@ -76,6 +76,9 @@ export async function getScheduledBookingQueue() {
         backoff: { type: 'exponential', delay: 5_000 },
       },
     });
+    queueInstance.on('error', (err) => {
+      console.warn('[scheduledBooking] queue error:', err?.message || err);
+    });
     return queueInstance;
   } catch (err) {
     console.warn('[scheduledBooking] failed to create queue:', err?.message || err);

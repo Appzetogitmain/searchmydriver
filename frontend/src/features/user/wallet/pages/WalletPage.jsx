@@ -119,29 +119,14 @@ const WalletPage = () => {
           </div>
 
           {/* Action buttons */}
-          <div className="mt-5 flex items-center gap-3">
+          <div className="mt-5">
             <button
               type="button"
               onClick={() => setTopupOpen(true)}
-              className="flex-1 flex justify-center items-center gap-1.5 px-4 py-2.5 bg-yellow-400 text-slate-900 text-sm font-bold rounded-xl hover:bg-yellow-300 active:scale-[0.98] transition-all"
+              className="w-full flex justify-center items-center gap-1.5 px-4 py-2.5 bg-yellow-400 text-slate-900 text-sm font-bold rounded-xl hover:bg-yellow-300 active:scale-[0.98] transition-all"
             >
               <Plus className="w-4 h-4" />
               Add Money
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const hasBank = !!wallet?.bankDetails?.accountNumber;
-                if (!hasBank) {
-                  setEditBankOpen(true);
-                } else {
-                  setWithdrawOpen(true);
-                }
-              }}
-              disabled={available <= 0}
-              className="flex-1 flex justify-center items-center gap-1.5 px-4 py-2.5 border border-white/20 rounded-xl text-white text-sm font-semibold hover:bg-white/10 active:scale-[0.98] transition-all disabled:opacity-40 disabled:pointer-events-none"
-            >
-              Withdraw
             </button>
           </div>
         </div>
