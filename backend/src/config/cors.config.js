@@ -2,6 +2,10 @@ const DEFAULT_DEV_ORIGINS = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   'https://searchmydriver.vercel.app',
+  'https://searchmydrivers.com',
+  'https://www.searchmydrivers.com',
+  'https://searchmydriver.com',
+  'https://www.searchmydriver.com',
 ];
 
 function parseList(value) {
