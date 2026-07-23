@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import {
   getIoOrNull,
   roomForUser,
@@ -86,6 +87,7 @@ export function emitToAdminRole(role, event, payload) {
  */
 export async function emitNotification(target, notification) {
   const payload = {
+    _id: new mongoose.Types.ObjectId(),
     title: notification.title,
     body: notification.body || '',
     severity: notification.severity || 'info',
@@ -94,58 +96,64 @@ export async function emitNotification(target, notification) {
     createdAt: new Date(),
   };
 
-  try {
-    let recipientModel = null;
-    let recipientId = null;
+  // Emit the Socket.IO event immediately for instant delivery (non-blocking)
+  let emitted = false;
+  if (target.userId) emitted = emitToUser(target.userId, S2C_EVENTS.NOTIFICATION, payload);
+  else if (target.driverId) emitted = emitToDriver(target.driverId, S2C_EVENTS.NOTIFICATION, payload);
+  else if (target.adminRole) emitted = emitToAdminRole(target.adminRole, S2C_EVENTS.NOTIFICATION, payload);
+  else if (target.admin) emitted = emitToAdmins(S2C_EVENTS.NOTIFICATION, payload);
 
-    if (target.userId) {
-      recipientModel = 'User';
-      recipientId = target.userId;
-    } else if (target.driverId) {
-      recipientModel = 'Driver';
-      recipientId = target.driverId;
-    } else if (target.admin || target.adminRole) {
-      recipientModel = 'Admin';
-    }
+  // Run DB save and FCM push notification asynchronously in the background
+  (async () => {
+    try {
+      let recipientModel = null;
+      let recipientId = null;
 
-    if (recipientModel) {
-      const doc = await Notification.create({
-        recipientId,
-        recipientModel,
-        title: payload.title,
-        body: payload.body,
-        severity: payload.severity,
-        data: payload.data,
-      });
-      payload._id = doc._id;
-
-      // Fetch user/driver fcmToken to send push notification
-      let fcmToken = '';
-      if (recipientModel === 'User') {
-        const user = await User.findById(recipientId).select('fcmToken').lean();
-        fcmToken = user?.fcmToken;
-      } else if (recipientModel === 'Driver') {
-        const driver = await Driver.findById(recipientId).select('fcmToken').lean();
-        fcmToken = driver?.fcmToken;
+      if (target.userId) {
+        recipientModel = 'User';
+        recipientId = target.userId;
+      } else if (target.driverId) {
+        recipientModel = 'Driver';
+        recipientId = target.driverId;
+      } else if (target.admin || target.adminRole) {
+        recipientModel = 'Admin';
       }
 
-      if (fcmToken) {
-        sendFcmNotification(fcmToken, {
+      if (recipientModel) {
+        await Notification.create({
+          _id: payload._id,
+          recipientId,
+          recipientModel,
           title: payload.title,
           body: payload.body,
+          severity: payload.severity,
           data: payload.data,
-        }).catch(err => console.error('[FCM] Async send failed:', err));
-      }
-    }
-  } catch (err) {
-    console.error('[Notification] Failed to save to DB:', err);
-  }
+        });
 
-  if (target.userId) return emitToUser(target.userId, S2C_EVENTS.NOTIFICATION, payload);
-  if (target.driverId) return emitToDriver(target.driverId, S2C_EVENTS.NOTIFICATION, payload);
-  if (target.adminRole) return emitToAdminRole(target.adminRole, S2C_EVENTS.NOTIFICATION, payload);
-  if (target.admin) return emitToAdmins(S2C_EVENTS.NOTIFICATION, payload);
-  return false;
+        // Fetch user/driver fcmToken to send push notification
+        let fcmToken = '';
+        if (recipientModel === 'User') {
+          const user = await User.findById(recipientId).select('fcmToken').lean();
+          fcmToken = user?.fcmToken;
+        } else if (recipientModel === 'Driver') {
+          const driver = await Driver.findById(recipientId).select('fcmToken').lean();
+          fcmToken = driver?.fcmToken;
+        }
+
+        if (fcmToken) {
+          await sendFcmNotification(fcmToken, {
+            title: payload.title,
+            body: payload.body,
+            data: payload.data,
+          });
+        }
+      }
+    } catch (err) {
+      console.error('[Notification] Background DB/FCM task failed:', err);
+    }
+  })();
+
+  return emitted;
 }
 
 /**

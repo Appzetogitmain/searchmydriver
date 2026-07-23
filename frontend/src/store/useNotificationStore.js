@@ -30,44 +30,35 @@ const useNotificationStore = create((set, get) => ({
       error: toast.error,
     };
     
-    // Create a custom render for the toast to make it clickable
-    toast.custom((t) => {
-      return React.createElement(
+    const showToast = severityMap[notification.severity] || toast;
+    
+    // Use standard toast layout from react-hot-toast (pre-styled, animated, always visible)
+    // with an onClick handler on the inner content to preserve selected notification loading.
+    showToast(
+      React.createElement(
         'div',
         {
-          className: `${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-white shadow-lg rounded-xl pointer-events-auto flex ring-1 ring-black/5 cursor-pointer hover:bg-gray-50`,
+          className: 'cursor-pointer min-w-[220px]',
           onClick: () => {
-            toast.dismiss(t.id);
             get().setSelectedNotification(notification);
-            if (!notification.isRead) {
-               // Try to mark as read when they click the toast.
-            }
           }
         },
         React.createElement(
-          'div',
-          { className: 'flex-1 w-0 p-4' },
-          React.createElement(
-            'div',
-            { className: 'flex items-start' },
-            React.createElement(
-              'div',
-              { className: 'ml-3 flex-1' },
-              React.createElement(
-                'p',
-                { className: 'text-sm font-medium text-gray-900' },
-                (notification.severity === 'warning' ? '⚠️ ' : '') + notification.title
-              ),
-              notification.body && React.createElement(
-                'p',
-                { className: 'mt-1 text-sm text-gray-500' },
-                notification.body
-              )
-            )
-          )
+          'p',
+          { className: 'font-semibold text-sm text-gray-900' },
+          notification.title
+        ),
+        notification.body && React.createElement(
+          'p',
+          { className: 'text-xs text-gray-500 mt-0.5' },
+          notification.body
         )
-      );
-    }, { duration: 5000 });
+      ),
+      {
+        duration: 5000,
+        icon: notification.severity === 'warning' ? '⚠️' : (notification.severity === 'success' ? '✅' : '🔔'),
+      }
+    );
 
     set((state) => ({
       notifications: [notification, ...state.notifications],
