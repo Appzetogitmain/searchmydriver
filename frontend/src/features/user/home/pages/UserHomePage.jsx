@@ -9,7 +9,10 @@ import {
   Loader2,
   RefreshCw,
   Headset,
+  Zap,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import api from '../../../../utils/api';
 import NotificationBell from '../../../../components/common/NotificationBell';
 import Badge from '../../../../components/Badge';
 import BannersCarousel from '../../../../components/BannersCarousel';
@@ -35,6 +38,35 @@ const UserHomePage = () => {
   const [showDriverSheet, setShowDriverSheet] = useState(false);
   const [isHelpDeskOpen, setIsHelpDeskOpen] = useState(false);
   const [selectedDriverId, setSelectedDriverId] = useState(null);
+  const [sendingTestPush, setSendingTestPush] = useState(false);
+
+  const handleTestPush = useCallback(async () => {
+    if (sendingTestPush) return;
+
+    // Check and request native Notification permissions
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') {
+          toast.error('Please allow notification permission to test desktop notifications!');
+          return;
+        }
+      } else if (Notification.permission === 'denied') {
+        toast.error('Notification permission is blocked. Please enable it in browser settings (click lock icon next to URL).');
+        return;
+      }
+    }
+
+    try {
+      setSendingTestPush(true);
+      await api.post('/auth/test-push');
+      toast.success('Test notification triggered!');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to trigger test notification');
+    } finally {
+      setSendingTestPush(false);
+    }
+  }, [sendingTestPush]);
 
   const mapRef = useRef(null);
   const scrollRef = useRef(null);
@@ -130,6 +162,18 @@ const UserHomePage = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleTestPush}
+              disabled={sendingTestPush}
+              title="Send Test Push Notification"
+              className="p-2 text-amber-800 hover:text-amber-950 hover:bg-amber-500/10 rounded-full transition-colors disabled:opacity-50"
+            >
+              {sendingTestPush ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Zap className="w-5 h-5 fill-amber-500 text-amber-700 animate-pulse" />
+              )}
+            </button>
             <button
               onClick={() => setIsHelpDeskOpen(true)}
               className="p-2 text-slate-700 hover:text-slate-950 hover:bg-amber-500/10 rounded-full transition-colors"

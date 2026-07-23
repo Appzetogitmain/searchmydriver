@@ -223,6 +223,13 @@ function PageLoader() {
 function App() {
   useFcm();
 
+  // Request native notification permission on startup
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, []);
+
   // Global in-app notification sound: play a short alert when any
   // S2C_NOTIFICATION arrives while the SPA is foregrounded. We listen
   // directly on the socket singleton so the behaviour is consistent
@@ -242,6 +249,19 @@ function App() {
       } catch {
         /* ignore autoplay rejections */
       }
+
+      // Trigger native browser/OS desktop notification banner if permission is granted
+      try {
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+          new Notification(payload.title, {
+            body: payload.body || '',
+            icon: '/logo.png',
+          });
+        }
+      } catch (err) {
+        console.warn('[Notification] Failed to trigger native desktop notification:', err);
+      }
+
       handleNewNotification(payload);
     };
     socket.on(S2C_EVENTS.NOTIFICATION, handler);
