@@ -340,42 +340,7 @@ const ConfirmAndPayPage = () => {
 
       if (!booking) return;
 
-      // --- Online payment: open real Razorpay modal and verify ---
-      if (paymentMethod === 'online') {
-        if (!razorpayOrder?.orderId) {
-          toast.error('Could not initialise payment gateway. Please try again.');
-          return;
-        }
-        try {
-          await openCheckout({
-            razorpay: razorpayOrder,
-            onSuccess: async (response) => {
-              await verifyPayment({
-                orderId: response.razorpay_order_id,
-                paymentId: response.razorpay_payment_id,
-                signature: response.razorpay_signature,
-              });
-            },
-            onDismiss: () => {
-              toast.error('Payment cancelled. Your booking is on hold — pay within the time limit.');
-            },
-            onFailed: () => {
-              toast.error('Payment failed. You can retry from the booking page.');
-            },
-          });
-        } catch (rzpErr) {
-          // openCheckout rejects on dismiss/failure — booking still exists
-          // in SEARCHING+PENDING state; user can retry.
-          console.warn('[pay] Razorpay checkout:', rzpErr?.message);
-          setSubmitting(false);
-          return;
-        }
-        fetchWallet().catch(() => {});
-        navigate('/user/book/searching');
-        return;
-      }
-
-      // --- Wallet / Cash: immediate navigation ---
+      // --- Online / Wallet / Cash: immediate navigation ---
       fetchWallet().catch(() => {});
       if (booking.status === BOOKING_STATUS.PENDING_ASSIGNMENT) {
         navigate('/user/book/scheduled');

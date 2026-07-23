@@ -647,7 +647,14 @@ const DriverActiveTripPage = () => {
         <div className="bg-rose-50 border border-rose-200 p-3 rounded-2xl flex gap-3 shadow-sm mx-4 mt-4">
           <XCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
           <p className="text-sm text-rose-700 leading-snug">
-            <strong>Missing Driver Kit.</strong> A penalty will be deducted from your wallet at the end of this trip. Please purchase a driver kit to avoid this.
+            <strong>Missing Driver Kit.</strong> A penalty will be deducted from your wallet at the end of this trip. Please{' '}
+            <button
+              onClick={() => navigate('/driver/kit')}
+              className="underline font-semibold hover:text-rose-900 focus:outline-none"
+            >
+              purchase a driver kit
+            </button>{' '}
+            to avoid this.
           </p>
         </div>
       )}

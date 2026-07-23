@@ -1097,22 +1097,20 @@ export async function createBookingService(userId, body) {
           : null,
       fareSnapshot,
       waiting: waitingSnapshot,
-      paymentMode: isCash ? PAYMENT_MODE.POST_RIDE : PAYMENT_MODE.PRE_RIDE,
+      paymentMode: (isCash || isOnline) ? PAYMENT_MODE.POST_RIDE : PAYMENT_MODE.PRE_RIDE,
       paymentMethod: isCash ? 'cash' : (isOnline ? 'online' : 'wallet'),
-      // Online: PENDING until Razorpay payment verified. Cash: not due yet. Wallet: already paid.
-      paymentStatus: isCash
+      // Cash/Online: NOT_DUE_YET (pay after trip). Wallet: already paid (PAID).
+      paymentStatus: (isCash || isOnline)
         ? BOOKING_PAYMENT_STATUS.NOT_DUE_YET
-        : isOnline
-          ? BOOKING_PAYMENT_STATUS.PENDING
-          : BOOKING_PAYMENT_STATUS.PAID,
+        : BOOKING_PAYMENT_STATUS.PAID,
       payment: {
-        amountPaidRupees: isCash || isOnline ? 0 : fareTotal,
+        amountPaidRupees: (isCash || isOnline) ? 0 : fareTotal,
         attempts: 0,
         walletTxId: walletTx ? walletTx._id : null,
       },
       timeline: {
         createdAt: new Date(),
-        paymentReceivedAt: isCash ? null : new Date(),
+        paymentReceivedAt: (isCash || isOnline) ? null : new Date(),
       },
       // Outstation rides skip the wave dispatcher entirely — they sit in
       // PENDING_ASSIGNMENT until an admin/sub_admin (or zone-scoped
@@ -1133,7 +1131,7 @@ export async function createBookingService(userId, body) {
           userId,
           amount: fareTotal,
           source: WALLET_TXN_SOURCE.BOOKING_REFUND,
-          description: `Refund \u2014 booking ${bookingNumber} failed to create`,
+          description: `Refund — booking ${bookingNumber} failed to create`,
           refType: 'Booking',
           refId: bookingNumber,
         });
@@ -1169,10 +1167,8 @@ export async function createBookingService(userId, body) {
   // Outstation scheduled bookings now follow the same auto-dispatch
   // flow as hourly scheduled rides. If no driver is found before the
   // emergency cutoff, the booking falls back to manual assignment.
-  // Online payments: hold dispatch until Razorpay payment is verified.
-  let shouldDispatchNow = !isOnline;
+  let shouldDispatchNow = true;
   if (
-    !isOnline &&
     bookingType === BOOKING_TYPE.SCHEDULED &&
     (serviceType === SERVICE_TYPES.HOURLY || serviceType === SERVICE_TYPES.OUTSTATION) &&
     (booking.hourly?.scheduledStartAt || booking.outstation?.pickupAt || booking.outstation?.startDate)
@@ -1189,42 +1185,8 @@ export async function createBookingService(userId, body) {
     }
   }
 
-  // For online payment: create the Razorpay order right here so the
-  // frontend can open the checkout modal immediately after booking creation.
+  // For online payment: Razorpay order is now created only after the trip completes (post-ride).
   let razorpayOrder = null;
-  if (isOnline) {
-    try {
-      const amountPaise = Math.round(fareTotal * 100);
-      const rzpOrder = await createRazorpayOrder({
-        amountPaise,
-        receipt: `bk_${booking._id.toString().slice(-12)}_${Date.now().toString(36).slice(-4)}`,
-        notes: { bookingId: String(booking._id), bookingNumber: booking.bookingNumber },
-      });
-      booking.razorpay = {
-        orderId: rzpOrder.id,
-        amountPaise,
-        paymentId: null,
-        signature: null,
-      };
-      booking.payment = {
-        ...(booking.payment?.toObject?.() || booking.payment || {}),
-        attempts: 1,
-      };
-      await booking.save();
-      razorpayOrder = {
-        keyId: getRazorpayKeyId(),
-        orderId: rzpOrder.id,
-        amount: amountPaise,
-        currency: 'INR',
-        name: 'SearchMyDriver',
-        description: `Booking ${booking.bookingNumber}`,
-        bookingId: String(booking._id),
-      };
-    } catch (rzpErr) {
-      console.error('[booking] failed to create Razorpay order for online booking:', rzpErr?.message);
-      // Don't throw — let the booking exist; frontend can retry via /pay endpoint.
-    }
-  }
 
   if (booking.status === BOOKING_STATUS.SEARCHING || booking.status === BOOKING_STATUS.DISPATCHING) {
     scheduleSearchingTimeout(booking._id, booking.timeline.createdAt).catch(() => {});

@@ -148,16 +148,15 @@ export async function buildBookingInvoicePdf(bookingId, { res } = {}) {
     yRow += 20;
   };
 
-  const base = booking.fareSnapshot?.baseFare || 0;
-  const extras = booking.fareSnapshot?.extras || 0;
   const serviceCharge = booking.fareSnapshot?.serviceCharge || 0;
+  const base = (booking.fareSnapshot?.baseFare || 0) + serviceCharge;
+  const extras = booking.fareSnapshot?.extras || 0;
   const gst = booking.fareSnapshot?.gst || 0;
   const discount = booking.fareSnapshot?.discount || 0;
   const initialTotal = booking.fareSnapshot?.total || 0;
 
   addRow('Base Fare', base);
   if (extras > 0) addRow('Driver Allowance (Food/Stay)', extras);
-  if (serviceCharge > 0) addRow('Service Charge', serviceCharge);
   if (gst > 0) addRow('GST (18%)', gst);
   if (discount > 0) addRow('Discount', -discount);
 

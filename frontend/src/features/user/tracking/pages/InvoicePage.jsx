@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../../../../utils/api';
-import { ArrowLeft, Download, FileText } from 'lucide-react';
+import { ArrowLeft, Download, FileText, CreditCard } from 'lucide-react';
 import Card from '../../../../components/Card';
 import Button from '../../../../components/Button';
 import useUserActiveBookingStore from '../../../../store/user/useUserActiveBookingStore';
 import { formatDistance } from '../../../../utils/geo';
 import { SERVICE_TYPE_LABELS } from '../../../../constants/serviceTypes';
+import { useRazorpayCheckout } from '../../../../hooks/useRazorpayCheckout';
+import { BOOKING_PAYMENT_STATUS } from '../../../../constants/bookingStatus';
 
 /**
  * Trip invoice — backed by the booking object stored in
@@ -22,6 +24,8 @@ const InvoicePage = () => {
   const activeBooking = useUserActiveBookingStore((s) => s.booking);
   const [localBooking, setLocalBooking] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const { openCheckout, loading: checkoutLoading } = useRazorpayCheckout();
 
   let booking = null;
   if (urlId) {
@@ -145,6 +149,57 @@ const InvoicePage = () => {
     }
   };
 
+  const handlePay = async () => {
+    if (!booking?._id) return;
+    setPaying(true);
+    try {
+      const res = await api.post(`/auth/bookings/${booking._id}/pay`);
+      const order = res?.data?.data?.razorpay;
+      if (!order?.orderId) {
+        toast.error('Payments are not configured. Please try again later.');
+        return;
+      }
+      await openCheckout({
+        razorpay: {
+          keyId: order.keyId,
+          orderId: order.orderId,
+          amount: order.amount,
+          currency: order.currency,
+          name: order.name,
+          description: order.description,
+        },
+        order: { _id: booking._id },
+        driver: null,
+        onSuccess: async (response) => {
+          const verifyRes = await api.post(`/auth/bookings/${booking._id}/verify-payment`, {
+            orderId: response.razorpay_order_id,
+            paymentId: response.razorpay_payment_id,
+            signature: response.razorpay_signature,
+          });
+          const updatedBooking = verifyRes?.data?.data?.booking;
+          if (updatedBooking) {
+            if (activeBooking && activeBooking._id === booking._id) {
+              useUserActiveBookingStore.getState().setBooking(updatedBooking);
+            } else {
+              setLocalBooking(updatedBooking);
+            }
+          }
+          toast.success('Payment successful');
+        },
+        onDismiss: () => {
+          toast('Payment cancelled');
+        },
+      });
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || 'Payment failed');
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  const isUnpaidOnline = booking?.paymentMethod === 'online' && booking?.paymentStatus !== BOOKING_PAYMENT_STATUS.PAID;
+  const busy = paying || checkoutLoading;
+
   return (
     <div className="flex-1 flex flex-col bg-bg min-h-dvh">
       <div className="bg-white px-4 pt-4 pb-4 shadow-sm">
@@ -192,6 +247,7 @@ const InvoicePage = () => {
             icon={Download} 
             onClick={handleDownload}
             loading={downloading}
+            disabled={busy}
           >
             Download Invoice
           </Button>
@@ -199,7 +255,15 @@ const InvoicePage = () => {
       </div>
 
       <div className="p-4">
-        <Button fullWidth onClick={() => navigate('/user/home')}>Done</Button>
+        {isUnpaidOnline ? (
+          <Button fullWidth onClick={handlePay} loading={busy} icon={CreditCard}>
+            Pay Online (₹{invoice.total})
+          </Button>
+        ) : (
+          <Button fullWidth onClick={() => navigate('/user/home')} disabled={busy}>
+            Done
+          </Button>
+        )}
       </div>
     </div>
   );
