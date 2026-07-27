@@ -189,8 +189,8 @@ const driverSchema = new mongoose.Schema(
     // ── Onboarding & Approval ─────────────────────────────────────────────────
     onboardingStep: {
       type: Number,
-      default: 1,
-      min: 1,
+      default: 0,
+      min: 0,
       max: 6,
     },
     approvalStatus: {
