@@ -241,7 +241,7 @@ const userSchema = new mongoose.Schema(
     },
     bankDetails: {
       type: bankDetailsSchema,
-      default: {},
+      default: undefined,
     },
   },
   {
