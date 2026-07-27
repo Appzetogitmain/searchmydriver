@@ -14,7 +14,7 @@ import { DRIVER_ONBOARDING_STEPS } from '../../../../utils/driverOnboarding';
 
 const IdentityDetailsPage = () => {
   const navigate = useNavigate();
-  const { driver, isAuthenticated, setAuth } = useDriverAuthStore();
+  const { driver, isAuthenticated, setAuth, updateDriver } = useDriverAuthStore();
   
   useEffect(() => {
     if (!isAuthenticated || !driver) return;
@@ -22,19 +22,37 @@ const IdentityDetailsPage = () => {
       navigate('/driver/link-phone', { replace: true });
       return;
     }
-    if (driver.onboardingStep >= 1) {
-      navigateDriverAfterAuth(navigate, driver);
-    }
-  }, [isAuthenticated, driver?.id, driver?.phone, driver?.onboardingStep, driver?.approvalStatus, navigate]);
+  }, [isAuthenticated, driver?.id, driver?.phone, navigate]);
 
-  const [form, setForm] = useState({ name: '', phone: '', password: '', referralCode: '', zoneId: '', languages: 'English, Hindi' });
+  const [form, setForm] = useState({
+    name: driver?.name || '',
+    phone: driver?.phone || '',
+    password: '',
+    referralCode: driver?.referralCode || '',
+    zoneId: driver?.homeZone?._id || driver?.homeZone || '',
+    languages: (driver?.languages && driver?.languages.length > 0) ? driver.languages.join(', ') : 'English, Hindi'
+  });
 
-  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+  const [isPhoneVerified, setIsPhoneVerified] = useState(!!(driver?.phone && driver?.phone.length === 10));
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [zones, setZones] = useState([]);
+
+  useEffect(() => {
+    if (driver) {
+      setForm({
+        name: driver.name || '',
+        phone: driver.phone || '',
+        password: '',
+        referralCode: driver.referralCode || '',
+        zoneId: driver.homeZone?._id || driver.homeZone || '',
+        languages: (driver.languages && driver.languages.length > 0) ? driver.languages.join(', ') : 'English, Hindi'
+      });
+      setIsPhoneVerified(!!(driver.phone && driver.phone.length === 10));
+    }
+  }, [driver]);
 
   useEffect(() => {
     api.get('/common/zones')
@@ -82,7 +100,6 @@ const IdentityDetailsPage = () => {
       
       setIsPhoneVerified(true);
       setShowOtpModal(false);
-      navigate('/driver/register/credentials');
     } catch (err) {
       setError(err.response?.data?.message || 'Invalid OTP');
     } finally {
@@ -90,9 +107,44 @@ const IdentityDetailsPage = () => {
     }
   };
 
-  const handleContinue = () => {
+  const canVerifyPhone = !!(
+    form.name.trim() &&
+    (isAuthenticated ? (form.password ? form.password.length >= 6 : true) : (form.password && form.password.length >= 6)) &&
+    form.phone &&
+    form.phone.length === 10
+  );
+
+  const isFormValid = !!(
+    canVerifyPhone &&
+    form.zoneId &&
+    form.languages.trim()
+  );
+
+  const handleContinue = async () => {
     if (isPhoneVerified) {
-      navigate('/driver/register/credentials');
+      if (isAuthenticated && driver) {
+        try {
+          setLoading(true);
+          setError('');
+          const res = await api.put('/driver/onboarding/step', {
+            stepNumber: 1,
+            stepData: {
+              name: form.name,
+              password: form.password || undefined,
+              zoneId: form.zoneId,
+              languages: form.languages.split(',').map(l => l.trim()).filter(Boolean),
+            }
+          });
+          updateDriver(res.data.data);
+          navigate('/driver/register/credentials');
+        } catch (err) {
+          setError(err.response?.data?.message || 'Failed to update details');
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        navigate('/driver/register/credentials');
+      }
     }
   };
 
@@ -128,7 +180,7 @@ const IdentityDetailsPage = () => {
                   <button 
                     type="button"
                     onClick={handleSendOtp}
-                    disabled={loading || !form.name || !form.password}
+                    disabled={loading || !canVerifyPhone}
                     className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-primary text-text text-xs font-bold rounded-lg disabled:opacity-50"
                   >
                     {loading ? 'Sending...' : 'Verify'}
@@ -154,7 +206,7 @@ const IdentityDetailsPage = () => {
                 className="w-full h-12 pl-11 pr-4 bg-gray-50 border border-border rounded-xl text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-60 appearance-none"
                 value={form.zoneId}
                 onChange={handleChange('zoneId')}
-                disabled={isPhoneVerified}
+                disabled={loading}
               >
                 <option value="">Select a zone</option>
                 {zones.map((z) => (
@@ -166,16 +218,16 @@ const IdentityDetailsPage = () => {
             </div>
           </div>
           
-          <Input label="Languages Spoken" placeholder="e.g. English, Hindi, Marathi" value={form.languages} onChange={handleChange('languages')} icon={User} disabled={isPhoneVerified} />
+          <Input label="Languages Spoken" placeholder="e.g. English, Hindi, Marathi" value={form.languages} onChange={handleChange('languages')} icon={User} disabled={loading} />
 
-          <Input label="Referral Code (Optional)" placeholder="Enter referral code" value={form.referralCode} onChange={handleChange('referralCode')} icon={User} disabled={isPhoneVerified} />
+          <Input label="Referral Code (Optional)" placeholder="Enter referral code" value={form.referralCode} onChange={handleChange('referralCode')} icon={User} disabled={loading} />
 
         </div>
         
         <Button 
           fullWidth 
-          onClick={handleContinue} 
-          disabled={!isPhoneVerified}
+          onClick={isPhoneVerified ? handleContinue : handleSendOtp} 
+          disabled={isPhoneVerified ? !isFormValid : !canVerifyPhone}
           className="mt-6 rounded-full py-4 text-base font-bold shadow-lg shadow-primary/20"
         >
           {isPhoneVerified ? 'CONTINUE' : 'VERIFY PHONE TO CONTINUE'}

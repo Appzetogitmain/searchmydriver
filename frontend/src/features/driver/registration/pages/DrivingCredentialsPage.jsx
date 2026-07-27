@@ -172,46 +172,8 @@ const DrivingCredentialsPage = () => {
   };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const profileRes = await api.get('/driver/profile');
-        const data = profileRes.data.data;
-        if (!data) return;
-
-        setForm({
-          license: data.drivingLicense?.number || '',
-          expiry: data.drivingLicense?.expiryDate
-            ? data.drivingLicense.expiryDate.split('T')[0]
-            : '',
-          experience: data.experienceYears?.toString() || '',
-          availability:
-            data.availability === 'full-time'
-              ? 'Full-time'
-              : data.availability === 'part-time'
-                ? 'Part-time'
-                : data.availability === 'weekends-only'
-                  ? 'Weekends Only'
-                  : '',
-        });
-
-        if (data.vehicleExperience?.length) {
-          setVehicles(data.vehicleExperience.map(mapVehicleFromApi));
-        } else if (data.carTypeExperience?.length) {
-          setVehicles(
-            data.carTypeExperience.map((t) => ({
-              ...emptyVehicleFormValues,
-              carTypeId: String(typeof t === 'object' ? t._id : t),
-            })),
-          );
-        }
-
-        if (data.documents) loadFromApiDocuments(data.documents);
-      } catch (error) {
-        console.error('Failed to fetch initial data', error);
-      }
-    };
-    fetchData();
-  }, [loadFromApiDocuments]);
+    // Keep form, vehicles, and documents empty on page mount/refresh so old details are gone
+  }, []);
 
   const continueDisabled =
     !form.license ||

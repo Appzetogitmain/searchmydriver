@@ -63,7 +63,7 @@ export const sendOtpService = async (phone, referralCode) => {
 export const verifyOtpAndRegisterService = async (data) => {
   const { phone, otp, name, password, referralCode, city, zoneId, languages } = data;
 
-  if (!phone || !otp || !name || !password || !city) {
+  if (!phone || !otp || !name || !password) {
     throw new ApiError(400, 'Missing required fields');
   }
 
@@ -78,6 +78,14 @@ export const verifyOtpAndRegisterService = async (data) => {
     await OTP.deleteOne({ _id: otpRecord._id });
   }
 
+  let resolvedCity = city || '';
+  if (zoneId) {
+    const zone = await Zone.findById(zoneId);
+    if (zone && zone.city) {
+      resolvedCity = zone.city;
+    }
+  }
+
   let driver = await Driver.findOne({ phone });
   const salt = await bcrypt.genSalt(10);
   const hashedPassword = await bcrypt.hash(password, salt);
@@ -86,7 +94,7 @@ export const verifyOtpAndRegisterService = async (data) => {
     driver.name = name;
     driver.password = hashedPassword;
     driver.authProvider = 'local';
-    driver.city = city || '';
+    driver.city = resolvedCity;
     if (zoneId) driver.homeZone = zoneId;
     if (languages && Array.isArray(languages)) driver.languages = languages;
     if (driver.onboardingStep < 1) driver.onboardingStep = 1;
@@ -103,7 +111,7 @@ export const verifyOtpAndRegisterService = async (data) => {
       onboardingStep: 1,
       approvalStatus: 'pending',
       referralCode: myReferralCode,
-      city: city || '',
+      city: resolvedCity,
       homeZone: zoneId || null,
       languages: Array.isArray(languages) ? languages : ['English', 'Hindi'],
     });
@@ -231,7 +239,24 @@ export const updateOnboardingStepService = async (driverId, data) => {
     throw new ApiError(404, 'Driver not found');
   }
 
-  if (stepNumber === 2) {
+  if (stepNumber === 1) {
+    const { name, password, zoneId, languages } = stepData;
+    if (name) driver.name = name;
+    if (password) {
+      const salt = await bcrypt.genSalt(10);
+      driver.password = await bcrypt.hash(password, salt);
+    }
+    if (zoneId) {
+      driver.homeZone = zoneId;
+      const zone = await Zone.findById(zoneId);
+      if (zone && zone.city) {
+        driver.city = zone.city;
+      }
+    }
+    if (languages && Array.isArray(languages)) {
+      driver.languages = languages;
+    }
+  } else if (stepNumber === 2) {
     const {
       normalizeDriverVehicleExperience,
       syncCarTypeExperienceFromVehicles,
