@@ -97,7 +97,7 @@ export const verifyOtpAndRegisterService = async (data) => {
     driver.city = resolvedCity;
     if (zoneId) driver.homeZone = zoneId;
     if (languages && Array.isArray(languages)) driver.languages = languages;
-    if (driver.onboardingStep < 1) driver.onboardingStep = 1;
+    // Don't set onboardingStep to 1 here anymore, let them complete step 1 by clicking CONTINUE
     await driver.save();
   } else {
     const myReferralCode = (name.substring(0, 3).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase()).replace(/[^A-Z0-9]/g, '');
@@ -108,7 +108,7 @@ export const verifyOtpAndRegisterService = async (data) => {
       email: `${phone}@driver.searchmydriver.local`, // Give them an email so they don't break
       password: hashedPassword,
       authProvider: 'local',
-      onboardingStep: 1,
+      onboardingStep: 0,
       approvalStatus: 'pending',
       referralCode: myReferralCode,
       city: resolvedCity,
@@ -256,6 +256,7 @@ export const updateOnboardingStepService = async (driverId, data) => {
     if (languages && Array.isArray(languages)) {
       driver.languages = languages;
     }
+    if (driver.onboardingStep < 1) driver.onboardingStep = 1;
   } else if (stepNumber === 2) {
     const {
       normalizeDriverVehicleExperience,
