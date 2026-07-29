@@ -64,13 +64,6 @@ const DriverLoginPage = () => {
     <div className="flex-1 flex flex-col bg-gradient-to-b from-[#FFFDF5] via-[#FFFBF0] to-[#FFF8E7] min-h-dvh justify-between">
       {/* Top Header Row */}
       <div className="px-4 pt-4 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="p-2.5 rounded-full bg-white/80 border border-amber-100/50 shadow-sm hover:bg-amber-50 text-slate-700 hover:text-slate-900 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </button>
       </div>
 
       {/* Centered Floating Card */}
@@ -103,6 +96,7 @@ const DriverLoginPage = () => {
                   error={errors.phone}
                   icon={Phone}
                   maxLength={10}
+                  autoComplete="off"
                 />
               </div>
             </div>
@@ -116,6 +110,7 @@ const DriverLoginPage = () => {
                 onChange={handleChange('password')}
                 error={errors.password}
                 icon={Lock}
+                autoComplete="new-password"
               />
             </div>
             

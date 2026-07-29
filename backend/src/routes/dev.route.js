@@ -302,4 +302,28 @@ router.get(
   }),
 );
 
+/* ------------------------------------------------------------------ */
+/* GET /sockets                                                        */
+/* Lists all active Socket.IO connections and their rooms.             */
+/* ------------------------------------------------------------------ */
+router.get(
+  '/sockets',
+  asyncHandler(async (req, res) => {
+    const { getIoOrNull } = await import('../config/socket.js');
+    const io = getIoOrNull();
+    const sockets = [];
+    if (io) {
+      for (const [id, socket] of io.sockets.sockets.entries()) {
+        sockets.push({
+          socketId: id,
+          principal: socket.data?.principal || null,
+          rooms: Array.from(socket.rooms),
+          connected: socket.connected,
+        });
+      }
+    }
+    res.json(new ApiResponse(200, sockets, 'Connected sockets list'));
+  }),
+);
+
 export default router;

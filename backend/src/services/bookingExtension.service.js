@@ -261,17 +261,16 @@ export async function releaseBookingBufferHold(booking) {
 export async function settleWaitingBuffer(booking) {
   if (!booking?.waiting) return;
   const buffered = Number(booking.waiting.bufferRupees) || 0;
-  if (buffered <= 0) return; // legacy booking, nothing to settle.
+  const charged = Number(booking.waiting.chargeRupees) || 0;
+
+  if (charged <= 0 && buffered <= 0) return; // nothing to charge, nothing to release.
   if (booking.waiting.bufferConsumedRupees > 0 || booking.waiting.bufferRefundRupees > 0) {
     return; // already settled
   }
 
-  const charged = Number(booking.waiting.chargeRupees) || 0;
-  const cappedCharge = round2(Math.min(charged, buffered));
-  // `bufferRefundRupees` is no longer a wallet-credit number — it's
-  // just "held but not consumed" for the audit row. The wallet field
-  // it points to is now release-only (no transaction).
-  const releaseRupees = round2(Math.max(0, buffered - cappedCharge));
+  // If buffered > 0, cap the charge at buffered. Otherwise, charge the full amount.
+  const cappedCharge = buffered > 0 ? round2(Math.min(charged, buffered)) : charged;
+  const releaseRupees = buffered > 0 ? round2(Math.max(0, buffered - cappedCharge)) : 0;
 
   booking.waiting.chargeRupees = cappedCharge;
   booking.waiting.bufferConsumedRupees = cappedCharge;
@@ -332,17 +331,19 @@ export async function settleWaitingBuffer(booking) {
   // Step 3: release the entire hold for this booking. Even if the debit
   // failed we release — the audit trail (bufferConsumedRupees /
   // bufferRefundRupees) records the intent and admins can reconcile.
-  try {
-    await releaseWalletHoldService({
-      userId: booking.userId,
-      amount: buffered,
-    });
-  } catch (err) {
-    console.warn(
-      '[booking] waiting buffer hold release failed for booking',
-      String(booking._id),
-      err?.message,
-    );
+  if (buffered > 0) {
+    try {
+      await releaseWalletHoldService({
+        userId: booking.userId,
+        amount: buffered,
+      });
+    } catch (err) {
+      console.warn(
+        '[booking] waiting buffer hold release failed for booking',
+        String(booking._id),
+        err?.message,
+      );
+    }
   }
 }
 

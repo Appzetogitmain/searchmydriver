@@ -257,7 +257,6 @@ export function initializeSocket(httpServer) {
     },
     pingInterval: 25_000,
     pingTimeout: 60_000,
-    transports: ['websocket', 'polling'],
   });
 
   ioInstance.use(authMiddleware);

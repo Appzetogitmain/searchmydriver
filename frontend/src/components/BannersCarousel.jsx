@@ -138,17 +138,15 @@ function BannerCard({ banner, onClick }) {
       type={clickable ? 'button' : undefined}
       onClick={clickable ? onClick : undefined}
       aria-label={banner.title ? `Open: ${banner.title}` : 'Open banner'}
-      className={`snap-start shrink-0 w-[88%] max-w-[420px] rounded-2xl overflow-hidden bg-slate-900 shadow-card relative ${clickable ? 'cursor-pointer active:scale-[0.98] transition-transform' : ''
+      className={`snap-center shrink-0 block w-[88%] max-w-[420px] aspect-[2/1] rounded-lg overflow-hidden bg-slate-900 shadow-card relative ${clickable ? 'cursor-pointer active:scale-[0.98] transition-transform' : ''
         }`}
     >
-      <div className="aspect-[16/9] w-full">
-        <img
-          src={banner.imageUrl}
-          alt={banner.title || 'Promotional banner'}
-          className="w-full h-full object-cover"
-          loading="lazy"
-        />
-      </div>
+      <img
+        src={banner.imageUrl}
+        alt={banner.title || 'Promotional banner'}
+        className="w-full h-full object-cover"
+        loading="lazy"
+      />
     </Tag>
   );
 }

@@ -64,7 +64,7 @@ const LoginPage = () => {
   return (
     <div className="flex-1 flex flex-col bg-gradient-to-b from-[#FFFDF5] via-[#FFFBF0] to-[#FFF8E7] min-h-dvh justify-between">
       {/* Top Header Row */}
-      <div className="px-4 pt-10 flex items-center justify-center">
+      <div className="px-4 pt-32 flex items-center justify-center">
         <span className="text-xs font-black uppercase tracking-widest text-slate-500">Security Access</span>
       </div>
 

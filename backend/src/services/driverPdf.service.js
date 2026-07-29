@@ -271,7 +271,7 @@ export async function buildDriverProfilePdf(driverId, { res } = {}) {
   const selfieDoc = documents.find((d) => d.type === 'selfie');
   const profilePicUrl = selfieDoc?.fileUrl || driver.profilePicture || '';
   const profilePicBuffer = await fetchAsBuffer(profilePicUrl);
-  const displayEmail = driver.email && !driver.email.endsWith('@driver.searchmydriver.local') ? driver.email : null;
+  const displayEmail = driver.email || null;
 
   const doc = new PDFDocument({
     size: 'A4',
@@ -338,7 +338,8 @@ export async function buildDriverProfilePdf(driverId, { res } = {}) {
       });
   }
 
-  const titleX = avatarX + avatarSize + 18;
+  const titleX = avatarX + avatarSize + 16;
+
   doc
     .font('Helvetica-Bold')
     .fontSize(20)
@@ -350,7 +351,7 @@ export async function buildDriverProfilePdf(driverId, { res } = {}) {
     .font('Helvetica')
     .fontSize(10)
     .fillColor('#CBD5F5')
-    .text(`Driver ID: ${driver._id}`, titleX, doc.y + 2, {
+    .text(`Driver ID: ${driver.driverId || driver._id}`, titleX, doc.y + 2, {
       width: pageRight - titleX - 16,
     });
   doc.font('Helvetica').fontSize(10).fillColor('#CBD5F5');
@@ -389,6 +390,8 @@ export async function buildDriverProfilePdf(driverId, { res } = {}) {
 
   sectionHeading(doc, 'Identity');
   infoGrid(doc, [
+    { label: 'Driver ID', value: driver.driverId || '—' },
+    { label: 'System ID', value: driver._id.toString() },
     { label: 'Full name', value: driver.name },
     { label: 'Phone', value: driver.phone ? `+91 ${driver.phone}` : null },
     { label: 'Email', value: displayEmail },

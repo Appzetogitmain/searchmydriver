@@ -182,7 +182,7 @@ async function buildWaitingChargeSnapshot(serviceType) {
   const freeMinutes = Math.max(0, Number(cfg.freeWaitingMinutes) || 0);
   const perMinuteRupees = Math.max(0, Number(cfg.chargePerMinute) || 0);
   const maxBillableMinutes = Math.max(0, Number(cfg.maxBillableMinutes) || 0);
-  const bufferRupees = round2(maxBillableMinutes * perMinuteRupees);
+  const bufferRupees = 0;
   return {
     waitedMinutes: 0,
     billableMinutes: 0,

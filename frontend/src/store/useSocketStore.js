@@ -41,7 +41,6 @@ function createSocket() {
   return io(SOCKET_URL, {
     withCredentials: true,
     autoConnect: false,
-    transports: ['websocket', 'polling'],
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1_000,

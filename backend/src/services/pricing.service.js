@@ -353,25 +353,22 @@ function applyPlatformLayers(subtotal, pricing, allowancePassThrough = 0) {
   const serviceChargePercent = pricing.serviceChargePercent || 0;
   const gstPercent = pricing.gstPercent || 0;
   const serviceCharge = (subtotal * serviceChargePercent) / 100;
-  const gstAmount = ((subtotal + serviceCharge) * gstPercent) / 100;
-  const totalPayable = Math.max(0, subtotal + serviceCharge + gstAmount);
+  const gstAmount = (subtotal * gstPercent) / 100;
+  const totalPayable = Math.max(0, subtotal + gstAmount);
 
   const platformCommissionPercent = pricing.platformCommissionPercent || 0;
   // Allowance is pass-through to the driver — never commissionable.
   const passThrough = Math.max(0, Math.min(Number(allowancePassThrough) || 0, subtotal));
   const commissionableSubtotal = Math.max(0, subtotal - passThrough);
-  const platformCommission = (commissionableSubtotal * platformCommissionPercent) / 100;
-  // Driver gets:
-  //   commissionable × (1 − commission%)   the daily-rate / slab portion they earned
-  //  + passThrough                          the customer-paid allowance, untouched
-  // = subtotal − platformCommission (kept as the headline number for
-  //   back-compat — downstream aggregations and ledgers consume this).
-  const driverEarning = Math.max(0, subtotal - platformCommission);
+  // Platform commission equals the serviceCharge
+  const platformCommission = serviceCharge;
+  
   const driverFareEarning = Math.max(
     0,
     commissionableSubtotal - platformCommission,
   );
   const driverAllowanceEarning = passThrough;
+  const driverEarning = Math.max(0, driverFareEarning + driverAllowanceEarning);
 
   return {
     serviceCharge: round2(serviceCharge),
@@ -382,9 +379,6 @@ function applyPlatformLayers(subtotal, pricing, allowancePassThrough = 0) {
     totalPayable: round2(totalPayable),
     platformCommission: round2(platformCommission),
     platformCommissionPercent,
-    // New explicit fields. `driverEarning` keeps its existing meaning
-    // (= driverFareEarning + driverAllowanceEarning) so legacy
-    // aggregations don't need to be touched.
     commissionableSubtotal: round2(commissionableSubtotal),
     allowancePassThrough: round2(passThrough),
     driverFareEarning: round2(driverFareEarning),
@@ -959,7 +953,7 @@ function buildWaitingBufferPreview(pricing) {
   const perMin = Math.max(0, Number(wc.chargePerMinute) || 0);
   const maxBillable = Math.max(0, Number(wc.maxBillableMinutes) || 0);
   return {
-    bufferRupees: round2(maxBillable * perMin),
+    bufferRupees: 0,
     freeWaitingMinutes: Math.max(0, Number(wc.freeWaitingMinutes) || 0),
     chargePerMinute: perMin,
     maxBillableMinutes: maxBillable,

@@ -148,28 +148,26 @@ function AdCard({ ad, onClick }) {
       type={clickable ? 'button' : undefined}
       onClick={clickable ? onClick : undefined}
       aria-label={ad.title ? `Open: ${ad.title}` : 'Open ad'}
-      className={`snap-start shrink-0 w-[88%] max-w-[420px] rounded-2xl overflow-hidden bg-slate-900 shadow-card relative ${clickable ? 'cursor-pointer active:scale-[0.98] transition-transform' : ''
+      className={`snap-center shrink-0 block w-[88%] max-w-[420px] aspect-[2/1] rounded-lg overflow-hidden bg-slate-900 shadow-card relative ${clickable ? 'cursor-pointer active:scale-[0.98] transition-transform' : ''
         }`}
     >
-      <div className="aspect-[16/9] w-full">
-        {isVideo ? (
-          <video
-            src={ad.mediaUrl}
-            className="w-full h-full object-cover"
-            muted
-            playsInline
-            autoPlay
-            loop
-          />
-        ) : (
-          <img
-            src={ad.mediaUrl}
-            alt={ad.title || 'Promotional banner'}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
-        )}
-      </div>
+      {isVideo ? (
+        <video
+          src={ad.mediaUrl}
+          className="w-full h-full object-cover"
+          muted
+          playsInline
+          autoPlay
+          loop
+        />
+      ) : (
+        <img
+          src={ad.mediaUrl}
+          alt={ad.title || 'Promotional banner'}
+          className="w-full h-full object-cover"
+          loading="lazy"
+        />
+      )}
       {ad.title && (
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent px-3 pt-6 pb-2 text-left">
           <p className="text-white text-sm font-semibold truncate">{ad.title}</p>

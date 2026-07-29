@@ -21,12 +21,13 @@ export function useFcm() {
       console.log('[FCM] Received token:', token);
 
       try {
-        if (isUserAuthenticated) {
-          await api.post('/auth/fcm-token', { token });
-          console.log('[FCM] Registered token for user successfully');
-        } else if (isDriverAuthenticated) {
+        const isDriverRoute = window.location.pathname.startsWith('/driver');
+        if (isDriverRoute && isDriverAuthenticated) {
           await api.post('/driver/fcm-token', { token });
           console.log('[FCM] Registered token for driver successfully');
+        } else if (!isDriverRoute && isUserAuthenticated) {
+          await api.post('/auth/fcm-token', { token });
+          console.log('[FCM] Registered token for user successfully');
         }
       } catch (err) {
         console.error('[FCM] Failed to update token on backend:', err);

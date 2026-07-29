@@ -39,9 +39,15 @@ const HelpDeskModal = ({ isOpen, onClose, userType, isPublic = false }) => {
       setError('Please fill in all required fields');
       return;
     }
-    if (isPublic && (!contactName.trim() || !contactPhone.trim())) {
-      setError('Please provide your name and phone number');
-      return;
+    if (isPublic) {
+      if (!contactName.trim()) {
+        setError('Please provide your name');
+        return;
+      }
+      if (!/^[0-9]{10}$/.test(contactPhone.trim())) {
+        setError('Please enter a valid 10-digit phone number');
+        return;
+      }
     }
 
     setLoading(true);
@@ -96,11 +102,11 @@ const HelpDeskModal = ({ isOpen, onClose, userType, isPublic = false }) => {
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Help Desk">
       {/* Helpline Numbers Section */}
-      <div className="px-5 pt-5 sm:px-6 sm:pt-6 border-b border-slate-100 bg-slate-50/50 pb-4">
+      <div className="px-4 pt-4 sm:px-5 sm:pt-5 border-b border-slate-100 bg-slate-50/50 pb-3">
         <h3 className="text-xs font-bold text-slate-800 mb-1 flex items-center gap-1.5">
           📞 Emergency City Helplines
         </h3>
-        <p className="text-[11px] text-slate-500 font-medium mb-3">
+        <p className="text-[11px] text-slate-500 font-medium mb-2">
           Contact the admin support team directly in your city for immediate assistance:
         </p>
         {loadingHelplines ? (
@@ -110,7 +116,7 @@ const HelpDeskModal = ({ isOpen, onClose, userType, isPublic = false }) => {
             No active helplines configured.
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-24 overflow-y-auto pr-1">
             {helplines.map((item) => (
               <div
                 key={item._id}
@@ -135,54 +141,58 @@ const HelpDeskModal = ({ isOpen, onClose, userType, isPublic = false }) => {
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4">
+      <form onSubmit={handleSubmit} className="p-5 sm:p-6 pb-6 sm:pb-8 space-y-4">
         {isPublic && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              <label className="block text-xs font-medium text-slate-700 mb-1">
                 Your Name
               </label>
               <input
                 type="text"
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all"
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs shadow-sm placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all"
                 placeholder="John Doe"
                 value={contactName}
                 onChange={(e) => setContactName(e.target.value)}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              <label className="block text-xs font-medium text-slate-700 mb-1">
                 Phone Number
               </label>
               <input
                 type="tel"
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all"
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs shadow-sm placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all"
                 placeholder="Mobile number"
                 value={contactPhone}
-                onChange={(e) => setContactPhone(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, '');
+                  setContactPhone(val);
+                }}
+                maxLength={10}
               />
             </div>
           </div>
         )}
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">
+          <label className="block text-xs font-medium text-slate-700 mb-1">
             How can we help?
           </label>
           <input
             type="text"
-            className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all"
+            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs shadow-sm placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all"
             placeholder="e.g., Issue with a recent ride, Payment question"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">
+          <label className="block text-xs font-medium text-slate-700 mb-1">
             Details
           </label>
           <textarea
-            rows={4}
-            className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all resize-none"
+            rows={3}
+            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs shadow-sm placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all resize-none"
             placeholder="Please provide as much information as possible so we can assist you better..."
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -190,7 +200,7 @@ const HelpDeskModal = ({ isOpen, onClose, userType, isPublic = false }) => {
         </div>
 
         {error && (
-          <div className="text-sm text-rose-600 bg-rose-50 px-4 py-3 rounded-lg border border-rose-100 flex items-start gap-2">
+          <div className="text-xs text-rose-600 bg-rose-50 px-3 py-2 rounded-lg border border-rose-100 flex items-start gap-2">
             <span className="shrink-0 mt-0.5">⚠️</span>
             <span>{error}</span>
           </div>
@@ -202,7 +212,7 @@ const HelpDeskModal = ({ isOpen, onClose, userType, isPublic = false }) => {
             fullWidth
             loading={loading}
             icon={Send}
-            className="shadow-sm font-medium"
+            className="shadow-sm font-medium py-2.5 text-sm"
           >
             Send Message
           </Button>

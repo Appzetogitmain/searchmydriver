@@ -33,7 +33,7 @@ const Modal = ({
   };
 
   const modalContent = (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-hidden">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center py-8 px-4 sm:p-6 md:p-10 overflow-hidden">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-md"
