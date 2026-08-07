@@ -4,7 +4,11 @@ import User from '../models/user.model.js';
 import { verifyAccessToken, inferAccountType } from '../utils/jwt.util.js';
 import { ACCOUNT_DRIVER, ACCOUNT_USER, USER_ROLES } from '../constants/roles.js';
 import { STAFF_ROLES } from '../constants/staffPermissions.js';
-import { COOKIE_NAMES } from '../utils/cookie.util.js';
+import {
+  AUDIENCES,
+  AUDIENCE_RESOLUTION_ORDER,
+  cookieNamesFor,
+} from '../utils/cookie.util.js';
 import { getCorsOrigins } from './cors.config.js';
 import {
   C2S_EVENTS,
@@ -60,9 +64,21 @@ function extractToken(socket) {
   if (authToken) return authToken;
 
   const cookieHeader = socket.request?.headers?.cookie;
-  if (cookieHeader) {
-    const parsed = parseCookieHeader(cookieHeader);
-    if (parsed[COOKIE_NAMES.accessToken]) return parsed[COOKIE_NAMES.accessToken];
+  if (!cookieHeader) return null;
+  const parsed = parseCookieHeader(cookieHeader);
+
+  // Auth cookies are namespaced per app. The client sends which one it is
+  // connecting as; without that we fall back to whichever is present, so a
+  // browser holding two sessions still connects deterministically.
+  const declared = socket.handshake?.auth?.audience;
+  const order =
+    declared && AUDIENCES[String(declared).toUpperCase()]
+      ? [declared]
+      : AUDIENCE_RESOLUTION_ORDER;
+
+  for (const audience of order) {
+    const token = parsed[cookieNamesFor(audience).accessToken];
+    if (token) return token;
   }
   return null;
 }

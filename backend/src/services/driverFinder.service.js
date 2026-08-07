@@ -179,6 +179,117 @@ export async function findDriversWithinRadius({
 }
 
 /**
+ * Every eligible online driver, city-wide — no radius cap and no wave limit.
+ *
+ * This is what the booking dispatcher uses: a ride request is broadcast to all
+ * online drivers at once and the first to accept wins. Distance is still
+ * computed and sorted on (nearest first) so the driver's offer card can show
+ * "2.4 km away", but it never *excludes* anyone — a driver 8 km out still sees
+ * the request and can take it if nobody closer does.
+ *
+ * When pickup coordinates are missing or invalid we fall back to a plain find,
+ * so a request with a bad pickup still reaches drivers rather than silently
+ * reaching nobody.
+ *
+ * @param {object} params
+ * @param {number} [params.lat]                 pickup latitude (for distance only)
+ * @param {number} [params.lng]                 pickup longitude (for distance only)
+ * @param {string[]} [params.carTypeIds]        restrict to drivers qualified on these car types
+ * @param {string[]} [params.excludeDriverIds]  drivers who already said no
+ * @param {boolean} [params.includeOnTrip=false]
+ * @param {boolean} [params.requireAvailableForMonthlyRide=false]
+ * @param {boolean} [params.requirePositiveWalletBalance=false]
+ * @param {number} [params.minWalletBalance=null]
+ * @param {number} [params.maxDrivers=500]      safety cap on fan-out
+ */
+export async function findAllEligibleOnlineDrivers({
+  lat,
+  lng,
+  carTypeIds,
+  excludeDriverIds,
+  includeOnTrip = false,
+  requireAvailableForMonthlyRide = false,
+  requirePositiveWalletBalance = false,
+  minWalletBalance = null,
+  maxDrivers = 500,
+} = {}) {
+  const excludeIds = (excludeDriverIds || []).map(toObjectId).filter(Boolean);
+
+  const match = {
+    isOnline: true,
+    approvalStatus: 'approved',
+    isDeleted: false,
+  };
+  if (!includeOnTrip) match.isOnTrip = false;
+  if (requireAvailableForMonthlyRide) match.availableForMonthlyRide = true;
+  if (requirePositiveWalletBalance && minWalletBalance === null) {
+    match['wallet.balance'] = { $gte: 0 };
+  }
+  if (minWalletBalance !== null) {
+    match['wallet.balance'] = { ...match['wallet.balance'], $gte: minWalletBalance };
+  }
+  if (excludeIds.length) match._id = { $nin: excludeIds };
+  if (carTypeIds?.length) {
+    const carTypeOids = carTypeIds.map(toObjectId).filter(Boolean);
+    if (carTypeOids.length) match.carTypeExperience = { $in: carTypeOids };
+  }
+
+  const safeCap = Math.min(Math.max(Number(maxDrivers) || 500, 1), 2000);
+  const projection = {
+    _id: 1,
+    name: 1,
+    profilePicture: 1,
+    rating: 1,
+    isOnTrip: 1,
+    isOnline: 1,
+    location: 1,
+    lastLocationAt: 1,
+    distanceMeters: 1,
+    carTypes: 1,
+    experienceYears: 1,
+    fcmToken: 1,
+  };
+  const carTypeLookup = {
+    $lookup: {
+      from: 'cartypes',
+      localField: 'carTypeExperience',
+      foreignField: '_id',
+      as: 'carTypes',
+      pipeline: [{ $project: { name: 1 } }],
+    },
+  };
+
+  // `$geoNear` gives us distance for free, but it requires a valid origin and
+  // silently drops drivers with no `location`. Only use it when we actually
+  // have a pickup point; otherwise fan out to everyone without distances.
+  const pipeline = validateCoords({ lat, lng })
+    ? [
+        {
+          $geoNear: {
+            near: { type: 'Point', coordinates: [lng, lat] },
+            distanceField: 'distanceMeters',
+            spherical: true,
+            key: 'location',
+            query: match,
+          },
+        },
+        { $limit: safeCap },
+        carTypeLookup,
+        { $sort: { distanceMeters: 1 } },
+        { $project: projection },
+      ]
+    : [
+        { $match: match },
+        { $limit: safeCap },
+        carTypeLookup,
+        { $project: projection },
+      ];
+
+  const rows = await Driver.aggregate(pipeline);
+  return rows.map(shapeDriverHit);
+}
+
+/**
  * Expanding-ring search. Starts at `startMeters` and grows in `stepMeters`
  * increments until the result set is satisfactory or the radius hits
  * `maxMeters`. Used by the dispatcher so we always start small (better UX —

@@ -6,7 +6,7 @@ import '../models/carType.model.js';
 import '../models/carBrand.model.js';
 import '../models/carModel.model.js';
 import '../models/fuelType.model.js';
-import { findDriversInExpandingRadius } from './driverFinder.service.js';
+import { findAllEligibleOnlineDrivers } from './driverFinder.service.js';
 import { SERVICE_TYPES } from '../constants/serviceTypes.js';
 import {
   adminMarkNoDriversFoundService,
@@ -43,32 +43,39 @@ import { WALLET_TXN_SOURCE } from '../models/walletTransaction.model.js';
 import PlatformSettings from '../models/platformSettings.model.js';
 
 /**
- * Wave-broadcast booking dispatcher.
+ * Broadcast booking dispatcher.
  *
- * For every booking we run a sequence of "waves". Each wave:
+ * A ride request goes out to EVERY eligible online driver at once, and the
+ * first to accept wins. There is no radius cap and no per-wave driver limit:
  *
- *   1. Picks the closest WAVE_SIZE (=5) approved, online, idle drivers that
- *      haven't been offered yet, using an expanding-radius search starting at
- *      SEARCH_RADIUS_START_METERS (1 km) and growing up to either
- *      `dispatch.maxRadiusMeters` (default 5 km) or the booking's zone radius.
- *   2. Emits BOOKING_OFFERED to every selected driver in parallel.
- *   3. Starts a wave-level setTimeout. First driver to accept wins; the
- *      losing drivers receive BOOKING_OFFER_WITHDRAWN. If the timer expires
- *      without an accept, all unresponded offers are recorded as TIMEOUT
- *      and the next wave is dispatched.
+ *   1. Select all approved, online, idle drivers qualified for the booking's
+ *      car type (minus anyone who explicitly rejected it, or whose existing
+ *      scheduled work would overlap).
+ *   2. Emit BOOKING_OFFERED to all of them, plus an FCM push.
+ *   3. Start a refresh timer. First driver to accept wins; everyone else gets
+ *      BOOKING_OFFER_WITHDRAWN. If the timer fires with no accept, the request
+ *      is re-broadcast so drivers who have since come online also see it.
  *
- * The lifecycle is essentially:
- *
- *   ┌─ dispatchNextWave ─────────────────────────────────────────────────┐
- *   │ 1. Pick next wave of N drivers (expanding radius)                  │
- *   │ 2. Emit BOOKING_OFFERED to all of them                             │
- *   │ 3. Start ONE wave timer                                            │
- *   │ 4. accept → withdraw others → STOP                                 │
- *   │ 5. all reject or timer expires → loop to step 1 (larger radius)    │
- *   │ 6. radius hits cap & wave is empty → no_drivers_found              │
+ *   ┌─ dispatch ─────────────────────────────────────────────────────────┐
+ *   │ 1. Select ALL eligible online drivers                              │
+ *   │ 2. Emit BOOKING_OFFERED to every one of them                       │
+ *   │ 3. Start the refresh timer                                         │
+ *   │ 4. accept → withdraw the others → STOP                             │
+ *   │ 5. timer expires → re-broadcast (step 1), picking up new drivers   │
+ *   │ 6. nobody online at all → retry every 30s until the 30-minute cap  │
  *   └────────────────────────────────────────────────────────────────────┘
  *
- * Wave timers live in memory only (`waveTimers`). A server restart drops
+ * This replaced a wave model that offered the nearest 5 drivers within an
+ * expanding 1–5 km radius. Two things made it drop requests entirely: drivers
+ * just past the 5 km ceiling were never offered at all, and any driver who let
+ * an offer time out was excluded from every subsequent wave — so once the few
+ * nearby drivers had each been offered once, the booking sat in `searching`
+ * with nothing on any driver's screen until it expired.
+ *
+ * Distance is still computed and drivers are sorted nearest-first (the offer
+ * card shows it), but it no longer decides who is reachable.
+ *
+ * Timers live in memory only (`waveTimers`). A server restart drops
  * outstanding timers; the next driver action or admin sweep resumes things.
  */
 
@@ -109,8 +116,19 @@ function clearWaveTimer(bookingId) {
   }
 }
 
-function alreadyOfferedDriverIds(booking) {
-  return (booking.dispatch?.offers || []).map((o) => String(o.driverId));
+/**
+ * Drivers who have actively turned this booking down.
+ *
+ * Only an explicit reject disqualifies a driver. A TIMEOUT must not: under the
+ * old wave model every driver who simply didn't tap in 30s was excluded from
+ * every later wave, so once the handful of nearby drivers had each been offered
+ * once, the booking could never be offered to anyone again — it sat in
+ * `searching` with nothing on any driver's screen until the 30-minute cap.
+ */
+function rejectedDriverIds(booking) {
+  return (booking.dispatch?.offers || [])
+    .filter((o) => o.response === DISPATCH_RESPONSE.REJECTED)
+    .map((o) => String(o.driverId));
 }
 
 /** Statuses that legitimately keep a driver's `isOnTrip` flag at `true`. */
@@ -333,9 +351,8 @@ export async function dispatchNextDriverService(bookingId) {
     return failBookingNoDrivers(bookingId);
   }
 
-  // Expanding search starts at the radius we left off on (1 km → step → cap).
-  const startMeters =
-    booking.dispatch?.currentRadiusMeters || DISPATCH.SEARCH_RADIUS_START_METERS;
+  // Kept only as the fallback figure reported to the customer's searching
+  // screen when the broadcast reaches nobody — it is no longer a filter.
   const maxMeters = booking.dispatch?.maxRadiusMeters || DISPATCH.SEARCH_RADIUS_MAX_METERS;
 
   // Restrict driver matching to the user's chosen car-type so the driver
@@ -378,7 +395,7 @@ export async function dispatchNextDriverService(bookingId) {
     : [];
 
   const excludeDriverIds = [
-    ...alreadyOfferedDriverIds(booking),
+    ...rejectedDriverIds(booking),
     ...conflictedDriverIds,
   ];
 
@@ -388,14 +405,11 @@ export async function dispatchNextDriverService(bookingId) {
     minWalletBalance = settings?.outstationMinWalletBalance ?? 0;
   }
 
-  const { drivers, radiusMeters } = await findDriversInExpandingRadius({
+  // Broadcast to every online driver at once — no radius cap, no wave size.
+  // The first to accept wins; everyone else gets BOOKING_OFFER_WITHDRAWN.
+  const drivers = await findAllEligibleOnlineDrivers({
     lat,
     lng,
-    startMeters,
-    stepMeters: DISPATCH.SEARCH_RADIUS_STEP_METERS,
-    maxMeters,
-    limit: DISPATCH.WAVE_SIZE,
-    minResults: 1,
     carTypeIds,
     excludeDriverIds,
     requireAvailableForMonthlyRide: false,
@@ -404,7 +418,14 @@ export async function dispatchNextDriverService(bookingId) {
     includeOnTrip: booking.serviceType === SERVICE_TYPES.MONTHLY,
   });
 
-  console.log('[DEBUG dispatch] drivers found:', drivers.length, 'for booking', booking._id, 'carTypeIds:', carTypeIds, 'cash payment:', booking.paymentMethod === 'cash');
+  // Distance is informational now (shown on the driver's offer card), not a
+  // filter — report the furthest driver reached so the customer's "searching"
+  // screen still has something meaningful to display.
+  const radiusMeters = drivers.length
+    ? Math.max(...drivers.map((d) => d.distanceMeters || 0))
+    : maxMeters;
+
+  console.log('[dispatch] broadcasting booking', String(booking._id), 'to', drivers.length, 'online drivers', { carTypeIds, cash: booking.paymentMethod === 'cash' });
 
   if (!drivers.length) {
     // If we've exhausted the radius but 30 minutes haven't passed,
@@ -423,13 +444,26 @@ export async function dispatchNextDriverService(bookingId) {
   booking.dispatch.currentRadiusMeters = radiusMeters;
   booking.dispatch.attemptsCount = (booking.dispatch.attemptsCount || 0) + 1;
   booking.dispatch.pendingOfferIds = drivers.map((d) => d._id);
+  // One offer row per driver per booking. A re-broadcast refreshes the existing
+  // row (and un-times-out a driver who missed the previous round) instead of
+  // appending a duplicate, so the array can't grow without bound.
   for (const driver of drivers) {
-    booking.dispatch.offers.push({
-      driverId: driver._id,
-      offeredAt: new Date(),
-      response: null,
-      distanceMeters: driver.distanceMeters ?? null,
-    });
+    const existing = booking.dispatch.offers.find(
+      (o) => String(o.driverId) === String(driver._id),
+    );
+    if (existing) {
+      existing.offeredAt = new Date();
+      existing.response = null;
+      existing.respondedAt = null;
+      existing.distanceMeters = driver.distanceMeters ?? existing.distanceMeters ?? null;
+    } else {
+      booking.dispatch.offers.push({
+        driverId: driver._id,
+        offeredAt: new Date(),
+        response: null,
+        distanceMeters: driver.distanceMeters ?? null,
+      });
+    }
   }
   await booking.save();
 
@@ -802,33 +836,48 @@ export async function rejectBookingService(bookingId, driverId) {
   return { ok: true, pendingDriverCount: stillPending };
 }
 
-/** Called by the timer when no driver in the active wave has responded in time. */
+/** Record a TIMEOUT response for drivers who dropped out of the broadcast. */
+async function markOffersTimedOut(bookingId, driverIds) {
+  if (!driverIds.length) return;
+  const booking = await Booking.findById(bookingId);
+  if (!booking) return;
+  const ids = new Set(driverIds.map(String));
+  for (const offer of booking.dispatch?.offers || []) {
+    if (ids.has(String(offer.driverId)) && offer.response == null) {
+      offer.response = DISPATCH_RESPONSE.TIMEOUT;
+      offer.respondedAt = new Date();
+    }
+  }
+  await booking.save();
+}
+
+/**
+ * Periodic re-broadcast while a booking is still searching.
+ *
+ * Under the broadcast model this is a *refresh*, not a hand-off to the next
+ * wave: the request goes back out to every online driver, so a driver who was
+ * mid-fare or offline last round now sees it. Drivers still in the broadcast
+ * keep their card on screen — only those who dropped out of it (went offline,
+ * started a trip, took another booking) get BOOKING_OFFER_WITHDRAWN. Without
+ * that distinction every driver's offer modal would blink out and back once a
+ * cycle.
+ */
 export async function handleWaveTimeoutService(bookingId) {
   const booking = await Booking.findOne({ _id: bookingId, isDeleted: false });
   if (!booking) return;
   if (booking.status !== BOOKING_STATUS.SEARCHING) return;
 
-  const pending = (booking.dispatch?.pendingOfferIds || []).map(String);
-  if (pending.length === 0) return;
+  const previousPending = (booking.dispatch?.pendingOfferIds || []).map(String);
+  if (previousPending.length === 0) return;
 
-  // Mark every unresponded offer in the wave as timed out.
-  for (const driverId of pending) {
-    const offer = booking.dispatch.offers.find(
-      (o) => String(o.driverId) === String(driverId) && o.response == null,
-    );
-    if (offer) {
-      offer.response = DISPATCH_RESPONSE.TIMEOUT;
-      offer.respondedAt = new Date();
-    }
+  const result = await dispatchNextDriverService(bookingId);
+  const stillOffered = new Set((result?.driverIds || []).map(String));
+
+  const dropped = previousPending.filter((id) => !stillOffered.has(id));
+  if (dropped.length) {
+    await markOffersTimedOut(bookingId, dropped);
+    notifyWaveWithdrawn(dropped, bookingId, 'timeout');
   }
-
-  booking.dispatch.pendingOfferIds = [];
-  booking.dispatch.currentExpiresAt = null;
-  await booking.save();
-
-  notifyWaveWithdrawn(pending, booking._id, 'timeout');
-
-  await dispatchNextDriverService(bookingId);
 }
 
 /** Backwards-compat alias for legacy callers. */

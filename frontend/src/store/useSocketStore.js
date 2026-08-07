@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { io } from 'socket.io-client';
 import api from '../utils/api';
+import { AUDIENCES as AUDIENCES_IMPORT } from '../constants/audiences';
+
+const AUDIENCES = AUDIENCES_IMPORT || {
+  USER: 'user',
+  DRIVER: 'driver',
+  ADMIN: 'admin',
+};
 import { CONNECTION_EVENTS, S2C_EVENTS } from '../constants/socketEvents';
 import useDriverAuthStore from './useDriverAuthStore';
 import useUserAuthStore from './useUserAuthStore';
@@ -37,6 +44,18 @@ function deriveSocketUrl() {
 
 const SOCKET_URL = deriveSocketUrl();
 
+/**
+ * Which of the three sessions this tab is connecting as. Auth cookies are
+ * namespaced per app, so the handshake has to name one — otherwise a browser
+ * signed into two apps would connect as whichever cookie the server happened
+ * to read first.
+ */
+function currentAudience() {
+  if (useDriverAuthStore.getState().isAuthenticated) return AUDIENCES.DRIVER;
+  if (useAdminAuthStore.getState().isAuthenticated) return AUDIENCES.ADMIN;
+  return AUDIENCES.USER;
+}
+
 function createSocket() {
   return io(SOCKET_URL, {
     withCredentials: true,
@@ -46,6 +65,7 @@ function createSocket() {
     reconnectionDelay: 1_000,
     reconnectionDelayMax: 10_000,
     timeout: 20_000,
+    auth: { audience: currentAudience() },
   });
 }
 
@@ -118,7 +138,17 @@ const useSocketStore = create((set, get) => ({
       if (isAuthError && !get()._refreshAttempted) {
         set({ _refreshAttempted: true });
         try {
-          await api.post('/auth/refresh-token', {});
+          const audience = currentAudience();
+          await api.post(
+            audience === AUDIENCES.DRIVER
+              ? '/driver/auth/refresh-token'
+              : audience === AUDIENCES.ADMIN
+                ? '/admin/auth/refresh-token'
+                : '/auth/refresh-token',
+            {},
+          );
+          // Reconnect as the same audience the refresh just renewed.
+          socket.auth = { ...(socket.auth || {}), audience };
           socket.connect();
         } catch {
           /* refresh failed → leave disconnected, user is effectively logged out */

@@ -8,7 +8,17 @@ const useUserAuthStore = create(
       isAuthenticated: false,
       onboarding: null,
 
-      setAuth: (user) => set({ user, isAuthenticated: !!user }),
+      setAuth: (user) => {
+        if (user) {
+          try {
+            localStorage.removeItem('driver-session');
+            localStorage.removeItem('admin-session');
+          } catch (e) {
+            // ignore localStorage errors
+          }
+        }
+        set({ user, isAuthenticated: !!user });
+      },
       setOnboarding: (onboarding) => set({ onboarding }),
       logout: () => set({ user: null, isAuthenticated: false, onboarding: null }),
     }),

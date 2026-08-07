@@ -1,6 +1,9 @@
-import dotenv from 'dotenv';
-
-dotenv.config();
+// MUST be the first import. ES module imports are hoisted and evaluated before
+// any statement in this file's body, so a plain `dotenv.config()` call below
+// would run *after* './app.js' — and everything app.js pulls in — has already
+// been evaluated. Modules that read process.env at import time (rateLimiter.js)
+// would see an empty environment and silently fall back to production defaults.
+import 'dotenv/config';
 
 import { createServer } from 'node:http';
 import { connectDB } from './config/connectDB.js';

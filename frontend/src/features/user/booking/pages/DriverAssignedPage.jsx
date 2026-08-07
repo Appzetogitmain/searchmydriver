@@ -554,6 +554,17 @@ const DriverAssignedPage = () => {
 
   const [chatOpen, setChatOpen] = useState(false);
 
+  // The driver is at the pickup point waiting to be read a code. Open the
+  // sheet the moment we hit ARRIVED so the OTP is on screen without the
+  // customer having to touch anything. (The card itself lives in the
+  // always-visible peek row, so this is belt-and-braces — it also surfaces
+  // the driver/trip details they'll want at the same moment.)
+  useEffect(() => {
+    if (bookingStatusForCancel === BOOKING_STATUS.ARRIVED) {
+      setSheetExpanded(true);
+    }
+  }, [bookingStatusForCancel]);
+
   useEffect(() => {
     if (!bookingStatusForCancel) return undefined;
     if (bookingStatusForCancel === BOOKING_STATUS.STARTED) {
@@ -837,6 +848,17 @@ const DriverAssignedPage = () => {
               </div>
             </div>
 
+            {/* Ride-start OTP — always visible, same reasoning as the cancel
+                CTA below. The driver is standing at the pickup point waiting
+                for this code; nesting it in the expanded sheet body meant the
+                customer saw nothing at all unless they happened to know the
+                sheet could be opened. This is the single most time-critical
+                thing on the screen once the driver arrives, so it renders in
+                the peek row regardless of sheet state. */}
+            {booking.status === BOOKING_STATUS.ARRIVED && booking.rideStartOtp?.code && (
+              <RideStartOtpCard code={booking.rideStartOtp.code} />
+            )}
+
             {/* Always-visible cancel CTA — the previous version was nested
                 inside the expanded sheet body, so users had to discover
                 they could expand the sheet before they could cancel.
@@ -877,10 +899,8 @@ const DriverAssignedPage = () => {
                   </div>
                 </div>
 
-                {/* OTP card — moved inside the expanded sheet */}
-                {booking.status === BOOKING_STATUS.ARRIVED && booking.rideStartOtp?.code && (
-                  <RideStartOtpCard code={booking.rideStartOtp.code} />
-                )}
+                {/* OTP card now lives in the always-visible peek row above,
+                    so it is deliberately not repeated here. */}
 
                 {/* Driver profile — large photo + rating + call/message */}
                 {booking.status !== BOOKING_STATUS.PENDING_ASSIGNMENT && driver && (

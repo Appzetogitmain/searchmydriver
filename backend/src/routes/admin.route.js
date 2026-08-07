@@ -141,6 +141,7 @@ import { uploadAdMedia } from '../middlewares/multer.js';
 import {
   getAdminSupportTickets,
   resolveSupportTicket,
+  replySupportTicketAdmin,
 } from '../controllers/support.controller.js';
 import {
   getReferralSettings,
@@ -158,12 +159,17 @@ import {
   adminUpdateHelpline,
   adminDeleteHelpline,
 } from '../controllers/helpline.controller.js';
+import { makeRefreshAccessToken, makeLogout } from '../controllers/common.controller.js';
+import { AUDIENCES } from '../utils/cookie.util.js';
 
 const router = express.Router();
 const { ALL_STAFF, OPERATIONS, SUPER_ADMIN } = ROUTE_ROLES;
 
 // ── Auth ──────────────────────────────────────────────────────────────────
 router.post('/auth/login', loginAdmin);
+// Own cookie pair — see the driver equivalent in driver.route.js.
+router.post('/auth/refresh-token', makeRefreshAccessToken(AUDIENCES.ADMIN));
+router.post('/auth/logout', makeLogout(AUDIENCES.ADMIN));
 
 // ============================================================================
 // ALL ROUTES BELOW THIS REQUIRE A VALID STAFF JWT
@@ -209,6 +215,7 @@ router.post('/user-wallet/adjust', restrictTo(...OPERATIONS), adjustUserWallet);
 // Only SUPER_ADMIN (or others if you assign them the permission, defaulting to SUPER_ADMIN here)
 router.get('/support/tickets', protectStaff, restrictTo(...SUPER_ADMIN), getAdminSupportTickets);
 router.patch('/support/tickets/:id/status', protectStaff, restrictTo(...SUPER_ADMIN), resolveSupportTicket);
+router.post('/support/tickets/:id/reply', protectStaff, restrictTo(...SUPER_ADMIN), replySupportTicketAdmin);
 
 router.get('/tasks/assignees', protectStaff, restrictTo(...OPERATIONS), getTaskAssignees);
 router.get('/tasks/activity', protectStaff, restrictTo(...SUPER_ADMIN), listTaskActivity);

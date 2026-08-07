@@ -69,19 +69,19 @@ export function calculateSubscriptionCheckout(plan) {
  */
 function applyPlatformLayers(subtotal, pricing, subscription, allowancePassThrough = 0) {
   const serviceChargePercent = pricing.serviceChargePercent || 0;
-  const gstPercent = pricing.gstPercent || 0;
+  const gstPercent = pricing.gstPercent != null && pricing.gstPercent > 0 ? pricing.gstPercent : 18;
   const serviceCharge = (subtotal * serviceChargePercent) / 100;
-  const gstAmount = ((subtotal + serviceCharge) * gstPercent) / 100;
+  const gstAmount = (subtotal * gstPercent) / 100;
   const subscriptionDiscount = applySubscriptionDiscount(subtotal, subscription);
-  const totalPayable = Math.max(0, subtotal + serviceCharge + gstAmount - subscriptionDiscount);
+  const totalPayable = Math.max(0, subtotal + gstAmount - subscriptionDiscount);
 
   const platformCommissionPercent = pricing.platformCommissionPercent || 0;
   const passThrough = Math.max(0, Math.min(Number(allowancePassThrough) || 0, subtotal));
   const commissionableSubtotal = Math.max(0, subtotal - passThrough);
-  const platformCommission = (commissionableSubtotal * platformCommissionPercent) / 100;
-  const driverEarning = Math.max(0, subtotal - platformCommission);
+  const platformCommission = serviceCharge;
   const driverFareEarning = Math.max(0, commissionableSubtotal - platformCommission);
   const driverAllowanceEarning = passThrough;
+  const driverEarning = Math.max(0, driverFareEarning + driverAllowanceEarning);
 
   return {
     serviceCharge: round2(serviceCharge),

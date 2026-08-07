@@ -1,6 +1,6 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/apiResponse.js';
-import { setAuthCookies, clearAuthCookies } from '../utils/cookie.util.js';
+import { AUDIENCES, setAuthCookies, clearAuthCookies } from '../utils/cookie.util.js';
 import * as userService from '../services/user.service.js';
 import { sendFcmNotification } from '../config/firebase.js';
 import { emitNotification } from '../utils/socketEmitters.js';
@@ -30,7 +30,7 @@ export const verifyUserOtpAndRegister = asyncHandler(async (req, res) => {
   setAuthCookies(res, {
     accessToken: result.accessToken,
     refreshToken: result.refreshToken,
-  });
+  }, AUDIENCES.USER);
   return res.status(201).json(new ApiResponse(201, { 
     user: result.user,
     accessToken: result.accessToken,
@@ -44,7 +44,7 @@ export const loginUser = asyncHandler(async (req, res) => {
   setAuthCookies(res, {
     accessToken: result.accessToken,
     refreshToken: result.refreshToken,
-  });
+  }, AUDIENCES.USER);
   return res.status(200).json(new ApiResponse(200, { 
     user: result.user,
     accessToken: result.accessToken,
@@ -106,7 +106,7 @@ export const deleteSavedLocation = asyncHandler(async (req, res) => {
 
 export const deleteMyAccount = asyncHandler(async (req, res) => {
   const result = await userService.deleteUserAccountService(req.user._id);
-  clearAuthCookies(res);
+  clearAuthCookies(res, AUDIENCES.USER);
   return res.status(200).json(new ApiResponse(200, result, 'Account deleted successfully'));
 });
 

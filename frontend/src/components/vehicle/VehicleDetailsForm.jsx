@@ -68,7 +68,7 @@ const VehicleDetailsForm = ({
 
       {showVehicleNumber && (
         <Input
-          label="Vehicle number"
+          label="Vehicle number (Optional)"
           placeholder="e.g. MP09 AB 1234"
           value={values.vehicleNumber}
           onChange={(e) => setField('vehicleNumber')(e.target.value)}

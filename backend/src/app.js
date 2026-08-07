@@ -35,7 +35,15 @@ app.set('trust proxy', 1);
 app.use(helmet());
 app.use(compression());
 
-app.use(globalLimiter);
+// The global limiter must never cover the session-refresh endpoint. It is
+// mounted app-wide, so without this exemption a client that burns its request
+// budget gets a 429 on `/auth/refresh-token` — and the SPA's axios interceptor
+// treats a failed refresh as "session is dead" and signs the user out, even
+// though their refresh token is still valid for days.
+const REFRESH_TOKEN_PATH = '/api/v1/auth/refresh-token';
+app.use((req, res, next) =>
+  req.path === REFRESH_TOKEN_PATH ? next() : globalLimiter(req, res, next),
+);
 
 app.use(cors(getCorsOptions()));
 app.use(cookieParser());

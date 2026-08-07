@@ -27,6 +27,20 @@ export const connectDB = async () => {
     } catch (migErr) {
       console.error("[migration] Failed to run driverId migration:", migErr);
     }
+
+    // Migration: Drop legacy vehicleNumber_1 unique index from cars collection if present
+    try {
+      const carsCollection = conn.connection.collection('cars');
+      const indexes = await carsCollection.indexes();
+      const hasVehicleNumberIndex = indexes.some((idx) => idx.name === 'vehicleNumber_1');
+      if (hasVehicleNumberIndex) {
+        console.log('[migration] Dropping legacy vehicleNumber_1 index from cars collection...');
+        await carsCollection.dropIndex('vehicleNumber_1');
+        console.log('[migration] Successfully dropped vehicleNumber_1 index.');
+      }
+    } catch (idxErr) {
+      console.error('[migration] Failed to drop vehicleNumber_1 index:', idxErr.message);
+    }
    }catch(err){
      console.error("❌ MongoDB connection error:", err);
      // 3. Exit process with failure (1) so the server doesn't stay 

@@ -38,9 +38,7 @@ const AddCarForm = ({
     const next = {};
     if (!formData.carTypeId) next.carTypeId = 'Select car category';
     if (!formData.modelName?.trim()) next.modelName = 'Enter car model';
-    if (!formData.vehicleNumber?.trim()) next.vehicleNumber = 'Enter vehicle number';
     if (!formData.transmission) next.transmission = 'Select transmission';
-    if (!documents.car_image?.url) next.image = 'Car image is required';
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -53,9 +51,9 @@ const AddCarForm = ({
       const res = await api.post('/auth/cars', {
         carTypeId: formData.carTypeId,
         modelName: formData.modelName.trim(),
-        vehicleNumber: formData.vehicleNumber.trim(),
+        vehicleNumber: (formData.vehicleNumber || '').trim(),
         transmission: formData.transmission,
-        image: documents.car_image.url,
+        image: documents.car_image?.url || '',
       });
 
       const data = res.data?.data ?? {};

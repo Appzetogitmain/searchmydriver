@@ -7,7 +7,17 @@ const useDriverAuthStore = create(
       driver: null,
       isAuthenticated: false,
 
-      setAuth: (driver) => set({ driver, isAuthenticated: !!driver }),
+      setAuth: (driver) => {
+        if (driver) {
+          try {
+            localStorage.removeItem('user-session');
+            localStorage.removeItem('admin-session');
+          } catch (e) {
+            // ignore localStorage errors
+          }
+        }
+        set({ driver, isAuthenticated: !!driver });
+      },
       updateDriver: (updates) => set((state) => ({ driver: { ...state.driver, ...updates } })),
       logout: () => set({ driver: null, isAuthenticated: false }),
     }),

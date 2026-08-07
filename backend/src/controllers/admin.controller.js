@@ -1,6 +1,6 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/apiResponse.js';
-import { setAuthCookies } from '../utils/cookie.util.js';
+import { AUDIENCES, setAuthCookies } from '../utils/cookie.util.js';
 import * as adminService from '../services/admin.service.js';
 
 export const loginAdmin = asyncHandler(async (req, res) => {
@@ -10,7 +10,7 @@ export const loginAdmin = asyncHandler(async (req, res) => {
   setAuthCookies(res, {
     accessToken: result.accessToken,
     refreshToken: result.refreshToken,
-  });
+  }, AUDIENCES.ADMIN);
 
   return res.status(200).json(new ApiResponse(200, { admin: result.admin }, 'Staff login successful'));
 });

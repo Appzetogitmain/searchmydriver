@@ -1,6 +1,6 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/apiResponse.js';
-import { setAuthCookies } from '../utils/cookie.util.js';
+import { AUDIENCES, setAuthCookies } from '../utils/cookie.util.js';
 import {
   googleSignInService,
   linkGoogleUserPhoneService,
@@ -15,7 +15,7 @@ export const googleSignInUser = asyncHandler(async (req, res) => {
   setAuthCookies(res, {
     accessToken: result.accessToken,
     refreshToken: result.refreshToken,
-  });
+  }, AUDIENCES.USER);
 
   return res.status(200).json(
     new ApiResponse(200, { 
@@ -34,7 +34,7 @@ export const googleSignInDriver = asyncHandler(async (req, res) => {
   setAuthCookies(res, {
     accessToken: result.accessToken,
     refreshToken: result.refreshToken,
-  });
+  }, AUDIENCES.DRIVER);
 
   return res.status(200).json(
     new ApiResponse(200, { 

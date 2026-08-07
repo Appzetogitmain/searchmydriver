@@ -30,8 +30,8 @@ const carSchema = new mongoose.Schema(
     },
     vehicleNumber: {
       type: String,
-      required: true,
-      unique: true,
+      required: false,
+      default: '',
       trim: true,
       uppercase: true,
     },

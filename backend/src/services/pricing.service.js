@@ -351,7 +351,7 @@ export function isLongDurationNight(bookedHours, nightConfig) {
  */
 function applyPlatformLayers(subtotal, pricing, allowancePassThrough = 0) {
   const serviceChargePercent = pricing.serviceChargePercent || 0;
-  const gstPercent = pricing.gstPercent || 0;
+  const gstPercent = pricing.gstPercent != null && pricing.gstPercent > 0 ? pricing.gstPercent : 18;
   const serviceCharge = (subtotal * serviceChargePercent) / 100;
   const gstAmount = (subtotal * gstPercent) / 100;
   const totalPayable = Math.max(0, subtotal + gstAmount);

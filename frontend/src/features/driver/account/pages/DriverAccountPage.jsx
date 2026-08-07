@@ -30,6 +30,7 @@ import useDriverAuthStore from '../../../../store/useDriverAuthStore';
 import { useDriverProfileStore } from '../../../../store/driver/useDriverProfileStore';
 import ConfirmDialog from '../../../../components/ConfirmDialog';
 import HelpDeskModal from '../../../../components/HelpDeskModal';
+import UserDriverTicketThreadModal from '../../../../components/UserDriverTicketThreadModal';
 import api from '../../../../utils/api';
 import toast from 'react-hot-toast';
 import { useDriverHomeSummaryStore } from '../../../../store/driver/useDriverTripsStore';
@@ -93,6 +94,21 @@ const DriverAccountPage = () => {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
+  const [driverTickets, setDriverTickets] = useState([]);
+  const [selectedTicket, setSelectedTicket] = useState(null);
+
+  const fetchDriverTickets = async () => {
+    try {
+      const res = await api.get('/driver/support/my-tickets');
+      setDriverTickets(res.data?.tickets || []);
+    } catch (err) {
+      console.error('Failed to fetch driver tickets:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchDriverTickets();
+  }, []);
 
   const profileKey = buildCacheKey('driver-profile', {});
   const summaryKey = buildCacheKey('driver-home-summary', {});
@@ -323,20 +339,63 @@ const DriverAccountPage = () => {
         </div>
       ))}
 
-      <div className="space-y-3">
+      {/* Driver Tickets List Section */}
+      {driverTickets.length > 0 && (
+        <div>
+          <p className="px-1 mb-2 text-[11px] uppercase tracking-wide font-semibold text-text-muted">
+            My Support Tickets
+          </p>
+          <Card padding="p-2">
+            <div className="divide-y divide-border-light">
+              {driverTickets.map((t) => {
+                const isResolved = t.status === 'resolved';
+                return (
+                  <button
+                    key={t._id}
+                    type="button"
+                    onClick={() => setSelectedTicket(t)}
+                    className="w-full text-left py-2.5 px-3 flex items-center justify-between hover:bg-slate-50 rounded-lg transition-colors"
+                  >
+                    <div className="space-y-0.5 min-w-0 flex-1 pr-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-text">{t.ticketNumber}</span>
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                            isResolved ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                          }`}
+                        >
+                          {isResolved ? 'Resolved' : 'Open'}
+                        </span>
+                        {t.replies && t.replies.length > 0 && (
+                          <span className="bg-primary/10 text-primary text-[10px] font-bold px-1.5 py-0.5 rounded">
+                            {t.replies.length} replies
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs font-medium text-text truncate">{t.subject}</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-text-muted shrink-0" />
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      <div className="pt-2 flex flex-col gap-2">
         <button
           type="button"
           onClick={handleLogout}
-          className="w-full flex items-center justify-center gap-2 py-3.5 bg-white rounded-2xl shadow-card text-danger font-medium text-sm hover:bg-danger-light transition-colors"
+          className="w-full py-3 bg-white border border-border-light text-danger text-sm font-semibold rounded-2xl flex items-center justify-center gap-2 hover:bg-rose-50/50 transition-colors shadow-xs"
         >
           <LogOut className="w-4 h-4" />
-          Logout
+          Sign out
         </button>
-
         <button
           type="button"
           onClick={() => setDeleteOpen(true)}
-          className="w-full flex items-center justify-center gap-2 py-3.5 bg-white border border-red-200 rounded-2xl shadow-card text-red-600 font-semibold text-sm hover:bg-red-50 transition-colors"
+          className="w-full py-2.5 text-danger/80 text-xs font-medium flex items-center justify-center gap-1.5 hover:text-danger transition-colors"
         >
           <Trash2 className="w-4 h-4" />
           Delete Account
@@ -356,9 +415,25 @@ const DriverAccountPage = () => {
 
       <HelpDeskModal
         isOpen={supportOpen}
-        onClose={() => setSupportOpen(false)}
+        onClose={() => {
+          setSupportOpen(false);
+          fetchDriverTickets();
+        }}
         userType="driver"
       />
+
+      {selectedTicket && (
+        <UserDriverTicketThreadModal
+          isOpen={!!selectedTicket}
+          onClose={() => setSelectedTicket(null)}
+          ticket={selectedTicket}
+          userType="driver"
+          onTicketUpdated={(updated) => {
+            setSelectedTicket(updated);
+            fetchDriverTickets();
+          }}
+        />
+      )}
 
       <p className="text-center text-[11px] text-text-muted pt-1">
         Driver ID {driver?._id ? short(driver._id) : '—'}

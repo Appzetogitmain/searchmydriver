@@ -7,7 +7,17 @@ const useAdminAuthStore = create(
       admin: null,
       isAuthenticated: false,
 
-      setAuth: (admin) => set({ admin, isAuthenticated: !!admin }),
+      setAuth: (admin) => {
+        if (admin) {
+          try {
+            localStorage.removeItem('user-session');
+            localStorage.removeItem('driver-session');
+          } catch (e) {
+            // ignore localStorage errors
+          }
+        }
+        set({ admin, isAuthenticated: !!admin });
+      },
       logout: () => set({ admin: null, isAuthenticated: false }),
     }),
     {

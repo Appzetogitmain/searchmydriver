@@ -367,8 +367,8 @@ export const addCarService = async (userId, carData) => {
   const { carTypeId, brandId, modelId, modelName, fuelTypeId, vehicleNumber, transmission, image } =
     carData;
 
-  if (!carTypeId || (!modelId && !modelName) || !vehicleNumber || !transmission) {
-    throw new ApiError(400, 'Car category, model name, vehicle number, and transmission are required');
+  if (!carTypeId || (!modelId && !modelName) || !transmission) {
+    throw new ApiError(400, 'Car category, model name, and transmission are required');
   }
 
   const refsToValidate = { carTypeId };
@@ -383,9 +383,12 @@ export const addCarService = async (userId, carData) => {
     throw new ApiError(400, 'You can only register up to 5 vehicles');
   }
 
-  const exists = await Car.findOne({ vehicleNumber: vehicleNumber.toUpperCase(), isActive: true });
-  if (exists) {
-    throw new ApiError(400, 'This vehicle number is already registered');
+  const trimmedVehicleNum = vehicleNumber ? vehicleNumber.trim().toUpperCase() : '';
+  if (trimmedVehicleNum) {
+    const exists = await Car.findOne({ vehicleNumber: trimmedVehicleNum, isActive: true });
+    if (exists) {
+      throw new ApiError(400, 'This vehicle number is already registered');
+    }
   }
 
   const car = await Car.create({
@@ -395,7 +398,7 @@ export const addCarService = async (userId, carData) => {
     modelId: modelId || null,
     modelName: modelName || null,
     fuelTypeId: fuelTypeId || null,
-    vehicleNumber: vehicleNumber.toUpperCase(),
+    vehicleNumber: trimmedVehicleNum,
     transmission: String(transmission).toLowerCase(),
     image: image || '',
   });

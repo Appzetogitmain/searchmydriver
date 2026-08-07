@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Headset,
   Phone,
@@ -56,6 +56,39 @@ const HelpDesk = () => {
       t.subject?.toLowerCase().includes(term)
     );
   });
+
+  const [replyMessage, setReplyMessage] = useState('');
+  const [sendingReply, setSendingReply] = useState(false);
+
+  // Sync selectedTicket with fresh data when tickets list updates via refetch/socket
+  useEffect(() => {
+    if (selectedTicket) {
+      const updated = tickets.find((t) => String(t._id) === String(selectedTicket._id));
+      if (updated) {
+        setSelectedTicket(updated);
+      }
+    }
+  }, [tickets]);
+
+  const handleSendReply = async (resolveStatus = false) => {
+    if (!replyMessage.trim() || !selectedTicket) return;
+    setSendingReply(true);
+    try {
+      const { data } = await api.post(`/admin/support/tickets/${selectedTicket._id}/reply`, {
+        message: replyMessage.trim(),
+        status: resolveStatus ? 'resolved' : undefined,
+      });
+      if (data?.ticket) {
+        setSelectedTicket(data.ticket);
+      }
+      setReplyMessage('');
+      refetch();
+    } catch (err) {
+      console.error('Failed to send reply:', err);
+    } finally {
+      setSendingReply(false);
+    }
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -160,7 +193,7 @@ const HelpDesk = () => {
                             className="text-xs text-slate-600"
                             onClick={() => setSelectedTicket(ticket)}
                           >
-                            View Details
+                            View Details / Reply
                           </Button>
                           {phoneStr && (
                             <a
@@ -193,70 +226,141 @@ const HelpDesk = () => {
 
       {selectedTicket && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold text-slate-900">Ticket Details</h3>
-                <button
-                  onClick={() => setSelectedTicket(null)}
-                  className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold px-2 py-0.5 bg-slate-200 text-slate-700 rounded">
+                    {selectedTicket.ticketNumber}
+                  </span>
+                  <span
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                      selectedTicket.status === 'resolved'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-amber-100 text-amber-700'
+                    }`}
+                  >
+                    {selectedTicket.status === 'resolved' ? 'Resolved' : 'Open'}
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-slate-900 mt-1">{selectedTicket.subject}</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Submitted by{' '}
+                  <span className="font-semibold text-slate-700">
+                    {(selectedTicket.userId || selectedTicket.driverId)?.name || selectedTicket.contactName || 'Unknown'}
+                  </span>{' '}
+                  ({selectedTicket.creatorType}) • Phone:{' '}
+                  {((selectedTicket.userId || selectedTicket.driverId)?.phone_no) ||
+                    ((selectedTicket.userId || selectedTicket.driverId)?.phone) ||
+                    selectedTicket.contactPhone ||
+                    'N/A'}
+                </p>
               </div>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Ticket Number</label>
-                  <p className="mt-1 text-sm font-medium text-slate-900">{selectedTicket.ticketNumber}</p>
-                </div>
-                
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Submitted By</label>
-                  <p className="mt-1 text-sm font-medium text-slate-900">
-                    {(selectedTicket.userId || selectedTicket.driverId)?.name || selectedTicket.contactName || 'Unknown'} 
-                    <span className="text-slate-500 ml-2">
-                      ({selectedTicket.creatorType})
-                    </span>
-                  </p>
-                  <p className="text-sm text-slate-600 mt-1">
-                    {((selectedTicket.userId || selectedTicket.driverId)?.phone_no) || ((selectedTicket.userId || selectedTicket.driverId)?.phone) || selectedTicket.contactPhone || 'No Phone Number'}
-                  </p>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Subject</label>
-                  <p className="mt-1 text-sm font-medium text-slate-900">{selectedTicket.subject}</p>
-                </div>
-                
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Description</label>
-                  <p className="mt-1 text-sm text-slate-600 whitespace-pre-wrap p-3 bg-slate-50 rounded-lg border border-slate-100">
-                    {selectedTicket.description}
-                  </p>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</label>
-                  <p className="mt-1">
-                    <span
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                        selectedTicket.status === 'resolved'
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-amber-100 text-amber-700'
-                      }`}
-                    >
-                      {selectedTicket.status === 'resolved' ? 'Resolved' : 'Open'}
-                    </span>
-                  </p>
-                </div>
-              </div>
+              <button
+                onClick={() => {
+                  setSelectedTicket(null);
+                  setReplyMessage('');
+                }}
+                className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            
-            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
-              <Button variant="outline" onClick={() => setSelectedTicket(null)}>
-                Close
-              </Button>
+
+            {/* Conversation Thread */}
+            <div className="p-5 flex-1 overflow-y-auto space-y-4 bg-slate-50/30">
+              {/* Original Ticket Description */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-1">
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span className="font-semibold text-slate-700">
+                    {(selectedTicket.userId || selectedTicket.driverId)?.name || selectedTicket.contactName || 'Requester'} (Original Ticket)
+                  </span>
+                  <span>{new Date(selectedTicket.createdAt).toLocaleString()}</span>
+                </div>
+                <p className="text-sm text-slate-800 whitespace-pre-wrap pt-1">{selectedTicket.description}</p>
+              </div>
+
+              {/* Replies Thread */}
+              {selectedTicket.replies && selectedTicket.replies.length > 0 && (
+                <div className="space-y-3 pt-2">
+                  <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider text-center">
+                    Conversation History
+                  </div>
+                  {selectedTicket.replies.map((reply, idx) => {
+                    const isAdmin = reply.senderType === 'admin';
+                    return (
+                      <div
+                        key={idx}
+                        className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}
+                      >
+                        <div
+                          className={`max-w-[85%] rounded-2xl p-3 text-sm shadow-sm space-y-1 ${
+                            isAdmin
+                              ? 'bg-primary text-white rounded-br-none'
+                              : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3 text-[11px] opacity-80">
+                            <span className="font-semibold">
+                              {reply.senderName || (isAdmin ? 'Admin' : 'User')}
+                            </span>
+                            <span>{new Date(reply.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                          <p className="whitespace-pre-wrap">{reply.message}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Reply Input Box */}
+            <div className="p-4 border-t border-slate-200 bg-white space-y-3">
+              <div>
+                <textarea
+                  rows={2}
+                  className="w-full p-3 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary resize-none"
+                  placeholder="Type your reply to send to user/driver..."
+                  value={replyMessage}
+                  onChange={(e) => setReplyMessage(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  {selectedTicket.status !== 'resolved' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleResolve(selectedTicket._id)}
+                    >
+                      Mark Resolved Only
+                    </Button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {selectedTicket.status !== 'resolved' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      loading={sendingReply}
+                      disabled={!replyMessage.trim()}
+                      onClick={() => handleSendReply(true)}
+                    >
+                      Reply & Resolve
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    loading={sendingReply}
+                    disabled={!replyMessage.trim()}
+                    onClick={() => handleSendReply(false)}
+                  >
+                    Send Reply
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

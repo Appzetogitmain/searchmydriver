@@ -68,16 +68,29 @@ import {
   rateCustomerByDriver,
   downloadDriverBookingInvoice,
 } from '../controllers/booking.controller.js';
-import { createSupportTicket, createPublicSupportTicket } from '../controllers/support.controller.js';
+import {
+  createSupportTicket,
+  createPublicSupportTicket,
+  getMySupportTicketsDriver,
+  replySupportTicketDriver,
+} from '../controllers/support.controller.js';
+import { makeRefreshAccessToken, makeLogout } from '../controllers/common.controller.js';
+import { AUDIENCES } from '../utils/cookie.util.js';
 
 const router = express.Router();
 
 router.post('/support/ticket', protectDriver, createSupportTicket);
 router.post('/support/public-ticket', createPublicSupportTicket);
+router.get('/support/my-tickets', protectDriver, getMySupportTicketsDriver);
+router.post('/support/tickets/:id/reply', protectDriver, replySupportTicketDriver);
 router.post('/auth/send-otp', authLimiter, sendOtp);
 router.post('/auth/verify-otp', authLimiter, verifyOtpAndRegister);
 router.post('/auth/login', authLimiter, loginDriver);
 router.post('/auth/google', authLimiter, googleSignInDriver);
+// The driver app refreshes and signs out against its own cookie pair, so doing
+// either here leaves a customer or admin session in the same browser untouched.
+router.post('/auth/refresh-token', makeRefreshAccessToken(AUDIENCES.DRIVER));
+router.post('/auth/logout', makeLogout(AUDIENCES.DRIVER));
 
 router.put('/onboarding/step', protectDriver, updateOnboardingStep);
 router.use('/notifications', protectDriver, notificationRouter);

@@ -58,15 +58,22 @@ import {
   updateBankDetails,
   getMyWithdrawals,
 } from '../controllers/wallet.controller.js';
-import { createSupportTicket, createPublicSupportTicket } from '../controllers/support.controller.js';
+import {
+  createSupportTicket,
+  createPublicSupportTicket,
+  getMySupportTicketsUser,
+  replySupportTicketUser,
+} from '../controllers/support.controller.js';
 import { protectUser, protectProfileViewer } from '../middlewares/authMiddleware.js';
 import { authLimiter } from '../middlewares/rateLimiter.js';
 
 const router = express.Router();
 
-// Auth Public
+// Support routes
 router.post('/support/ticket', protectUser, createSupportTicket);
 router.post('/support/public-ticket', createPublicSupportTicket);
+router.get('/support/my-tickets', protectUser, getMySupportTicketsUser);
+router.post('/support/tickets/:id/reply', protectUser, replySupportTicketUser);
 router.post('/send-otp', authLimiter, sendUserOtp);
 router.post('/verify-otp', authLimiter, verifyUserOtpAndRegister);
 router.post('/forgot-password/send-otp', authLimiter, sendPasswordResetOtp);

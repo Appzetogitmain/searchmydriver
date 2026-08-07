@@ -55,7 +55,10 @@ const LoginPage = () => {
       navigateUserAfterAuth(navigate, user);
     } catch (error) {
       console.error('Login failed', error);
-      setErrors({ general: error.response?.data?.message || 'Invalid credentials. Please try again.' });
+      const message = error.response
+        ? (error.response.data?.message || 'Invalid credentials. Please try again.')
+        : (error.message || 'Login failed. Please try again.');
+      setErrors({ general: message });
     } finally {
       setLoading(false);
     }

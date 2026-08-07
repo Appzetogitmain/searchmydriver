@@ -1,6 +1,6 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/apiResponse.js';
-import { setAuthCookies, clearAuthCookies } from '../utils/cookie.util.js';
+import { AUDIENCES, setAuthCookies, clearAuthCookies } from '../utils/cookie.util.js';
 import * as driverService from '../services/driver.service.js';
 import { sendFcmNotification } from '../config/firebase.js';
 import { emitNotification } from '../utils/socketEmitters.js';
@@ -16,7 +16,7 @@ export const verifyOtpAndRegister = asyncHandler(async (req, res) => {
   setAuthCookies(res, {
     accessToken: result.accessToken,
     refreshToken: result.refreshToken,
-  });
+  }, AUDIENCES.DRIVER);
 
   return res.status(200).json(new ApiResponse(200, { 
     driver: result.driver,
@@ -32,7 +32,7 @@ export const loginDriver = asyncHandler(async (req, res) => {
   setAuthCookies(res, {
     accessToken: result.accessToken,
     refreshToken: result.refreshToken,
-  });
+  }, AUDIENCES.DRIVER);
 
   return res.status(200).json(new ApiResponse(200, { 
     driver: result.driver,
@@ -117,7 +117,7 @@ export const updateMonthlyAvailability = asyncHandler(async (req, res) => {
 
 export const deleteMyAccount = asyncHandler(async (req, res) => {
   const result = await driverService.deleteDriverAccountService(req.driver._id);
-  clearAuthCookies(res);
+  clearAuthCookies(res, AUDIENCES.DRIVER);
   return res.status(200).json(new ApiResponse(200, result, 'Account deleted successfully'));
 });
 

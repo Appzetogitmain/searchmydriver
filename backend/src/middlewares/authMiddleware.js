@@ -3,19 +3,22 @@ import User from '../models/user.model.js';
 import { verifyAccessToken, inferAccountType } from '../utils/jwt.util.js';
 import { ACCOUNT_DRIVER, ACCOUNT_USER, USER_ROLES } from '../constants/roles.js';
 import { STAFF_ROLES } from '../constants/staffPermissions.js';
-import { COOKIE_NAMES } from '../utils/cookie.util.js';
-
-function readAccessToken(req) {
-  const header = req.headers.authorization;
-  if (header?.startsWith('Bearer ')) return header.split(' ')[1];
-  return req.cookies?.[COOKIE_NAMES.accessToken] || null;
-}
+import {
+  AUDIENCES,
+  readAccessToken,
+  readCandidateAccessTokens,
+} from '../utils/cookie.util.js';
 
 /**
- * Common JWT verification and account fetching logic
+ * Common JWT verification and account fetching logic.
+ *
+ * `audience` selects which namespaced cookie to read. Each app has its own, so
+ * a driver signing in can no longer clobber a signed-in customer's session in
+ * the same browser (which used to surface as a spurious
+ * "Access denied. Not a user account.").
  */
-const authenticate = async (req, res, next, accountType, model, fieldName) => {
-  const token = readAccessToken(req);
+const authenticate = async (req, res, next, accountType, model, fieldName, audience) => {
+  const token = readAccessToken(req, audience);
   if (!token) {
     return res.status(401).json({ status: 401, message: 'Not authorized, no token' });
   }
@@ -45,14 +48,17 @@ const authenticate = async (req, res, next, accountType, model, fieldName) => {
  * 1. Customer-only routes
  */
 export const protectUser = (req, res, next) => {
-  return authenticate(req, res, next, ACCOUNT_USER, User, 'user');
+  return authenticate(req, res, next, ACCOUNT_USER, User, 'user', AUDIENCES.USER);
 };
 
 /**
  * Customer profile: own id only, or staff (admin / team_member) for any customer id.
  */
 export const protectProfileViewer = async (req, res, next) => {
-  const token = readAccessToken(req);
+  // Reachable from both the customer app (own profile) and the admin panel
+  // (any customer), so accept either audience's cookie.
+  const token =
+    readAccessToken(req, AUDIENCES.ADMIN) || readAccessToken(req, AUDIENCES.USER);
   if (!token) {
     return res.status(401).json({ status: 401, message: 'Not authorized, no token' });
   }
@@ -93,14 +99,14 @@ export const protectProfileViewer = async (req, res, next) => {
  * 2. Driver-only routes
  */
 export const protectDriver = (req, res, next) => {
-  return authenticate(req, res, next, ACCOUNT_DRIVER, Driver, 'driver');
+  return authenticate(req, res, next, ACCOUNT_DRIVER, Driver, 'driver', AUDIENCES.DRIVER);
 };
 
 /**
  * 3. Staff routes (Admin + Team Member)
  */
 export const protectStaff = async (req, res, next) => {
-  const token = readAccessToken(req);
+  const token = readAccessToken(req, AUDIENCES.ADMIN);
   if (!token) {
     return res.status(401).json({ status: 401, message: 'Not authorized, no token' });
   }
@@ -181,31 +187,39 @@ export const requirePermission = (permission) => {
  * 6. Generic JWT Verifier for shared routes (like Chat)
  */
 export const verifyJWT = async (req, res, next) => {
-  const token = readAccessToken(req);
-  if (!token) {
+  // Shared between the customer and driver apps, so there is no single audience
+  // to read. The SPA sends `X-Auth-Audience` to make the pick deterministic when
+  // a browser holds more than one session; otherwise we try each cookie present
+  // and use the first that resolves to a live account.
+  const candidates = readCandidateAccessTokens(req);
+  if (candidates.length === 0) {
     return res.status(401).json({ status: 401, message: 'Not authorized, no token' });
   }
 
-  try {
-    const decoded = verifyAccessToken(token);
-    const decodedAccountType = inferAccountType(decoded);
+  for (const { token } of candidates) {
+    try {
+      const decoded = verifyAccessToken(token);
+      const decodedAccountType = inferAccountType(decoded);
 
-    if (decodedAccountType === ACCOUNT_DRIVER) {
-      const driver = await Driver.findById(decoded.id);
-      if (!driver || driver.isDeleted) throw new Error('Driver not found');
-      req.user = driver; // Alias for controller ease
-      req.driver = driver;
-    } else if (decodedAccountType === ACCOUNT_USER) {
-      const user = await User.findById(decoded.id);
-      if (!user || user.isDeleted) throw new Error('User not found');
-      req.user = user;
-      if (STAFF_ROLES.includes(user.role)) req.staff = user;
-    } else {
-      throw new Error('Unknown account type');
+      if (decodedAccountType === ACCOUNT_DRIVER) {
+        const driver = await Driver.findById(decoded.id);
+        if (!driver || driver.isDeleted) continue;
+        req.user = driver; // Alias for controller ease
+        req.driver = driver;
+      } else if (decodedAccountType === ACCOUNT_USER) {
+        const user = await User.findById(decoded.id);
+        if (!user || user.isDeleted) continue;
+        req.user = user;
+        if (STAFF_ROLES.includes(user.role)) req.staff = user;
+      } else {
+        continue;
+      }
+
+      return next();
+    } catch {
+      // Expired or malformed — fall through to the next candidate cookie.
     }
-
-    next();
-  } catch (error) {
-    return res.status(401).json({ status: 401, message: 'Not authorized' });
   }
+
+  return res.status(401).json({ status: 401, message: 'Not authorized' });
 };
