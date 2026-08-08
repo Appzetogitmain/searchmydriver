@@ -34,17 +34,31 @@ const AUDIENCE_CONFIG = {
   },
 };
 
+/**
+ * Which app THIS TAB is currently in, derived from the URL.
+ *
+ * It must come from the route, not from which auth store happens to be
+ * populated: the stores live in localStorage, which is shared across every tab
+ * on the origin. Testing the driver app and the customer app side by side means
+ * both sessions are "authenticated" in both tabs, so store precedence would
+ * make the customer's tab claim to be the driver — it would then join the
+ * `driver:<id>` room and never receive its own booking updates.
+ */
+export function audienceForCurrentApp() {
+  const path = typeof window !== 'undefined' ? window.location.pathname : '';
+  if (path.startsWith('/driver')) return AUDIENCES.DRIVER;
+  if (path.startsWith('/admin')) return AUDIENCES.ADMIN;
+  return AUDIENCES.USER;
+}
+
 export function audienceForUrl(url = '') {
   if (url.startsWith('/driver')) return AUDIENCES.DRIVER;
   if (url.startsWith('/admin')) return AUDIENCES.ADMIN;
   if (url.startsWith('/auth')) return AUDIENCES.USER;
 
-  // Routes shared by more than one app (chat, uploads, common). Fall back to
-  // whichever session the browser actually has; the backend accepts any of the
-  // three here and uses the header to disambiguate when several are present.
-  if (useDriverAuthStore.getState().isAuthenticated) return AUDIENCES.DRIVER;
-  if (useAdminAuthStore.getState().isAuthenticated) return AUDIENCES.ADMIN;
-  return AUDIENCES.USER;
+  // Routes shared by more than one app (chat, uploads, common) carry no role in
+  // the path, so fall back to whichever app this tab is showing.
+  return audienceForCurrentApp();
 }
 
 function shouldSkipTokenRefresh(config) {

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { io } from 'socket.io-client';
-import api from '../utils/api';
+import api, { audienceForCurrentApp } from '../utils/api';
 import { AUDIENCES as AUDIENCES_IMPORT } from '../constants/audiences';
 
 const AUDIENCES = AUDIENCES_IMPORT || {
@@ -51,9 +51,7 @@ const SOCKET_URL = deriveSocketUrl();
  * to read first.
  */
 function currentAudience() {
-  if (useDriverAuthStore.getState().isAuthenticated) return AUDIENCES.DRIVER;
-  if (useAdminAuthStore.getState().isAuthenticated) return AUDIENCES.ADMIN;
-  return AUDIENCES.USER;
+  return audienceForCurrentApp();
 }
 
 function createSocket() {
@@ -86,6 +84,18 @@ const useSocketStore = create((set, get) => ({
 
   connect: () => {
     let { socket } = get();
+    const audience = currentAudience();
+
+    // A socket already connected as a different app is worse than no socket —
+    // it is subscribed to the wrong rooms. Tear it down and reconnect as the
+    // app this tab is actually showing.
+    if (socket && socket.auth?.audience !== audience) {
+      socket.removeAllListeners();
+      socket.disconnect();
+      socket = null;
+      set({ socket: null, isConnected: false, isConnecting: false, serverHello: null });
+    }
+
     if (socket?.connected || get().isConnecting) return socket;
 
     if (!socket) {
@@ -93,6 +103,10 @@ const useSocketStore = create((set, get) => ({
       get()._bindCoreHandlers(socket);
       set({ socket });
     }
+
+    // Refresh on every connect so a reconnect after navigation re-declares the
+    // right audience rather than reusing whatever the handshake started with.
+    socket.auth = { ...(socket.auth || {}), audience };
 
     set({ isConnecting: true, connectError: null });
     socket.connect();

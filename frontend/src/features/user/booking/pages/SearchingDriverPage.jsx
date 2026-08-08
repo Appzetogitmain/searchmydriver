@@ -42,6 +42,22 @@ const SearchingDriverPage = () => {
     }
   }, [booking, fetchActive]);
 
+  // Safety net: this screen used to advance on BOOKING_UPDATED alone, so a
+  // socket that was never established (or dropped during a server restart)
+  // left the customer watching "Searching…" indefinitely — while the driver
+  // had already accepted, arrived, and started the trip. Poll the booking
+  // while we're still searching so the page converges regardless of socket
+  // health. It stops as soon as the status moves on, and the redirect effect
+  // below does the actual navigation.
+  const statusForPoll = booking?.status;
+  useEffect(() => {
+    if (statusForPoll && statusForPoll !== BOOKING_STATUS.SEARCHING) return undefined;
+    const id = setInterval(() => {
+      fetchActive().catch(() => {});
+    }, 10_000);
+    return () => clearInterval(id);
+  }, [statusForPoll, fetchActive]);
+
   const bookingStatus = booking?.status;
   const bookingIdForRedirect = booking?._id;
   const serviceType = booking?.serviceType;
