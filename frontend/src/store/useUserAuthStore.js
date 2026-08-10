@@ -5,10 +5,12 @@ const useUserAuthStore = create(
   persist(
     (set) => ({
       user: null,
+      accessToken: null,
+      refreshToken: null,
       isAuthenticated: false,
       onboarding: null,
 
-      setAuth: (user) => {
+      setAuth: (user, tokens = {}) => {
         if (user) {
           try {
             localStorage.removeItem('driver-session');
@@ -17,10 +19,15 @@ const useUserAuthStore = create(
             // ignore localStorage errors
           }
         }
-        set({ user, isAuthenticated: !!user });
+        set({
+          user,
+          accessToken: tokens.accessToken || null,
+          refreshToken: tokens.refreshToken || null,
+          isAuthenticated: !!user,
+        });
       },
       setOnboarding: (onboarding) => set({ onboarding }),
-      logout: () => set({ user: null, isAuthenticated: false, onboarding: null }),
+      logout: () => set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false, onboarding: null }),
     }),
     {
       name: 'user-session',

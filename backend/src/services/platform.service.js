@@ -131,6 +131,31 @@ export const getPlatformSettingsService = async () => {
   return settings;
 };
 
+/**
+ * The outstation wallet floor, resolved once for every consumer.
+ *
+ * Returns `null` when the rule must not be applied — either an admin
+ * switched it off, or the configured amount is zero/invalid. Callers
+ * treat `null` as "no balance requirement" rather than "≥ 0", which
+ * matters because a `$gte: 0` filter still quietly drops drivers whose
+ * wallet has gone negative.
+ *
+ * Every place that gates outstation work on driver balance (the
+ * broadcast dispatcher, the admin candidate list, the manual-assign
+ * guard) goes through here so the toggle can't be honoured in one path
+ * and ignored in another.
+ */
+export const resolveOutstationWalletFloorService = async () => {
+  // Goes through the getter (rather than a bare findOne) so a fresh
+  // install with no settings row yet still gets the documented schema
+  // default instead of silently behaving as "no floor".
+  const settings = await getPlatformSettingsService();
+  if (settings?.enforceOutstationMinWalletBalance === false) return null;
+  const amount = Number(settings?.outstationMinWalletBalance);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return amount;
+};
+
 export const updatePlatformSettingsService = async (data, updatedBy) => {
   let settings = await PlatformSettings.findOne();
   if (!settings) {
@@ -142,6 +167,9 @@ export const updatePlatformSettingsService = async (data, updatedBy) => {
     settings.noKitPenaltyAmount = data.noKitPenaltyAmount ?? settings.noKitPenaltyAmount;
     settings.monthlyRideRegistrationFee = data.monthlyRideRegistrationFee ?? settings.monthlyRideRegistrationFee;
     settings.outstationMinWalletBalance = data.outstationMinWalletBalance ?? settings.outstationMinWalletBalance;
+    if (data.enforceOutstationMinWalletBalance !== undefined) {
+      settings.enforceOutstationMinWalletBalance = !!data.enforceOutstationMinWalletBalance;
+    }
     if (data.supportEmail !== undefined) settings.supportEmail = data.supportEmail;
     if (data.supportPhone !== undefined) settings.supportPhone = data.supportPhone;
     if (data.ratingQuestions !== undefined) settings.ratingQuestions = data.ratingQuestions;

@@ -285,7 +285,20 @@ export async function findAllEligibleOnlineDrivers({
         { $project: projection },
       ];
 
-  const rows = await Driver.aggregate(pipeline);
+  let rows = await Driver.aggregate(pipeline);
+
+  // If geoNear yielded zero results (e.g., drivers online but location unindexed/empty),
+  // fallback to fetching all online drivers via plain match so offers are still dispatched.
+  if (rows.length === 0 && validateCoords({ lat, lng })) {
+    const fallbackPipeline = [
+      { $match: match },
+      { $limit: safeCap },
+      carTypeLookup,
+      { $project: projection },
+    ];
+    rows = await Driver.aggregate(fallbackPipeline);
+  }
+
   return rows.map(shapeDriverHit);
 }
 

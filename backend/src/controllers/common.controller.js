@@ -31,7 +31,7 @@ export const makeRefreshAccessToken = (audience) =>
     const incomingRefreshToken = req.cookies[cookieName] || req.body.refreshToken;
     const tokens = await commonService.refreshSessionTokens(incomingRefreshToken);
     setAuthCookies(res, tokens, audience);
-    return res.status(200).json(new ApiResponse(200, {}, 'Token refreshed successfully'));
+    return res.status(200).json(new ApiResponse(200, tokens, 'Token refreshed successfully'));
   });
 
 /** @param {string} audience — one of AUDIENCES */

@@ -61,6 +61,18 @@ export const WALLET_TXN_SOURCE = Object.freeze({
   SIGNUP_BONUS: 'signup_bonus',
   /** Debit for monthly ride registration fee (when paid via cash) */
   MONTHLY_REGISTRATION_DEDUCTION: 'monthly_registration_deduction',
+  /**
+   * Driver-side settlement after a CASH trip. The driver collected the
+   * full `totalPayable` from the customer in hand, so they owe the
+   * platform `totalPayable − driverEarning` (commission + taxes/charges).
+   */
+  CASH_TRIP_SETTLEMENT: 'cash_trip_settlement',
+  /** Credit of the driver's earning after a non-cash trip completes. */
+  TRIP_EARNING: 'trip_earning',
+  /** Debit charged when a driver completes a trip without a Driver Kit. */
+  NO_KIT_PENALTY: 'no_kit_penalty',
+  /** Debit charged when a driver cancels an accepted booking. */
+  DRIVER_CANCELLATION_PENALTY: 'driver_cancellation_penalty',
   /** Debit for a driver withdrawal request. */
   WITHDRAWAL: 'withdrawal',
   /** Credit when a withdrawal is rejected/reversed. */

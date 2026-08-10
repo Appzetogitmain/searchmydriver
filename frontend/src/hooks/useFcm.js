@@ -14,13 +14,16 @@ export function useFcm() {
     async function registerPush() {
       if (!isUserAuthenticated && !isDriverAuthenticated) return;
 
-      console.log('[FCM] Requesting FCM registration...');
-      const token = await requestFcmToken();
-      if (!token || !active) return;
-
-      console.log('[FCM] Received token:', token);
-
       try {
+        const { isFirebaseConfigured } = await import('../config/firebase');
+        if (!isFirebaseConfigured()) return;
+
+        console.log('[FCM] Requesting FCM registration...');
+        const token = await requestFcmToken();
+        if (!token || !active) return;
+
+        console.log('[FCM] Received token:', token);
+
         const isDriverRoute = window.location.pathname.startsWith('/driver');
         if (isDriverRoute && isDriverAuthenticated) {
           await api.post('/driver/fcm-token', { token });
@@ -30,7 +33,7 @@ export function useFcm() {
           console.log('[FCM] Registered token for user successfully');
         }
       } catch (err) {
-        console.error('[FCM] Failed to update token on backend:', err);
+        console.warn('[FCM] FCM registration skipped or failed:', err?.message || err);
       }
     }
 

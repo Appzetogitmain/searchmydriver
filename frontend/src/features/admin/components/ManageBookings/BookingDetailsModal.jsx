@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import AdminDetailModal from '../AdminDetailModal';
 import Badge from '../../../../components/Badge';
 import {
@@ -15,8 +16,11 @@ import {
   AlertCircle,
   MessageSquare,
   Star,
+  XCircle,
 } from 'lucide-react';
 import ChatViewer from './ChatViewer';
+import { ACTIVE_BOOKING_STATUSES } from '../../../../constants/bookingStatus';
+import { cancelAdminBooking } from '../../../../store/admin/useAdminBookingsStore';
 
 const STATUS_VARIANTS = {
   completed: 'success',
@@ -73,8 +77,42 @@ const BookingDetailsModal = ({
   vehicle = null,
   bufferMinutes = null,
   loadingExtra = false,
+  onCancelled,
 }) => {
+  // Declared above the `!booking` guard — hooks must run in the same
+  // order on every render, and this component returns early when the
+  // table has no row selected.
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState('');
+
   if (!booking) return null;
+
+  const canCancel = ACTIVE_BOOKING_STATUSES.includes(booking.status);
+
+  const closeAndReset = () => {
+    setConfirmingCancel(false);
+    setCancelReason('');
+    setCancelError('');
+    onClose?.();
+  };
+
+  const handleCancel = async () => {
+    setCancelling(true);
+    setCancelError('');
+    try {
+      await cancelAdminBooking(booking._id, cancelReason);
+      onCancelled?.();
+      closeAndReset();
+    } catch (err) {
+      setCancelError(
+        err.response?.data?.message || 'Failed to cancel this booking. Please try again.',
+      );
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   const statusVariant = STATUS_VARIANTS[booking.status] || 'default';
   const isScheduled = booking.bookingType === 'scheduled';
@@ -101,9 +139,70 @@ const BookingDetailsModal = ({
   return (
     <AdminDetailModal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={closeAndReset}
       title={`Booking ${booking.bookingNumber || ''}`}
       subtitle={`Created on ${new Date(booking.createdAt).toLocaleString()}`}
+      footer={
+        canCancel ? (
+          <div className="space-y-3">
+            {cancelError && (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                {cancelError}
+              </div>
+            )}
+
+            {confirmingCancel ? (
+              <div className="space-y-3">
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  This cancels the booking for the customer with{' '}
+                  <span className="font-semibold">no cancellation fee</span>, refunds
+                  everything they have paid
+                  {booking.driverId ? ', and releases the assigned driver' : ''}. This cannot
+                  be undone.
+                </div>
+                <textarea
+                  rows={2}
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  placeholder="Reason (optional) — shown in the booking's cancellation record"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-400"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    disabled={cancelling}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {cancelling && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {cancelling ? 'Cancelling…' : 'Yes, cancel this booking'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConfirmingCancel(false);
+                      setCancelError('');
+                    }}
+                    disabled={cancelling}
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    Keep booking
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmingCancel(true)}
+                className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50"
+              >
+                <XCircle className="w-4 h-4" />
+                Cancel booking
+              </button>
+            )}
+          </div>
+        ) : null
+      }
       headerExtra={
         <div className="flex justify-between items-start gap-4">
           <div className="min-w-0">

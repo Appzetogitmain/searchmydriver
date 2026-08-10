@@ -81,7 +81,14 @@ function shouldSkipTokenRefresh(config) {
 // Tells the backend which session a shared route is being called with, so a
 // browser signed into two apps at once resolves deterministically.
 api.interceptors.request.use((config) => {
-  config.headers['X-Auth-Audience'] = audienceForUrl(config.url || '');
+  const audience = audienceForUrl(config.url || '');
+  config.headers['X-Auth-Audience'] = audience;
+
+  const store = AUDIENCE_CONFIG[audience]?.store;
+  const token = store?.getState()?.accessToken;
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
 
@@ -91,9 +98,22 @@ api.interceptors.request.use((config) => {
 const refreshPromises = {};
 
 function refreshSession(audience) {
-  const { refreshUrl } = AUDIENCE_CONFIG[audience];
+  const { refreshUrl, store } = AUDIENCE_CONFIG[audience];
+  const storedRefreshToken = store?.getState()?.refreshToken;
   refreshPromises[audience] ??= api
-    .post(refreshUrl, {})
+    .post(refreshUrl, { refreshToken: storedRefreshToken || undefined })
+    .then((res) => {
+      const data = res.data?.data || {};
+      if (data.accessToken && store?.getState()?.setAuth) {
+        const state = store.getState();
+        const currentEntity = state.driver || state.user || state.admin;
+        state.setAuth(currentEntity, {
+          accessToken: data.accessToken,
+          refreshToken: data.refreshToken || storedRefreshToken,
+        });
+      }
+      return res;
+    })
     .finally(() => {
       refreshPromises[audience] = null;
     });
@@ -126,8 +146,12 @@ api.interceptors.response.use(
         }
         return Promise.reject(refreshError);
       }
-      // Deliberately outside the try: a failure of the *retried* request is a
-      // failure of that request, not evidence that the session is invalid.
+      // Attach the newly refreshed access token to the retried request
+      const latestToken = AUDIENCE_CONFIG[audience]?.store?.getState()?.accessToken;
+      if (latestToken) {
+        originalRequest.headers = originalRequest.headers || {};
+        originalRequest.headers.Authorization = `Bearer ${latestToken}`;
+      }
       return api(originalRequest);
     }
 

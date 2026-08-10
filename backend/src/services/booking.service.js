@@ -869,27 +869,18 @@ export async function createBookingService(userId, body) {
     }
   }
 
-  // Outstation pickups are always scheduled in advance — the manual
-  // assignment queue needs at least the admin-configured lead window
-  // for ops to pick a driver before the trip is supposed to start. Past
-  // pickups land here too (negative diff < positive lead) and are
-  // rejected with the same 422 so the FE can surface one consistent
-  // error path. The knob lives on `ServicePricing.scheduledDispatch`
-  // and is admin-tunable per service (same field hourly already uses).
+  // Outstation pickups can start right now or be scheduled in advance.
+  // We only reject pickups that are in the past (allowing a 5-minute grace window for clock skew/latency).
   if (serviceType === SERVICE_TYPES.OUTSTATION) {
-    const cfg = await loadScheduledDispatchConfig(serviceType);
-    const minLeadHours =
-      cfg.MIN_SCHEDULED_LEAD_HOURS ?? SCHEDULED_BOOKING.MIN_SCHEDULED_LEAD_HOURS;
-    const minLeadMs = minLeadHours * 60 * 60 * 1000;
     const pickupRaw = outstation?.pickupAt || outstation?.startDate;
     const startMs = new Date(pickupRaw).getTime();
     if (!Number.isFinite(startMs)) {
       throw new ApiError(400, 'Outstation: pickupAt is invalid');
     }
-    if (startMs - Date.now() < minLeadMs) {
+    if (startMs < Date.now() - 5 * 60 * 1000) {
       throw new ApiError(
         422,
-        `Outstation bookings must start at least ${minLeadHours} hours from now. Pick a later pickup time.`,
+        'Outstation booking pickup time cannot be in the past.',
       );
     }
     // Outstation always gets its own booking type — override whatever the
@@ -1432,6 +1423,157 @@ export async function cancelBookingByUserService(userId, bookingId, reason = '')
     console.error('[booking] failed to track cancellation count or notify admins:', err?.message);
   }
   // --- End Cancellation Tracking ---
+
+  return booking.toObject();
+}
+
+/**
+ * Staff-initiated cancellation of a live booking.
+ *
+ * Distinct from `cancelBookingByUserService` in one important way: the
+ * customer did not choose to cancel, so NO cancellation fee is charged
+ * and whatever they paid is refunded in full. There is no driver share
+ * either — nobody is being compensated out of the customer's pocket for
+ * a call the platform made.
+ *
+ * Works from any active status. Two cases need different cleanup:
+ *
+ *   - Still searching  → the wave dispatcher has live offers sitting on
+ *     driver phones, and a 30-minute searching timer is armed that would
+ *     otherwise fire later and stomp this cancellation into
+ *     NO_DRIVERS_FOUND. Both must be torn down.
+ *   - Driver already on it → the driver is holding `isOnTrip`, plus
+ *     no-show / payment timers may be armed against the booking.
+ *
+ * Everything below the status write is best-effort: a booking that has
+ * been marked cancelled must not be rolled back because a downstream
+ * notification or ledger write hiccuped.
+ */
+export async function adminCancelBookingService(bookingId, staff, reason = '') {
+  const booking = await Booking.findOne({ _id: bookingId, isDeleted: false });
+  if (!booking) throw new ApiError(404, 'Booking not found');
+  if (!ACTIVE_BOOKING_STATUSES.includes(booking.status)) {
+    throw new ApiError(
+      400,
+      `This booking is already ${booking.status?.replace(/_/g, ' ')} and can no longer be cancelled.`,
+    );
+  }
+
+  // Zone-scoped staff may only cancel bookings inside a zone they own —
+  // mirrors the read scoping in `listAdminBookingsService`.
+  if (staff?.role === 'team_member') {
+    const allowed = (staff.assignedZones || []).map(String);
+    const bookingZones = (booking.zoneIds || []).map(String);
+    if (!bookingZones.some((z) => allowed.includes(z))) {
+      throw new ApiError(403, 'This booking is outside your assigned zones.');
+    }
+  }
+
+  const previouslyAssignedDriver = booking.driverId;
+  const wasSearching =
+    booking.status === BOOKING_STATUS.SEARCHING ||
+    booking.status === BOOKING_STATUS.PENDING_ASSIGNMENT;
+  const wasPaid = booking.paymentStatus === BOOKING_PAYMENT_STATUS.PAID;
+  const paidViaWallet = booking.paymentMethod === BOOKING_PAYMENT_METHOD.WALLET;
+  const refundAmount = wasPaid
+    ? Math.max(0, round2(Number(booking.payment?.amountPaidRupees) || 0))
+    : 0;
+
+  // Pull any in-flight offer off every driver's screen before the status
+  // write, so nobody can accept a booking that is about to be cancelled.
+  try {
+    const { withdrawCurrentOfferService } = await import('./bookingDispatch.service.js');
+    await withdrawCurrentOfferService(bookingId, 'cancelled_by_admin');
+  } catch (err) {
+    console.warn('[booking] admin-cancel could not withdraw offers:', err?.message);
+  }
+
+  booking.status = BOOKING_STATUS.CANCELLED;
+  booking.cancellation = {
+    reason: reason?.trim() || 'cancelled_by_admin',
+    cancelledBy: 'admin',
+    feeCharged: 0,
+    refundAmount,
+    driverShare: 0,
+    companyShare: 0,
+  };
+  booking.timeline.cancelledAt = new Date();
+  booking.dispatch.pendingOfferIds = [];
+  booking.dispatch.currentExpiresAt = null;
+  if (wasPaid && paidViaWallet && refundAmount > 0) {
+    booking.paymentStatus = BOOKING_PAYMENT_STATUS.REFUNDED;
+  }
+  await releaseBookingBufferHold(booking);
+  await clearPendingExtensionsOnTerminate(booking, 'cancelled_by_admin');
+  await booking.save();
+
+  // Disarm every timer that could still act on this booking. The
+  // searching timeout matters most: left armed it fires up to 30 minutes
+  // later and rewrites the booking to NO_DRIVERS_FOUND.
+  cancelSearchingSchedule(bookingId);
+  cancelPaymentTimeout(bookingId);
+  cancelNoShowSchedule(bookingId);
+  cancelScheduledBookingJobs(bookingId).catch(() => {});
+  await releaseDriverFromBooking(previouslyAssignedDriver);
+
+  let refundRecord = null;
+  if (refundAmount > 0) {
+    if (paidViaWallet) {
+      try {
+        await creditWalletService({
+          userId: booking.userId,
+          amount: refundAmount,
+          source: WALLET_TXN_SOURCE.BOOKING_REFUND,
+          description: `Refund — booking ${booking.bookingNumber} cancelled by support`,
+          refType: 'Booking',
+          refId: String(booking._id),
+        });
+      } catch (refundErr) {
+        console.error(
+          '[booking] failed to credit wallet for admin cancellation',
+          String(booking._id),
+          refundErr?.message,
+        );
+      }
+    } else {
+      // Legacy Razorpay path — recorded for an admin to process by hand.
+      refundRecord = await issueBookingRefundService(booking, {
+        initiatedBy: REFUND_INITIATED_BY.ADMIN,
+        reason: booking.cancellation.reason,
+        breakdown: {
+          amountRupees: refundAmount,
+          cancellationFeeRupees: 0,
+          grossPaidRupees: refundAmount,
+        },
+      });
+    }
+  }
+
+  const payload = {
+    bookingId: String(booking._id),
+    status: booking.status,
+    paymentStatus: booking.paymentStatus,
+    cancellation: booking.cancellation?.toObject?.() || booking.cancellation,
+    timeline: booking.timeline?.toObject?.() || booking.timeline,
+    refund: refundRecord
+      ? {
+          status: refundRecord.status,
+          amountRupees: refundRecord.amountRupees,
+          cancellationFeeRupees: refundRecord.cancellationFeeRupees,
+        }
+      : null,
+  };
+  emitToUser(booking.userId, S2C_EVENTS.BOOKING_UPDATED, payload);
+  emitToBooking(booking._id, S2C_EVENTS.BOOKING_UPDATED, payload);
+  if (previouslyAssignedDriver) {
+    emitToDriver(previouslyAssignedDriver, S2C_EVENTS.BOOKING_UPDATED, payload);
+  }
+  emitToAdmins(S2C_EVENTS.BOOKING_UPDATED, payload);
+
+  console.log(
+    '[booking] admin cancelled booking', booking.bookingNumber,
+    { by: String(staff?._id || ''), wasSearching, refundAmount },
+  );
 
   return booking.toObject();
 }

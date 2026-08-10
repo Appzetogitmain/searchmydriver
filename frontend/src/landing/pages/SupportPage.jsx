@@ -14,18 +14,22 @@ const SupportPage = () => {
   const [loading, setLoading] = useState(false);
   const [submittedTicket, setSubmittedTicket] = useState(null);
   
-  const [supportPhone, setSupportPhone] = useState('+91 98765 43210');
-  const [supportEmail, setSupportEmail] = useState('support@searchmydriver.com');
+  const [contactInfo, setContactInfo] = useState({
+    supportPhone: '2222222222',
+    supportEmail: 'support@searchmydriver.com',
+    supportDescription: 'Our support team is available 24/7 to assist you. Choose whichever channel is most convenient for you.',
+    responseTime: 'Usually under 15 minutes',
+    officeAddress: '',
+  });
 
   React.useEffect(() => {
-    api.get('/common/settings')
+    api.get('/web-pages/contact-info')
       .then((res) => {
         if (res.data?.data) {
-          if (res.data.data.supportPhone) setSupportPhone(res.data.data.supportPhone);
-          if (res.data.data.supportEmail) setSupportEmail(res.data.data.supportEmail);
+          setContactInfo((prev) => ({ ...prev, ...res.data.data }));
         }
       })
-      .catch((err) => console.error('Failed to load support settings', err));
+      .catch((err) => console.error('Failed to load contact info', err));
   }, []);
 
   const handleChange = (e) => {
@@ -93,37 +97,37 @@ const SupportPage = () => {
             <div className="bg-white border border-slate-200 p-8 rounded-3xl shadow-sm space-y-6">
               <h3 className="text-xl font-bold text-slate-950">Contact Information</h3>
               <p className="text-slate-500 text-sm font-medium">
-                Our support team is available 24/7 to assist you. Choose whichever channel is most convenient for you.
+                {contactInfo.supportDescription || 'Our support team is available 24/7 to assist you. Choose whichever channel is most convenient for you.'}
               </p>
 
               <div className="space-y-4 pt-4">
                 <div className="flex items-center gap-4 text-slate-600">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600 shrink-0">
                     <Phone className="w-5 h-5" />
                   </div>
                   <div>
                     <p className="text-xs text-slate-400 font-bold uppercase">Call Us</p>
-                    <p className="text-sm font-bold text-slate-900">{supportPhone}</p>
+                    <p className="text-sm font-bold text-slate-900">{contactInfo.supportPhone}</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-4 text-slate-600">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600 shrink-0">
                     <Mail className="w-5 h-5" />
                   </div>
                   <div>
                     <p className="text-xs text-slate-400 font-bold uppercase">Email Support</p>
-                    <p className="text-sm font-bold text-slate-900">{supportEmail}</p>
+                    <p className="text-sm font-bold text-slate-900">{contactInfo.supportEmail}</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-4 text-slate-600">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600 shrink-0">
                     <Clock className="w-5 h-5" />
                   </div>
                   <div>
                     <p className="text-xs text-slate-400 font-bold uppercase">Response Time</p>
-                    <p className="text-sm font-bold text-slate-900">Usually under 15 minutes</p>
+                    <p className="text-sm font-bold text-slate-900">{contactInfo.responseTime || 'Usually under 15 minutes'}</p>
                   </div>
                 </div>
               </div>

@@ -142,10 +142,10 @@ function HourlyVariants({ pricing, draft, onPatch, onContinue }) {
     () => mergeScheduledDispatchConfig(pricing?.scheduledDispatch),
     [pricing?.scheduledDispatch],
   );
-  const minLeadHours = Math.max(
-    0,
-    Number(dispatchConfig.MIN_SCHEDULED_LEAD_HOURS) || 0,
-  );
+  const isOutstation = draft.serviceType === SERVICE_TYPES.OUTSTATION;
+  const minLeadHours = isOutstation
+    ? 0
+    : Math.max(0, Number(dispatchConfig.MIN_SCHEDULED_LEAD_HOURS) || 0);
   // `Date.now` is impure, so we read it ONCE per mount via lazy
   // `useState` (idempotent for purity lint). When pricing arrives and
   // `minLeadHours` changes, we re-snap inside an event-style updater

@@ -195,7 +195,7 @@ export async function getDriverHomeSummaryService(driverId) {
   const [today, driver, activeBookingRaw] = await Promise.all([
     aggregateEarnings(driverId, todayStart, todayEnd),
     Driver.findById(driverId)
-      .select('rating ratingCount cancellationChances')
+      .select('rating ratingCount cancellationChances wallet')
       .lean(),
     Booking.findOne({
       driverId,
@@ -236,6 +236,21 @@ export async function getDriverHomeSummaryService(driverId) {
     );
   }
 
+  // A negative wallet does NOT stop a driver going online, but the
+  // dispatcher silently drops them from every cash booking
+  // (`requirePositiveWalletBalance` in `findAllEligibleOnlineDrivers`).
+  // Without this the driver sits on a green "Online" toggle wondering why
+  // no requests ever arrive, so surface the reason on the home screen.
+  const walletBalance = round2(Number(driver?.wallet?.balance) || 0);
+  const dispatchBlock =
+    walletBalance < 0
+      ? {
+          code: 'NEGATIVE_WALLET',
+          walletBalance,
+          shortBy: round2(Math.abs(walletBalance)),
+        }
+      : null;
+
   return {
     today,
     rating: {
@@ -244,6 +259,8 @@ export async function getDriverHomeSummaryService(driverId) {
     },
     activeBooking: sanitizeBookingForDriver(activeBookingRaw),
     cancellationChances,
+    wallet: { balance: walletBalance },
+    dispatchBlock,
   };
 }
 

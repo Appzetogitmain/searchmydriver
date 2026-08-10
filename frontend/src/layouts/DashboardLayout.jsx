@@ -23,7 +23,7 @@ const driverNavItems = [
 
 export const UserDashboardLayout = () => {
   return (
-    <div className="flex-1 flex flex-col pb-16">
+    <div className="flex-1 flex flex-col pb-24">
       <Outlet />
       <BottomNav items={userNavItems} />
     </div>
@@ -32,7 +32,7 @@ export const UserDashboardLayout = () => {
 
 export const DriverDashboardLayout = () => {
   return (
-    <div className="flex-1 flex flex-col pb-16">
+    <div className="flex-1 flex flex-col pb-24">
       <Outlet />
       <BottomNav items={driverNavItems} />
       <BookingOfferModal />

@@ -7,7 +7,12 @@ import {
   Loader2,
   RefreshCw,
   FileText,
-  X,
+  Phone,
+  Mail,
+  Clock,
+  MapPin,
+  Save,
+  Building2,
 } from 'lucide-react';
 import Card from '../../../components/Card';
 import Button from '../../../components/Button';
@@ -17,30 +22,62 @@ import api from '../../../utils/api';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 
 const ManageWebPages = () => {
+  const [activeTab, setActiveTab] = useState('static-pages'); // 'static-pages' | 'contact-info'
+
+  // Static Pages State
   const [pages, setPages] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [loadingPages, setLoadingPages] = useState(true);
+  const [pagesError, setPagesError] = useState('');
   const [editingPage, setEditingPage] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Contact Info State
+  const [contactInfo, setContactInfo] = useState({
+    supportPhone: '2222222222',
+    supportEmail: 'support@searchmydriver.com',
+    supportDescription:
+      'Our support team is available 24/7 to assist you. Choose whichever channel is most convenient for you.',
+    responseTime: 'Usually under 15 minutes',
+    officeAddress: '123 Main Street, Suite 400, City, Country',
+  });
+  const [loadingContact, setLoadingContact] = useState(true);
+  const [savingContact, setSavingContact] = useState(false);
+  const [contactError, setContactError] = useState('');
+
   const fetchPages = useCallback(async () => {
-    setLoading(true);
+    setLoadingPages(true);
     try {
       const res = await api.get('/web-pages/admin');
       setPages(res?.data?.data || []);
-      setError('');
+      setPagesError('');
     } catch (err) {
-      setError(err?.response?.data?.message || 'Failed to load web pages');
+      setPagesError(err?.response?.data?.message || 'Failed to load web pages');
     } finally {
-      setLoading(false);
+      setLoadingPages(false);
+    }
+  }, []);
+
+  const fetchContactInfo = useCallback(async () => {
+    setLoadingContact(true);
+    try {
+      const res = await api.get('/web-pages/admin/contact-info');
+      if (res?.data?.data) {
+        setContactInfo((prev) => ({ ...prev, ...res.data.data }));
+      }
+      setContactError('');
+    } catch (err) {
+      setContactError(err?.response?.data?.message || 'Failed to load contact information');
+    } finally {
+      setLoadingContact(false);
     }
   }, []);
 
   useEffect(() => {
     fetchPages();
-  }, [fetchPages]);
+    fetchContactInfo();
+  }, [fetchPages, fetchContactInfo]);
 
   const handleNew = () => {
     setEditingPage(null);
@@ -67,88 +104,307 @@ const ManageWebPages = () => {
     }
   };
 
+  const handleContactChange = (field) => (e) => {
+    setContactInfo((prev) => ({ ...prev, [field]: e.target.value }));
+  };
+
+  const handleSaveContactInfo = async (e) => {
+    e.preventDefault();
+    setSavingContact(true);
+    setContactError('');
+    try {
+      const res = await api.put('/web-pages/admin/contact-info', contactInfo);
+      if (res?.data?.data) {
+        setContactInfo((prev) => ({ ...prev, ...res.data.data }));
+      }
+      toast.success('Contact information updated successfully');
+    } catch (err) {
+      const msg = err?.response?.data?.message || 'Failed to update contact information';
+      setContactError(msg);
+      toast.error(msg);
+    } finally {
+      setSavingContact(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Header & Tabs */}
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
         <div>
-          <h1 className="text-2xl font-bold text-text">Static Pages</h1>
+          <h1 className="text-2xl font-bold text-text">About Company & Static Pages</h1>
           <p className="text-sm text-text-secondary mt-1">
-            Manage Privacy Policy, Terms of Service, and other static content
+            Manage Privacy Policy, Terms of Service, and Contact Information settings
           </p>
         </div>
         <div className="flex items-center gap-3 w-full sm:w-auto">
-          <Button variant="outline" onClick={fetchPages} disabled={loading} className="px-3 shrink-0">
-            <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-          <Button onClick={handleNew} className="flex-1 sm:flex-none">
-            <Plus className="w-5 h-5 mr-2" />
-            Add New Page
-          </Button>
+          {activeTab === 'static-pages' && (
+            <>
+              <Button variant="outline" onClick={fetchPages} disabled={loadingPages} className="px-3 shrink-0">
+                <RefreshCw className={`w-5 h-5 ${loadingPages ? 'animate-spin' : ''}`} />
+              </Button>
+              <Button onClick={handleNew} className="flex-1 sm:flex-none">
+                <Plus className="w-5 h-5 mr-2" />
+                Add New Page
+              </Button>
+            </>
+          )}
+          {activeTab === 'contact-info' && (
+            <Button variant="outline" onClick={fetchContactInfo} disabled={loadingContact} className="px-3 shrink-0">
+              <RefreshCw className={`w-5 h-5 ${loadingContact ? 'animate-spin' : ''}`} />
+            </Button>
+          )}
         </div>
       </div>
 
-      {error && (
-        <div className="bg-danger/10 text-danger p-4 rounded-xl text-sm font-medium">
-          {error}
+      {/* Navigation Tabs */}
+      <div className="flex border-b border-border space-x-6">
+        <button
+          onClick={() => setActiveTab('static-pages')}
+          className={`pb-3 text-sm font-semibold transition-colors relative ${
+            activeTab === 'static-pages'
+              ? 'text-primary border-b-2 border-primary'
+              : 'text-text-secondary hover:text-text'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4" />
+            Static Pages
+          </div>
+        </button>
+        <button
+          onClick={() => setActiveTab('contact-info')}
+          className={`pb-3 text-sm font-semibold transition-colors relative ${
+            activeTab === 'contact-info'
+              ? 'text-primary border-b-2 border-primary'
+              : 'text-text-secondary hover:text-text'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Phone className="w-4 h-4" />
+            Contact Information
+          </div>
+        </button>
+      </div>
+
+      {/* TAB 1: Static Pages */}
+      {activeTab === 'static-pages' && (
+        <div className="space-y-6">
+          {pagesError && (
+            <div className="bg-danger/10 text-danger p-4 rounded-xl text-sm font-medium">
+              {pagesError}
+            </div>
+          )}
+
+          {loadingPages && !pages.length ? (
+            <div className="flex items-center justify-center h-64">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          ) : !pages.length ? (
+            <div className="text-center py-16 bg-white rounded-3xl border border-border">
+              <div className="w-16 h-16 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-4">
+                <FileText className="w-8 h-8" />
+              </div>
+              <h3 className="text-lg font-bold text-text">No pages found</h3>
+              <p className="text-text-secondary mt-2 mb-6">Create your first static page to display on the website.</p>
+              <Button onClick={handleNew}>Create Page</Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {pages.map((page) => (
+                <Card key={page._id} className="p-5 flex flex-col h-full hover:border-primary/30 transition-colors">
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div>
+                      <h3 className="font-bold text-lg text-text">{page.title}</h3>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs font-mono text-text-secondary bg-bg px-2 py-1 rounded">/{page.slug}</span>
+                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                          page.isActive ? 'bg-success/10 text-success' : 'bg-gray-100 text-gray-500'
+                        }`}>
+                          {page.isActive ? 'Active' : 'Draft'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleEdit(page)}
+                        className="p-2 text-text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
+                        title="Edit Page"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setConfirmDelete(page)}
+                        className="p-2 text-text-secondary hover:text-danger hover:bg-danger/5 rounded-lg transition-colors"
+                        title="Delete Page"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-auto pt-4 border-t border-border/50 text-xs text-text-secondary">
+                    Last updated: {new Date(page.updatedAt).toLocaleDateString()}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {loading && !pages.length ? (
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        </div>
-      ) : !pages.length ? (
-        <div className="text-center py-16 bg-white rounded-3xl border border-border">
-          <div className="w-16 h-16 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-4">
-            <FileText className="w-8 h-8" />
-          </div>
-          <h3 className="text-lg font-bold text-text">No pages found</h3>
-          <p className="text-text-secondary mt-2 mb-6">Create your first static page to display on the website.</p>
-          <Button onClick={handleNew}>Create Page</Button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {pages.map((page) => (
-            <Card key={page._id} className="p-5 flex flex-col h-full hover:border-primary/30 transition-colors">
-              <div className="flex items-start justify-between gap-4 mb-3">
+      {/* TAB 2: Contact Information Control */}
+      {activeTab === 'contact-info' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          {/* Form Side */}
+          <div className="lg:col-span-7 space-y-6">
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-border">
                 <div>
-                  <h3 className="font-bold text-lg text-text">{page.title}</h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xs font-mono text-text-secondary bg-bg px-2 py-1 rounded">/{page.slug}</span>
-                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                      page.isActive ? 'bg-success/10 text-success' : 'bg-gray-100 text-gray-500'
-                    }`}>
-                      {page.isActive ? 'Active' : 'Draft'}
-                    </span>
+                  <h2 className="text-lg font-bold text-text">Contact Details Settings</h2>
+                  <p className="text-xs text-text-secondary mt-1">
+                    Update phone, email, description, and response time displayed on the public support page
+                  </p>
+                </div>
+                <Building2 className="w-6 h-6 text-primary" />
+              </div>
+
+              {contactError && (
+                <div className="mb-6 bg-danger/10 text-danger p-4 rounded-xl text-sm font-medium">
+                  {contactError}
+                </div>
+              )}
+
+              {loadingContact ? (
+                <div className="flex items-center justify-center h-48">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                </div>
+              ) : (
+                <form onSubmit={handleSaveContactInfo} className="space-y-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Input
+                      label="Call Us (Phone Number)"
+                      placeholder="e.g. 2222222222"
+                      value={contactInfo.supportPhone}
+                      onChange={handleContactChange('supportPhone')}
+                      required
+                    />
+                    <Input
+                      label="Email Support Address"
+                      placeholder="e.g. support@searchmydriver.com"
+                      type="email"
+                      value={contactInfo.supportEmail}
+                      onChange={handleContactChange('supportEmail')}
+                      required
+                    />
+                  </div>
+
+                  <Input
+                    label="Response Time Label"
+                    placeholder="e.g. Usually under 15 minutes"
+                    value={contactInfo.responseTime}
+                    onChange={handleContactChange('responseTime')}
+                    required
+                  />
+
+                  <div>
+                    <label className="text-sm font-medium text-text mb-1.5 block">
+                      Support Subtitle / Description
+                    </label>
+                    <textarea
+                      rows={3}
+                      className="w-full bg-white border border-border rounded-xl p-3 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all duration-200 resize-none"
+                      placeholder="Enter support description..."
+                      value={contactInfo.supportDescription}
+                      onChange={handleContactChange('supportDescription')}
+                      required
+                    />
+                  </div>
+
+                  <Input
+                    label="Office Address"
+                    placeholder="e.g. 123 Main Street, Suite 400, City, Country"
+                    value={contactInfo.officeAddress}
+                    onChange={handleContactChange('officeAddress')}
+                  />
+
+                  <div className="pt-2 flex justify-end">
+                    <Button type="submit" loading={savingContact} className="min-w-40">
+                      <Save className="w-4 h-4 mr-2" />
+                      Save Contact Information
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </Card>
+          </div>
+
+          {/* Live Preview Side */}
+          <div className="lg:col-span-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-text-secondary">
+                Live Public Preview
+              </h3>
+              <span className="text-xs font-semibold px-2 py-0.5 bg-success/10 text-success rounded-full">
+                Interactive
+              </span>
+            </div>
+
+            <div className="bg-white border border-slate-200 p-8 rounded-3xl shadow-sm space-y-6">
+              <h3 className="text-xl font-bold text-slate-950">Contact Information</h3>
+              <p className="text-slate-500 text-sm font-medium leading-relaxed">
+                {contactInfo.supportDescription || 'Our support team is available 24/7 to assist you.'}
+              </p>
+
+              <div className="space-y-4 pt-4">
+                <div className="flex items-center gap-4 text-slate-600">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600 shrink-0">
+                    <Phone className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 font-bold uppercase">CALL US</p>
+                    <p className="text-sm font-bold text-slate-900">{contactInfo.supportPhone || '—'}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => handleEdit(page)}
-                    className="p-2 text-text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
-                    title="Edit Page"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setConfirmDelete(page)}
-                    className="p-2 text-text-secondary hover:text-danger hover:bg-danger/5 rounded-lg transition-colors"
-                    title="Delete Page"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+
+                <div className="flex items-center gap-4 text-slate-600">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600 shrink-0">
+                    <Mail className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 font-bold uppercase">EMAIL SUPPORT</p>
+                    <p className="text-sm font-bold text-slate-900">{contactInfo.supportEmail || '—'}</p>
+                  </div>
                 </div>
+
+                <div className="flex items-center gap-4 text-slate-600">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600 shrink-0">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 font-bold uppercase">RESPONSE TIME</p>
+                    <p className="text-sm font-bold text-slate-900">{contactInfo.responseTime || '—'}</p>
+                  </div>
+                </div>
+
+                {contactInfo.officeAddress && (
+                  <div className="flex items-center gap-4 text-slate-600">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600 shrink-0">
+                      <MapPin className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-400 font-bold uppercase">OFFICE LOCATION</p>
+                      <p className="text-sm font-bold text-slate-900">{contactInfo.officeAddress}</p>
+                    </div>
+                  </div>
+                )}
               </div>
-              
-              <div className="mt-auto pt-4 border-t border-border/50 text-xs text-text-secondary">
-                Last updated: {new Date(page.updatedAt).toLocaleDateString()}
-              </div>
-            </Card>
-          ))}
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Form Drawer */}
+      {/* Form Drawer for Static Pages */}
       <Drawer
         isOpen={showForm}
         onClose={() => setShowForm(false)}

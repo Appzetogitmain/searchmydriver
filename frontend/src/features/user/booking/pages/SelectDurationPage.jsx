@@ -97,10 +97,10 @@ function HourlyBranch({ pricing, draft, onPatch, onContinue }) {
     () => mergeScheduledDispatchConfig(pricing?.scheduledDispatch),
     [pricing?.scheduledDispatch],
   );
-  const minLeadHours = Math.max(
-    0,
-    Number(dispatchConfig.MIN_SCHEDULED_LEAD_HOURS) || 0,
-  );
+  const isOutstation = draft.serviceType === SERVICE_TYPES.OUTSTATION;
+  const minLeadHours = isOutstation
+    ? 0
+    : Math.max(0, Number(dispatchConfig.MIN_SCHEDULED_LEAD_HOURS) || 0);
   // Read the wall clock ONCE per mount so React's purity lint stays
   // happy on the derived `minPickupDate` memo (Date.now() is impure).
   // The backend re-validates against the live clock on Continue.
@@ -226,7 +226,10 @@ function OutstationBranch({ pricing, draft, onPatch, onContinue }) {
     () => mergeScheduledDispatchConfig(pricing?.scheduledDispatch),
     [pricing?.scheduledDispatch],
   );
-  const minLeadHours = Math.max(0, Number(dispatchConfig.MIN_SCHEDULED_LEAD_HOURS) || 0);
+  const isOutstation = draft.serviceType === SERVICE_TYPES.OUTSTATION;
+  const minLeadHours = isOutstation
+    ? 0
+    : Math.max(0, Number(dispatchConfig.MIN_SCHEDULED_LEAD_HOURS) || 0);
   // Lazy-snapshot the wall clock (Date.now is impure under
   // react-hooks/purity). Floor is stable for the lifetime of the
   // mount; backend re-validates against the live clock on Continue.

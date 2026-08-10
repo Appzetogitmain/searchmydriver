@@ -430,6 +430,7 @@ const ManageEmergencyPool = () => {
         isOpen={!!detailBooking}
         onClose={() => setDetailBooking(null)}
         booking={detailBooking}
+        onCancelled={fetchPool}
       />
     </div>
   );

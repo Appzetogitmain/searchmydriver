@@ -52,6 +52,8 @@ import {
   buildCommissionRevenueMeta,
   settleDriverEarning,
 } from './bookingExtension.service.js';
+import { debitWalletService } from './wallet.service.js';
+import { WALLET_TXN_SOURCE } from '../models/walletTransaction.model.js';
 
 /**
  * Generate a numeric OTP of the configured length. We zero-pad so codes that
@@ -570,7 +572,7 @@ export async function startTripService(driverId, bookingId, { otp } = {}) {
     const eligibility = await getDriverKitEligibility(driverId);
     if (!eligibility.hasKit) {
       emitNotification(
-        { user: driverId, userModel: 'Driver' },
+        { driverId },
         {
           title: 'Missing Driver Kit',
           body: 'You have started a trip without a Driver Kit. A penalty will be deducted at the end of this trip. Please purchase a kit to avoid this.',
@@ -771,11 +773,19 @@ export async function completeTripService(driverId, bookingId) {
       const penaltyAmount = Number(settings?.noKitPenaltyAmount) || 50;
 
       if (penaltyAmount > 0) {
-        // Deduct from driver's wallet
-        await Driver.updateOne(
-          { _id: booking.driverId },
-          { $inc: { 'wallet.balance': -penaltyAmount } }
-        );
+        // Deduct from driver's wallet. Goes through the wallet service so
+        // the penalty shows up in the driver's transaction history — a bare
+        // `$inc` here left them staring at an unexplained balance drop.
+        await debitWalletService({
+          userId: booking.driverId,
+          userType: 'Driver',
+          amount: penaltyAmount,
+          source: WALLET_TXN_SOURCE.NO_KIT_PENALTY,
+          description: `No Driver Kit penalty — trip ${booking.bookingNumber || ''}`,
+          refType: 'Booking',
+          refId: String(booking._id),
+          allowNegative: true,
+        });
 
         // Record as Platform Revenue
         recordPlatformRevenue({
@@ -829,7 +839,7 @@ export async function completeTripService(driverId, bookingId) {
     }
 
     emitNotification(
-      { user: booking.driverId, userModel: 'Driver' },
+      { driverId: booking.driverId },
       {
         title: 'Trip Completed',
         body: dBody,
@@ -840,7 +850,7 @@ export async function completeTripService(driverId, bookingId) {
 
   if (booking.userId) {
     emitNotification(
-      { user: booking.userId, userModel: 'User' },
+      { userId: booking.userId },
       {
         title: 'Trip Completed',
         body: `Your trip ${booking.bookingNumber || ''} has been completed. Hope you had a great ride!`,
@@ -861,8 +871,45 @@ export async function completeTripService(driverId, bookingId) {
     ),
   );
 
+  await warnDriverIfWalletBlocksDispatch(booking).catch(() => {});
+
   broadcastUpdate(booking);
   return booking.toObject();
+}
+
+/**
+ * A cash trip settles by debiting the driver the platform's share of the
+ * cash they collected, which routinely pushes their balance below zero —
+ * and a negative balance silently removes them from EVERY cash dispatch
+ * wave (`requirePositiveWalletBalance` in `findAllEligibleOnlineDrivers`).
+ *
+ * Left unannounced that reads as a broken app: the driver is online, the
+ * toggle is green, and requests simply never arrive. Tell them the moment
+ * it happens, and tell them exactly how much clears it.
+ *
+ * Best-effort — never blocks trip completion.
+ */
+async function warnDriverIfWalletBlocksDispatch(booking) {
+  if (!booking?.driverId) return;
+  const driver = await Driver.findById(booking.driverId)
+    .select('wallet')
+    .lean();
+  const balance = round2(Number(driver?.wallet?.balance) || 0);
+  if (balance >= 0) return;
+
+  const shortBy = round2(Math.abs(balance));
+  await emitNotification(
+    { driverId: booking.driverId },
+    {
+      title: 'Top up to keep getting rides',
+      body:
+        `Your wallet balance is −₹${shortBy}. Cash bookings are only sent to ` +
+        `drivers with ₹0 or more, so you will not receive new cash ride ` +
+        `requests until you add ₹${shortBy}.`,
+      severity: 'warning',
+      data: { type: 'WALLET_BLOCKS_DISPATCH', walletBalance: balance, shortBy },
+    },
+  );
 }
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
@@ -887,10 +934,16 @@ const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 async function applyDriverPenalty(driverId, penaltyRupees, booking) {
   if (!penaltyRupees || penaltyRupees <= 0) return;
   try {
-    await Driver.updateOne(
-      { _id: driverId },
-      { $inc: { 'wallet.balance': -penaltyRupees } },
-    );
+    await debitWalletService({
+      userId: driverId,
+      userType: 'Driver',
+      amount: penaltyRupees,
+      source: WALLET_TXN_SOURCE.DRIVER_CANCELLATION_PENALTY,
+      description: `Cancellation penalty — booking ${booking?.bookingNumber || ''}`,
+      refType: 'Booking',
+      refId: booking?._id ? String(booking._id) : '',
+      allowNegative: true,
+    });
   } catch (err) {
     console.warn(
       '[bookingTrip] failed to debit driver wallet on cancel:',

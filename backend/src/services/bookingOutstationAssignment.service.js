@@ -25,7 +25,7 @@ import {
 } from './driverConflict.service.js';
 import { getVehicleConflicts } from './vehicleConflict.service.js';
 import { loadScheduledDispatchConfig } from './bookingScheduled.service.js';
-import { getPlatformSettingsService } from './platform.service.js';
+import { resolveOutstationWalletFloorService } from './platform.service.js';
 
 /**
  * Outstation manual-assignment pipeline.
@@ -374,10 +374,13 @@ export async function listAvailableDriversForOutstationService(
     }
   }
 
-  // Enforce dynamic min wallet balance for outstation trips
-  const settings = await getPlatformSettingsService();
-  const minBalance = settings?.outstationMinWalletBalance ?? 1000;
-  match['wallet.balance'] = { $gte: minBalance };
+  // Enforce dynamic min wallet balance for outstation trips — unless
+  // admins have switched the rule off, in which case balance stops
+  // filtering the candidate list at all.
+  const minBalance = await resolveOutstationWalletFloorService();
+  if (minBalance !== null) {
+    match['wallet.balance'] = { $gte: minBalance };
+  }
 
   const [drivers, total] = await Promise.all([
     Driver.find(match)
@@ -489,10 +492,10 @@ export async function adminAssignDriverToOutstationService(
   });
   if (!driver) throw new ApiError(404, 'Driver not found or not approved');
 
-  // Enforce dynamic min wallet balance for outstation trips
-  const settings = await getPlatformSettingsService();
-  const minBalance = settings?.outstationMinWalletBalance ?? 1000;
-  if ((driver.wallet?.balance || 0) < minBalance) {
+  // Enforce dynamic min wallet balance for outstation trips — skipped
+  // entirely when the rule is switched off platform-wide.
+  const minBalance = await resolveOutstationWalletFloorService();
+  if (minBalance !== null && (driver.wallet?.balance || 0) < minBalance) {
     throw new ApiError(409, `Driver does not meet the minimum wallet balance requirement of ₹${minBalance} for outstation trips.`);
   }
 

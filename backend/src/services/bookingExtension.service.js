@@ -20,6 +20,7 @@ import {
 } from '../utils/socketEmitters.js';
 import { getServicePricingByTypeService } from './pricing.service.js';
 import {
+  creditWalletService,
   debitWalletService,
   releaseWalletHoldService,
 } from './wallet.service.js';
@@ -435,14 +436,21 @@ export async function settleDriverEarning(booking) {
   // Their displayed totalEarnings and todaySummary.earnings still 
   // increase by driverEarning, as they did earn that money.
   const amountOwedToPlatform = round2(totalPayable - driverEarning);
-  const balanceDelta = isCash ? -amountOwedToPlatform : driverEarning;
 
+  // Earnings counters and the today tile are display state, not money
+  // movement — they still go through a plain `$inc`. The wallet balance
+  // itself does NOT: it moves via the wallet service below so every
+  // rupee lands on the WalletTransaction ledger. A cash trip can swing a
+  // driver's balance by thousands (the commission + taxes they collected
+  // in hand), and while that write left no ledger row the balance
+  // appeared to teleport — the driver's history showed credits only, and
+  // a silently-negative balance then dropped them out of every cash
+  // dispatch wave with nothing anywhere explaining why.
   if (sameDay) {
     await Driver.updateOne(
       { _id: driverId },
       {
         $inc: {
-          'wallet.balance': balanceDelta,
           'wallet.totalEarnings': driverEarning,
           'todaySummary.trips': 1,
           'todaySummary.earnings': driverEarning,
@@ -456,10 +464,7 @@ export async function settleDriverEarning(booking) {
     await Driver.updateOne(
       { _id: driverId },
       {
-        $inc: {
-          'wallet.balance': balanceDelta,
-          'wallet.totalEarnings': driverEarning,
-        },
+        $inc: { 'wallet.totalEarnings': driverEarning },
         $set: {
           'todaySummary.dateKey': todayDateKey,
           'todaySummary.trips': 1,
@@ -467,6 +472,36 @@ export async function settleDriverEarning(booking) {
         },
       },
     );
+  }
+
+  if (isCash) {
+    if (amountOwedToPlatform > 0) {
+      // `allowNegative` because the driver is already holding the
+      // customer's cash — refusing the debit would leave the platform's
+      // share unrecorded, which is strictly worse than a negative balance.
+      await debitWalletService({
+        userId: driverId,
+        userType: 'Driver',
+        amount: amountOwedToPlatform,
+        source: WALLET_TXN_SOURCE.CASH_TRIP_SETTLEMENT,
+        description:
+          `Platform share of cash trip ${booking.bookingNumber || ''} — you collected ` +
+          `₹${totalPayable} from the customer and keep ₹${driverEarning}`,
+        refType: 'Booking',
+        refId: String(booking._id),
+        allowNegative: true,
+      });
+    }
+  } else {
+    await creditWalletService({
+      userId: driverId,
+      userType: 'Driver',
+      amount: driverEarning,
+      source: WALLET_TXN_SOURCE.TRIP_EARNING,
+      description: `Earning for trip ${booking.bookingNumber || ''}`,
+      refType: 'Booking',
+      refId: String(booking._id),
+    });
   }
 
   const commonMeta = {

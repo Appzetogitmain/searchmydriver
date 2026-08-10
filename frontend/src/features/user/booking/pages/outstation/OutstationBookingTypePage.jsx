@@ -69,14 +69,14 @@ const OutstationBookingTypePage = () => {
     setServiceType(SERVICE_TYPES.OUTSTATION);
   }, [setServiceType]);
 
-  const minLeadHours = dispatchConfig.MIN_SCHEDULED_LEAD_HOURS;
+  const minLeadHours = 0;
   // Lazy-snapshot the wall clock so `Date.now()` stays out of render
   // (react-hooks/purity) — the floor is stable for the mount, the
   // backend re-validates against the live clock on Continue.
   const [nowAnchorMs] = useState(() => Date.now());
   const minScheduledDate = useMemo(
-    () => new Date(nowAnchorMs + minLeadHours * 60 * 60_000),
-    [nowAnchorMs, minLeadHours],
+    () => new Date(nowAnchorMs),
+    [nowAnchorMs],
   );
   const handleContinue = () => {
     if (!selected) return;
@@ -175,7 +175,7 @@ const OutstationBookingTypePage = () => {
                 onChange={setScheduledAt}
                 minDate={minScheduledDate}
                 placeholder="Tap to choose pickup"
-                helper={`Earliest available is ${formatPickupDateTime(minScheduledDate)} — we need at least ${minLeadHours} hour${minLeadHours === 1 ? '' : 's'} lead time for scheduled rides.`}
+                helper={minLeadHours > 0 ? `Earliest available is ${formatPickupDateTime(minScheduledDate)} — we need at least ${minLeadHours} hour${minLeadHours === 1 ? '' : 's'} lead time for scheduled rides.` : undefined}
                 sheetTitle="Pickup date & time"
               />
             </div>

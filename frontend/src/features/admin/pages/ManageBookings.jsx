@@ -298,6 +298,7 @@ const ManageBookings = () => {
         isOpen={!!selectedBooking}
         onClose={() => setSelectedBooking(null)}
         booking={selectedBooking}
+        onCancelled={refetch}
       />
     </div>
   );

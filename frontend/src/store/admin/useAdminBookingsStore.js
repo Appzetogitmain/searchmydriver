@@ -42,3 +42,13 @@ export const useAdminBookingsStore = createQueryStore(
     };
   },
 );
+
+/**
+ * Cancel a live booking on the customer's behalf. Returns the updated
+ * booking; the caller is responsible for refetching the list so the row
+ * and the stats tiles pick up the new status.
+ */
+export async function cancelAdminBooking(bookingId, reason = '') {
+  const res = await api.patch(`/admin/bookings/${bookingId}/cancel`, { reason });
+  return res.data?.data;
+}

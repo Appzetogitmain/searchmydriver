@@ -78,7 +78,10 @@ function applyPlatformLayers(subtotal, pricing, subscription, allowancePassThrou
   const platformCommissionPercent = pricing.platformCommissionPercent || 0;
   const passThrough = Math.max(0, Math.min(Number(allowancePassThrough) || 0, subtotal));
   const commissionableSubtotal = Math.max(0, subtotal - passThrough);
-  const platformCommission = serviceCharge;
+  // Service-charge rate applied to the COMMISSIONABLE subtotal only, so the
+  // food / stay allowance reaches the driver untouched. Must stay identical
+  // to the backend — see `applyPlatformLayers` in pricing.service.js.
+  const platformCommission = (commissionableSubtotal * serviceChargePercent) / 100;
   const driverFareEarning = Math.max(0, commissionableSubtotal - platformCommission);
   const driverAllowanceEarning = passThrough;
   const driverEarning = Math.max(0, driverFareEarning + driverAllowanceEarning);

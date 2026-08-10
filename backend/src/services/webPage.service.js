@@ -47,3 +47,46 @@ export const deleteWebPageService = async (id) => {
   }
   return { id };
 };
+
+export const getContactInfoService = async () => {
+  const PlatformSettings = (await import('../models/platformSettings.model.js')).default;
+  let settings = await PlatformSettings.findOne();
+  if (!settings) {
+    settings = await PlatformSettings.create({});
+  }
+  return {
+    supportPhone: settings.supportPhone || '2222222222',
+    supportEmail: settings.supportEmail || 'support@searchmydriver.com',
+    supportDescription:
+      settings.supportDescription ||
+      'Our support team is available 24/7 to assist you. Choose whichever channel is most convenient for you.',
+    responseTime: settings.responseTime || 'Usually under 15 minutes',
+    officeAddress: settings.officeAddress || '123 Main Street, Suite 400, City, Country',
+  };
+};
+
+export const updateContactInfoService = async (data, updatedBy) => {
+  const PlatformSettings = (await import('../models/platformSettings.model.js')).default;
+  let settings = await PlatformSettings.findOne();
+  const updatePayload = {
+    supportPhone: data.supportPhone,
+    supportEmail: data.supportEmail,
+    supportDescription: data.supportDescription,
+    responseTime: data.responseTime,
+    officeAddress: data.officeAddress,
+    updatedBy: updatedBy || null,
+  };
+  if (!settings) {
+    settings = await PlatformSettings.create(updatePayload);
+  } else {
+    Object.assign(settings, updatePayload);
+    await settings.save();
+  }
+  return {
+    supportPhone: settings.supportPhone,
+    supportEmail: settings.supportEmail,
+    supportDescription: settings.supportDescription,
+    responseTime: settings.responseTime,
+    officeAddress: settings.officeAddress,
+  };
+};

@@ -15,6 +15,7 @@ import {
   Flag,
   Headset,
   ShieldAlert,
+  WalletMinimal,
 } from 'lucide-react';
 import NotificationBell from '../../../../components/common/NotificationBell';
 import { useCachedQuery } from '../../../../hooks/useCachedQuery';
@@ -86,6 +87,10 @@ const DriverHomePage = () => {
   const hasActiveBooking =
     activeBooking && ACTIVE_BOOKING_STATUSES.includes(activeBooking.status);
   const cancellationChances = summary?.cancellationChances || null;
+  // Set when the driver is dispatchable in principle but a wallet rule keeps
+  // them out of every cash wave — the toggle still says "Online", so the
+  // reason has to be spelled out here or it looks like the app is broken.
+  const dispatchBlock = summary?.dispatchBlock || null;
 
   const { setOnline, toggling, blocked, clearBlocked } = useDriverOnlineToggle();
 
@@ -197,6 +202,38 @@ const DriverHomePage = () => {
           </Card>
         )}
 
+        {dispatchBlock?.code === 'NEGATIVE_WALLET' && (
+          <Card
+            hoverable
+            onClick={() => navigate('/driver/earnings')}
+            className="border-l-4 border-l-rose-500 bg-rose-50/40 animate-fade-in-up"
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                <WalletMinimal className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-text">
+                  You are not receiving cash rides
+                </p>
+                <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                  Your wallet balance is{' '}
+                  <strong className="text-rose-700">
+                    {'−'}
+                    {formatCurrency(dispatchBlock.shortBy)}
+                  </strong>
+                  . Cash bookings only go to drivers with {formatCurrency(0)} or
+                  more, so requests are skipping you even though you are online.
+                  Add at least{' '}
+                  <strong>{formatCurrency(dispatchBlock.shortBy)}</strong> to
+                  start getting them again.
+                </p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-text-muted shrink-0 mt-1" />
+            </div>
+          </Card>
+        )}
+
         {hasActiveBooking && (
           <ActiveTripsBanner
             booking={activeBooking}
@@ -244,7 +281,10 @@ const DriverHomePage = () => {
           </div>
         </Card>
 
-        {isOnline && (
+        {/* Suppressed while a dispatch block is active — promising "ready to
+            receive trips" directly above the card explaining why they aren't
+            is the exact contradiction that made this hard to diagnose. */}
+        {isOnline && !dispatchBlock && (
           <Card className="animate-fade-in-up border-l-4 border-l-success">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-success-light rounded-full flex items-center justify-center">

@@ -28,3 +28,14 @@ export const deleteWebPage = asyncHandler(async (req, res) => {
   const result = await webPageService.deleteWebPageService(id);
   res.status(200).json({ status: 200, data: result, message: 'Page deleted successfully' });
 });
+
+export const getContactInfo = asyncHandler(async (req, res) => {
+  const contactInfo = await webPageService.getContactInfoService();
+  res.status(200).json({ status: 200, data: contactInfo, message: 'Contact info fetched successfully' });
+});
+
+export const updateContactInfo = asyncHandler(async (req, res) => {
+  const updatedBy = req.staff?._id || null;
+  const contactInfo = await webPageService.updateContactInfoService(req.body, updatedBy);
+  res.status(200).json({ status: 200, data: contactInfo, message: 'Contact info updated successfully' });
+});

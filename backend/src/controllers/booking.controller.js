@@ -11,6 +11,7 @@ import {
   cancelBookingByUserService,
   sanitizeBookingForDriver,
   listAdminBookingsService,
+  adminCancelBookingService,
 } from '../services/booking.service.js';
 import { buildBookingInvoicePdf } from '../services/invoicePdf.service.js';
 import {
@@ -402,6 +403,20 @@ export const getAdminBookings = asyncHandler(async (req, res) => {
 export const getAdminBookingById = asyncHandler(async (req, res) => {
   const result = await getBookingByIdService(req.params.id, null, req.staff);
   res.json(new ApiResponse(200, result, 'Booking fetched successfully'));
+});
+
+/**
+ * @desc    Cancel a live booking on the customer's behalf
+ * @route   PATCH /api/v1/admin/bookings/:id/cancel
+ * @access  Private (staff)
+ */
+export const cancelAdminBooking = asyncHandler(async (req, res) => {
+  const result = await adminCancelBookingService(
+    req.params.id,
+    req.staff,
+    req.body?.reason || '',
+  );
+  res.json(new ApiResponse(200, result, 'Booking cancelled successfully'));
 });
 
 /**

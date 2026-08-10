@@ -112,6 +112,7 @@ import { listPlatformRevenue } from '../controllers/revenue.controller.js';
 import {
   getAdminBookings,
   getAdminBookingById,
+  cancelAdminBooking,
   getEmergencyPoolBookings,
   getEmergencyPoolAvailableDrivers,
   assignDriverToEmergencyPoolBooking,
@@ -239,6 +240,16 @@ router.get(
   getScheduledJobs,
 );
 router.get('/bookings/:id', protectStaff, restrictTo(...ALL_STAFF), getAdminBookingById);
+// Cancelling on the customer's behalf refunds real money and frees a
+// driver mid-job, so it stays with OPERATIONS (admin + sub_admin) — the
+// same bar as manual driver assignment. The service additionally scopes
+// team_members by zone should that ever be widened.
+router.patch(
+  '/bookings/:id/cancel',
+  protectStaff,
+  restrictTo(...OPERATIONS),
+  cancelAdminBooking,
+);
 
 /* ---- Emergency Pool (scheduled-ride manual assignment) ---------------- */
 // `ALL_STAFF` is used here because team_members must be able to view

@@ -209,10 +209,10 @@ const ConfirmAndPayPage = () => {
     () => mergeScheduledDispatchConfig(servicePricing?.scheduledDispatch),
     [servicePricing?.scheduledDispatch],
   );
-  const minLeadHours = Math.max(
-    0,
-    Number(dispatchConfig.MIN_SCHEDULED_LEAD_HOURS) || 0,
-  );
+  const isOutstation = draft.serviceType === SERVICE_TYPES.OUTSTATION;
+  const minLeadHours = isOutstation
+    ? 0
+    : Math.max(0, Number(dispatchConfig.MIN_SCHEDULED_LEAD_HOURS) || 0);
   // Lazy-snapshot the wall clock so the derived `minPickupDate` memo
   // stays pure (Date.now is impure under react-hooks/purity). Fine to
   // be stable for the lifetime of the page — the backend re-validates
@@ -230,7 +230,6 @@ const ConfirmAndPayPage = () => {
   // confirmed they'll feed the driver.
   const foodRequired = !!estimate?.fareBreakdown?.foodRequired;
   const isHourly = draft.serviceType === SERVICE_TYPES.HOURLY;
-  const isOutstation = draft.serviceType === SERVICE_TYPES.OUTSTATION;
   const foodAcknowledged = !!draft.hourly?.foodAcknowledged;
   const foodGateUnmet = isHourly && foodRequired && !foodAcknowledged;
   const setHourly = useBookingDraftStore((s) => s.setHourly);

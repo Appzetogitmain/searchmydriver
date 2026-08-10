@@ -40,9 +40,13 @@ app.use(compression());
 // budget gets a 429 on `/auth/refresh-token` — and the SPA's axios interceptor
 // treats a failed refresh as "session is dead" and signs the user out, even
 // though their refresh token is still valid for days.
-const REFRESH_TOKEN_PATH = '/api/v1/auth/refresh-token';
+const REFRESH_TOKEN_PATHS = new Set([
+  '/api/v1/auth/refresh-token',
+  '/api/v1/driver/auth/refresh-token',
+  '/api/v1/admin/auth/refresh-token',
+]);
 app.use((req, res, next) =>
-  req.path === REFRESH_TOKEN_PATH ? next() : globalLimiter(req, res, next),
+  REFRESH_TOKEN_PATHS.has(req.path) ? next() : globalLimiter(req, res, next),
 );
 
 app.use(cors(getCorsOptions()));

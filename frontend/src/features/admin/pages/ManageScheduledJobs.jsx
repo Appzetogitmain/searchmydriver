@@ -463,6 +463,7 @@ const ManageScheduledJobs = () => {
         isOpen={!!selectedBooking}
         onClose={() => setSelectedBooking(null)}
         booking={selectedBooking}
+        onCancelled={fetchJobs}
       />
     </div>
   );

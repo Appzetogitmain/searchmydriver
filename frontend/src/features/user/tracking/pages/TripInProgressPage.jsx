@@ -72,11 +72,16 @@ const TripInProgressPage = () => {
   useEffect(() => {
     if (!booking?.status) return;
     if (booking.status === BOOKING_STATUS.COMPLETED) {
-      navigate('/user/tracking/completed', { replace: true });
+      navigate(
+        booking?._id
+          ? `/user/tracking/completed?bookingId=${booking._id}`
+          : '/user/tracking/completed',
+        { replace: true },
+      );
     } else if (booking.status === BOOKING_STATUS.CANCELLED) {
       navigate('/user/home', { replace: true });
     }
-  }, [booking?.status, navigate]);
+  }, [booking?.status, booking?._id, navigate]);
 
   const formatTime = (s) => {
     const h = String(Math.floor(s / 3600)).padStart(2, '0');

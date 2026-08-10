@@ -50,6 +50,7 @@ const PlatformSettings = () => {
     noKitPenaltyAmount: 50,
     monthlyRideRegistrationFee: 2000,
     outstationMinWalletBalance: 1000,
+    enforceOutstationMinWalletBalance: true,
     supportEmail: 'support@searchmydriver.com',
     supportPhone: '18001234567',
   });
@@ -73,6 +74,8 @@ const PlatformSettings = () => {
           noKitPenaltyAmount: platformSettingsRes.data.data.noKitPenaltyAmount ?? 50,
           monthlyRideRegistrationFee: platformSettingsRes.data.data.monthlyRideRegistrationFee ?? 2000,
           outstationMinWalletBalance: platformSettingsRes.data.data.outstationMinWalletBalance ?? 1000,
+          enforceOutstationMinWalletBalance:
+            platformSettingsRes.data.data.enforceOutstationMinWalletBalance ?? true,
           supportEmail: platformSettingsRes.data.data.supportEmail ?? 'support@searchmydriver.com',
           supportPhone: platformSettingsRes.data.data.supportPhone ?? '18001234567',
         });
@@ -270,12 +273,37 @@ const PlatformSettings = () => {
                   <h3 className="text-xl font-bold text-slate-800">Outstation Policy</h3>
                   <p className="text-sm text-slate-500 mt-1 mb-4">Configure requirements for outstation trips.</p>
                   <div className="space-y-4">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="mt-1 w-4 h-4 accent-blue-600"
+                        checked={policyForm.enforceOutstationMinWalletBalance}
+                        onChange={(e) =>
+                          setPolicyForm({
+                            ...policyForm,
+                            enforceOutstationMinWalletBalance: e.target.checked,
+                          })
+                        }
+                      />
+                      <span>
+                        <span className="block text-sm font-semibold text-slate-800">
+                          Require a minimum wallet balance
+                        </span>
+                        <span className="block text-xs text-slate-500 mt-0.5">
+                          When off, outstation requests go to every eligible driver regardless of
+                          wallet balance. Turn this off if drivers report never receiving outstation
+                          requests.
+                        </span>
+                      </span>
+                    </label>
                     <Input
                       label="Minimum Wallet Balance Required (₹)"
                       type="number"
                       min="0"
                       value={policyForm.outstationMinWalletBalance}
                       onChange={(e) => setPolicyForm({ ...policyForm, outstationMinWalletBalance: Number(e.target.value) })}
+                      disabled={!policyForm.enforceOutstationMinWalletBalance}
+                      className="disabled:bg-slate-100 disabled:text-slate-400"
                       required
                     />
                   </div>

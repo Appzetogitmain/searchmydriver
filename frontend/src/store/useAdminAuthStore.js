@@ -5,9 +5,11 @@ const useAdminAuthStore = create(
   persist(
     (set) => ({
       admin: null,
+      accessToken: null,
+      refreshToken: null,
       isAuthenticated: false,
 
-      setAuth: (admin) => {
+      setAuth: (admin, tokens = {}) => {
         if (admin) {
           try {
             localStorage.removeItem('user-session');
@@ -16,9 +18,14 @@ const useAdminAuthStore = create(
             // ignore localStorage errors
           }
         }
-        set({ admin, isAuthenticated: !!admin });
+        set({
+          admin,
+          accessToken: tokens.accessToken || null,
+          refreshToken: tokens.refreshToken || null,
+          isAuthenticated: !!admin,
+        });
       },
-      logout: () => set({ admin: null, isAuthenticated: false }),
+      logout: () => set({ admin: null, accessToken: null, refreshToken: null, isAuthenticated: false }),
     }),
     {
       name: 'admin-session',

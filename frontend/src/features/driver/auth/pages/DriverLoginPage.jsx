@@ -48,13 +48,14 @@ const DriverLoginPage = () => {
     
     try {
       const res = await api.post('/driver/auth/login', formData);
-      const { driver } = res.data.data;
+      const { driver, accessToken, refreshToken } = res.data.data || {};
       
-      setAuth(driver);
+      setAuth(driver, { accessToken, refreshToken });
       navigateDriverAfterAuth(navigate, driver);
     } catch (error) {
       console.error('Login failed', error);
-      setErrors({ phone: error.response?.data?.message || 'Login failed' });
+      const msg = error.response?.data?.message || error.message || 'Login failed';
+      setErrors({ phone: msg });
     } finally {
       setLoading(false);
     }

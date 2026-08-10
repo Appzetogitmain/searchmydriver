@@ -360,9 +360,20 @@ function applyPlatformLayers(subtotal, pricing, allowancePassThrough = 0) {
   // Allowance is pass-through to the driver — never commissionable.
   const passThrough = Math.max(0, Math.min(Number(allowancePassThrough) || 0, subtotal));
   const commissionableSubtotal = Math.max(0, subtotal - passThrough);
-  // Platform commission equals the serviceCharge
-  const platformCommission = serviceCharge;
-  
+  // Platform commission is the service-charge rate applied to the
+  // COMMISSIONABLE subtotal only — never to the food / stay allowance.
+  //
+  // This used to read `platformCommission = serviceCharge`, which quietly
+  // undid the pass-through above: `serviceCharge` is computed on the full
+  // subtotal, so a booking where the customer declined to provide food and
+  // stay had the platform taking its cut of those allowances too, and the
+  // driver received the allowance minus commission instead of in full.
+  // `serviceCharge` itself stays on the full subtotal — it is the
+  // customer-facing figure and is unrelated to the platform-vs-driver
+  // split (it is not added to `totalPayable`).
+  const platformCommission = (commissionableSubtotal * serviceChargePercent) / 100;
+
+
   const driverFareEarning = Math.max(
     0,
     commissionableSubtotal - platformCommission,

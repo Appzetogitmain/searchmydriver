@@ -321,7 +321,12 @@ const DriverAssignedPage = () => {
       // `/user/tracking/rate`. We keep the active booking around so
       // those screens can hydrate from the store.
       draftReset();
-      navigate('/user/tracking/completed', { replace: true });
+      navigate(
+        booking?._id
+          ? `/user/tracking/completed?bookingId=${booking._id}`
+          : '/user/tracking/completed',
+        { replace: true },
+      );
     }
     if (
       bookingStatus === BOOKING_STATUS.SEARCHING &&

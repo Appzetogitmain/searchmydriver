@@ -479,6 +479,7 @@ const ManageOutstationAssignments = () => {
         vehicle={detailExtra?.car || null}
         bufferMinutes={detailExtra?.bufferMinutes}
         loadingExtra={detailLoading}
+        onCancelled={fetchQueue}
       />
     </div>
   );

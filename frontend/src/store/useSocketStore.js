@@ -54,7 +54,22 @@ function currentAudience() {
   return audienceForCurrentApp();
 }
 
+function getAuthTokenForAudience(audience) {
+  if (audience === AUDIENCES.DRIVER) {
+    return useDriverAuthStore.getState().accessToken;
+  }
+  if (audience === AUDIENCES.USER) {
+    return useUserAuthStore.getState().accessToken;
+  }
+  if (audience === AUDIENCES.ADMIN) {
+    return useAdminAuthStore.getState().accessToken;
+  }
+  return null;
+}
+
 function createSocket() {
+  const audience = currentAudience();
+  const token = getAuthTokenForAudience(audience);
   return io(SOCKET_URL, {
     withCredentials: true,
     autoConnect: false,
@@ -63,7 +78,7 @@ function createSocket() {
     reconnectionDelay: 1_000,
     reconnectionDelayMax: 10_000,
     timeout: 20_000,
-    auth: { audience: currentAudience() },
+    auth: { audience, token: token || undefined },
   });
 }
 
@@ -85,11 +100,12 @@ const useSocketStore = create((set, get) => ({
   connect: () => {
     let { socket } = get();
     const audience = currentAudience();
+    const token = getAuthTokenForAudience(audience);
 
     // A socket already connected as a different app is worse than no socket —
     // it is subscribed to the wrong rooms. Tear it down and reconnect as the
     // app this tab is actually showing.
-    if (socket && socket.auth?.audience !== audience) {
+    if (socket && (socket.auth?.audience !== audience || socket.auth?.token !== token)) {
       socket.removeAllListeners();
       socket.disconnect();
       socket = null;
@@ -105,8 +121,8 @@ const useSocketStore = create((set, get) => ({
     }
 
     // Refresh on every connect so a reconnect after navigation re-declares the
-    // right audience rather than reusing whatever the handshake started with.
-    socket.auth = { ...(socket.auth || {}), audience };
+    // right audience and token rather than reusing whatever the handshake started with.
+    socket.auth = { ...(socket.auth || {}), audience, token: token || undefined };
 
     set({ isConnecting: true, connectError: null });
     socket.connect();

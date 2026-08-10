@@ -69,7 +69,7 @@ function formatLocalDateTimeInput(d) {
  * Returns a value formatted for `<input type="datetime-local">` (local
  * time, no timezone suffix).
  */
-export function minPickupInputValue(leadHours = 1) {
+export function minPickupInputValue(leadHours = 0) {
   const safeLead = Math.max(0, Number(leadHours) || 0);
   const d = new Date(Date.now() + safeLead * 60 * 60 * 1000);
   return formatLocalDateTimeInput(d);
@@ -77,11 +77,11 @@ export function minPickupInputValue(leadHours = 1) {
 
 /**
  * Default pickup datetime — `leadHours` from now, rounded to the
- * next whole hour. Falls back to "1 hour from now" when lead is
+ * next whole hour. Falls back to "now" when lead is
  * unspecified so the picker still lands on a usable value before the
  * pricing payload arrives.
  */
-export function defaultPickupInputValue(leadHours = 1) {
+export function defaultPickupInputValue(leadHours = 0) {
   const safeLead = Math.max(0, Number(leadHours) || 0);
   const d = new Date(Date.now() + safeLead * 60 * 60 * 1000);
   // Round UP to the next whole hour so the picker doesn't show a stale

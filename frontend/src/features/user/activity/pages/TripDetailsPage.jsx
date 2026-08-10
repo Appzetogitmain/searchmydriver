@@ -536,7 +536,7 @@ const TripDetailsPage = () => {
       </div>
 
       {/* Fixed footer actions */}
-      <div className="fixed bottom-16 left-1/2 -translate-x-1/2 w-full max-w-lg bg-white border-t border-border-light px-4 py-3 z-30">
+      <div className="fixed bottom-20 left-1/2 -translate-x-1/2 w-full max-w-lg bg-white border-t border-border-light px-4 py-3 z-30">
         {isLive && liveRoute ? (
           <Button fullWidth onClick={handleContinueTracking} icon={Navigation}>
             Continue tracking

@@ -40,7 +40,7 @@ import { debitWalletService } from './wallet.service.js';
 import { cancelSearchingSchedule } from './bookingSearchingTimeout.service.js';
 import { recordPlatformRevenue, PLATFORM_REVENUE_SOURCE } from './platformRevenue.service.js';
 import { WALLET_TXN_SOURCE } from '../models/walletTransaction.model.js';
-import PlatformSettings from '../models/platformSettings.model.js';
+import { resolveOutstationWalletFloorService } from './platform.service.js';
 
 /**
  * Broadcast booking dispatcher.
@@ -291,6 +291,92 @@ function buildOfferPayload(booking, driver, { customer, car, upcomingScheduledTr
   };
 }
 
+/**
+ * Explain a wave that reached nobody.
+ *
+ * Only the two wallet rules can drop drivers who are otherwise fully
+ * eligible (online, approved, idle, right car type, no conflict):
+ *
+ *   - the cash rule (`wallet.balance >= 0`, applied to every cash booking), and
+ *   - the outstation floor (`wallet.balance >= outstationMinWalletBalance`).
+ *
+ * So when a wave comes back empty we re-run the identical query with BOTH
+ * lifted. If drivers appear, wallet state — not driver supply — is what kept
+ * the request off every driver's screen, and admins get a one-line alert
+ * naming the actual rule. Diagnostics only: never throws, never changes who
+ * gets offered.
+ */
+async function reportEmptyWave(
+  booking,
+  { lat, lng, carTypeIds, excludeDriverIds, minWalletBalance, requirePositiveWalletBalance },
+) {
+  const bookingId = String(booking._id);
+  const noDriversLog = () =>
+    console.warn('[dispatch] booking', bookingId, 'reached 0 drivers — none online/qualified/idle', { carTypeIds });
+
+  // No wallet rule was in play, so supply really is the explanation.
+  if (!minWalletBalance && !requirePositiveWalletBalance) {
+    noDriversLog();
+    return;
+  }
+
+  try {
+    // Both wallet constraints must come off here. Leaving the cash rule
+    // applied (as this used to) makes the diagnosis query return empty for
+    // exactly the bookings it is meant to explain, and the log then blames
+    // driver supply for a wallet problem.
+    const withoutWalletRules = await findAllEligibleOnlineDrivers({
+      lat,
+      lng,
+      carTypeIds,
+      excludeDriverIds,
+      requirePositiveWalletBalance: false,
+      minWalletBalance: null,
+      includeOnTrip: booking.serviceType === SERVICE_TYPES.MONTHLY,
+    });
+    if (!withoutWalletRules.length) {
+      noDriversLog();
+      return;
+    }
+
+    const blockedDriverCount = withoutWalletRules.length;
+    const { kind, message } = minWalletBalance
+      ? {
+          kind: 'dispatch_blocked_by_wallet_floor',
+          message:
+            `Outstation booking ${booking.bookingNumber} reached 0 drivers: ` +
+            `${blockedDriverCount} eligible driver(s) were blocked by the ` +
+            `₹${minWalletBalance} outstation wallet minimum. Turn the rule off ` +
+            `under Platform Settings → Outstation to dispatch to them anyway.`,
+        }
+      : {
+          kind: 'dispatch_blocked_by_negative_wallet',
+          message:
+            `Cash booking ${booking.bookingNumber} reached 0 drivers: ` +
+            `${blockedDriverCount} eligible driver(s) were blocked because their ` +
+            `wallet balance is negative. Cash bookings are only offered to drivers ` +
+            `with a balance of ₹0 or more — those drivers must clear their dues ` +
+            `before they can receive cash rides.`,
+        };
+
+    console.warn('[dispatch]', message);
+    emitToAdmins(S2C_EVENTS.ADMIN_ALERT, {
+      kind,
+      severity: 'warn',
+      message,
+      data: {
+        bookingId,
+        minWalletBalance,
+        requirePositiveWalletBalance: Boolean(requirePositiveWalletBalance),
+        blockedDriverCount,
+        blockedDriverIds: withoutWalletRules.map((d) => String(d._id)),
+      },
+    });
+  } catch (err) {
+    console.warn('[dispatch] empty-wave diagnosis failed:', err?.message);
+  }
+}
+
 function emitUserDispatchUpdate(booking) {
   emitToUser(booking.userId, S2C_EVENTS.BOOKING_UPDATED, {
     bookingId: String(booking._id),
@@ -399,11 +485,14 @@ export async function dispatchNextDriverService(bookingId) {
     ...conflictedDriverIds,
   ];
 
-  let minWalletBalance = null;
-  if (booking.serviceType === SERVICE_TYPES.OUTSTATION) {
-    const settings = await PlatformSettings.findOne().lean();
-    minWalletBalance = settings?.outstationMinWalletBalance ?? 0;
-  }
+  // Outstation-only balance floor, and only when admins have it switched
+  // on. `null` means "no requirement" — note that passing 0 instead would
+  // NOT be equivalent: it becomes a `$gte: 0` filter that still excludes
+  // drivers sitting on a negative balance.
+  const minWalletBalance =
+    booking.serviceType === SERVICE_TYPES.OUTSTATION
+      ? await resolveOutstationWalletFloorService()
+      : null;
 
   // Broadcast to every online driver at once — no radius cap, no wave size.
   // The first to accept wins; everyone else gets BOOKING_OFFER_WITHDRAWN.
@@ -425,9 +514,25 @@ export async function dispatchNextDriverService(bookingId) {
     ? Math.max(...drivers.map((d) => d.distanceMeters || 0))
     : maxMeters;
 
-  console.log('[dispatch] broadcasting booking', String(booking._id), 'to', drivers.length, 'online drivers', { carTypeIds, cash: booking.paymentMethod === 'cash' });
+  console.log('[dispatch] broadcasting booking', String(booking._id), 'to', drivers.length, 'online drivers', { carTypeIds, cash: booking.paymentMethod === 'cash', minWalletBalance });
 
   if (!drivers.length) {
+    // A zero-driver wave used to be indistinguishable from "nobody is
+    // online" — the booking just sat in SEARCHING and no driver phone
+    // ever rang. A wallet rule is the usual culprit: cash bookings drop
+    // every driver sitting on a negative balance, and outstation bookings
+    // additionally drop anyone below `outstationMinWalletBalance`. Re-run
+    // the same query with both lifted so the log (and the admin alert)
+    // names the actual reason instead of leaving it to guesswork.
+    await reportEmptyWave(booking, {
+      lat,
+      lng,
+      carTypeIds,
+      excludeDriverIds,
+      minWalletBalance,
+      requirePositiveWalletBalance: booking.paymentMethod === 'cash',
+    });
+
     // If we've exhausted the radius but 30 minutes haven't passed,
     // we wait 30 seconds and try again instead of failing immediately.
     const handle = setTimeout(() => {

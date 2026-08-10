@@ -8,10 +8,24 @@ const platformSettingsSchema = new mongoose.Schema(
     noKitPenaltyAmount: { type: Number, default: 50, min: 0 },
     monthlyRideRegistrationFee: { type: Number, default: 2000, min: 0 },
     outstationMinWalletBalance: { type: Number, default: 1000, min: 0 },
+    // Master switch for the floor above. When `false` the balance
+    // requirement is skipped entirely — outstation rides dispatch to (and
+    // can be manually assigned to) any otherwise-eligible driver
+    // regardless of wallet balance. Kept separate from the amount so
+    // admins can switch the rule off and back on without losing the
+    // configured threshold.
+    enforceOutstationMinWalletBalance: { type: Boolean, default: true },
     adminWalletBalance: { type: Number, default: 0 },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     supportEmail: { type: String, default: 'support@searchmydriver.com', trim: true },
-    supportPhone: { type: String, default: '18001234567', trim: true },
+    supportPhone: { type: String, default: '2222222222', trim: true },
+    supportDescription: {
+      type: String,
+      default: 'Our support team is available 24/7 to assist you. Choose whichever channel is most convenient for you.',
+      trim: true,
+    },
+    responseTime: { type: String, default: 'Usually under 15 minutes', trim: true },
+    officeAddress: { type: String, default: '123 Main Street, Suite 400, City, Country', trim: true },
     referral: {
       user: {
         enabled: { type: Boolean, default: false },
