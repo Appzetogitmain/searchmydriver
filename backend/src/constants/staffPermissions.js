@@ -14,6 +14,35 @@ export const ROUTE_ROLES = Object.freeze({
   SUPER_ADMIN: [USER_ROLES.ADMIN],
 });
 
+/** Permission keys for requirePermission() — mirrors frontend STAFF_PERMISSIONS */
+export const PERMISSIONS = Object.freeze({
+  USERS: 'users',
+  INCOMING_REGISTRATIONS: 'incoming_registrations',
+  TEAM_TASKS: 'team_tasks',
+  DRIVERS: 'drivers',
+  LIVE_MAP: 'live_map',
+  KIT_ORDERS: 'kit_orders',
+  BANNERS: 'banners',
+  ADS: 'ads',
+  BOOKINGS_ALL: 'bookings_all',
+  BOOKINGS_SCHEDULED: 'bookings_scheduled',
+  BOOKINGS_EMERGENCY: 'bookings_emergency',
+  BOOKINGS_OUTSTATION: 'bookings_outstation',
+  BOOKINGS_SUBSCRIPTION: 'bookings_subscription',
+  ACCOUNT_REVENUE: 'account_revenue',
+  ACCOUNT_SUB_REVENUE: 'account_sub_revenue',
+  ACCOUNT_REFUNDS: 'account_refunds',
+  FARE_MANAGEMENT: 'fare_management',
+  SETTINGS_PLATFORM: 'settings_platform',
+  SETTINGS_KITS: 'settings_kits',
+  SETTINGS_ZONES: 'settings_zones',
+  SETTINGS_TEAM: 'settings_team',
+  DRIVER_WALLET: 'driver_wallet',
+  REFERRALS: 'referrals',
+  BROADCAST: 'broadcast',
+});
+
+
 export function isSuperAdmin(staff) {
   return staff?.role === USER_ROLES.ADMIN;
 }

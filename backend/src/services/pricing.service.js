@@ -973,3 +973,93 @@ function buildWaitingBufferPreview(pricing) {
     noShowGraceMinutes: Math.max(0, Number(wc.noShowGraceMinutes) || 0),
   };
 }
+
+/**
+ * Calculate final trip fare at completion time.
+ * One-Way Trip (Hourly & Outstation): (Time + Distance/KM)
+ * Round Trip (Hourly & Outstation): Hours base (admin configured)
+ */
+export async function calculateFinalTripFare({
+  booking,
+  actualDurationMin = 0,
+  actualKm = 0,
+}) {
+  if (!booking) throw new ApiError(400, 'Booking object is required');
+  const pricing = await getServicePricingByTypeService(booking.serviceType);
+  if (!pricing) throw new ApiError(404, 'Service pricing configuration not found');
+
+  const isHourly = booking.serviceType === SERVICE_TYPES.HOURLY;
+  const isOutstation = booking.serviceType === SERVICE_TYPES.OUTSTATION;
+
+  const tripType = isHourly
+    ? booking.hourly?.tripType || 'round_trip'
+    : isOutstation
+      ? booking.outstation?.tripType || 'round_trip'
+      : 'round_trip';
+
+  const durationMin = Math.max(0, Number(actualDurationMin) || 0);
+  const kmDistance = Math.max(
+    0,
+    Number(actualKm) ||
+      Number(booking.hourly?.estimatedKm) ||
+      Number(booking.outstation?.estimatedKm) ||
+      0,
+  );
+
+  let fareBreakdown = null;
+
+  if (isHourly) {
+    let slab = null;
+    if (booking.hourly?.slabId) {
+      slab = pricing.slabs.id(booking.hourly.slabId);
+    }
+    const isCustom = !!booking.hourly?.isCustomDuration;
+    const bookedHours = booking.hourly?.durationHours || 1;
+
+    const isNight = rideCoversNightWindow(
+      booking.timeline?.startedAt || booking.hourly?.scheduledStartAt || new Date(),
+      Math.ceil(durationMin / 60) || bookedHours,
+      pricing.nightCharge,
+    );
+
+    fareBreakdown = calculateHourlyFare({
+      pricing,
+      slab,
+      isCustomDuration: isCustom,
+      actualDurationMin: durationMin,
+      bookedHours,
+      isNightRide: isNight,
+      waitingMinutes: booking.waiting?.waitedMinutes || 0,
+      tollParking: 0,
+      foodProvided: true,
+      stayProvided: true,
+      tripType,
+      estimatedKm: kmDistance,
+    });
+  } else if (isOutstation) {
+    const days = Number(booking.outstation?.days) || 1;
+    const isNight = isNightRideAt(
+      booking.timeline?.startedAt || booking.outstation?.pickupAt || new Date(),
+      pricing.nightCharge,
+    );
+
+    fareBreakdown = calculateOutstationFare({
+      pricing,
+      days,
+      actualKm: kmDistance,
+      foodProvided: booking.outstation?.needsFood ?? true,
+      stayProvided: booking.outstation?.needsStay ?? true,
+      tripType,
+      estimatedKm: kmDistance,
+    });
+  } else {
+    fareBreakdown = booking.fareSnapshot?.breakdown || {};
+  }
+
+  return {
+    pricingId: pricing._id,
+    serviceType: booking.serviceType,
+    fareBreakdown,
+  };
+}
+

@@ -31,6 +31,8 @@ import {
   recordPlatformRevenue,
   PLATFORM_REVENUE_SOURCE,
 } from './platformRevenue.service.js';
+import { debitWalletService } from './wallet.service.js';
+import { WALLET_TXN_SOURCE } from '../models/walletTransaction.model.js';
 
 /**
  * Razorpay integration for bookings.
@@ -275,3 +277,91 @@ export async function verifyBookingPaymentService(userId, bookingId, { orderId, 
 
   return booking.toObject();
 }
+
+/**
+ * Settle a post-trip payment using wallet balance.
+ */
+export async function payBookingWithWalletService(userId, bookingId) {
+  const booking = await Booking.findOne({ _id: bookingId, userId, isDeleted: false });
+  if (!booking) throw new ApiError(404, 'Booking not found');
+
+  if (booking.status !== BOOKING_STATUS.COMPLETED && booking.paymentStatus !== BOOKING_PAYMENT_STATUS.PENDING) {
+    throw new ApiError(400, 'Payment is not due for this booking');
+  }
+
+  const remaining = amountDueForBooking(booking);
+  if (remaining <= 0) {
+    booking.paymentStatus = BOOKING_PAYMENT_STATUS.PAID;
+    await booking.save();
+    return booking.toObject();
+  }
+
+  const walletTx = await debitWalletService({
+    userId,
+    amount: remaining,
+    source: WALLET_TXN_SOURCE.BOOKING_PAYMENT,
+    description: `Trip completion payment — booking ${booking.bookingNumber}`,
+    refType: 'Booking',
+    refId: String(booking._id),
+  });
+
+  const ledger = booking.payment?.toObject?.() || booking.payment || {};
+  booking.payment = {
+    ...ledger,
+    amountPaidRupees: Number(((ledger.amountPaidRupees || 0) + remaining).toFixed(2)),
+    walletTxId: walletTx ? walletTx._id : ledger.walletTxId,
+  };
+  booking.paymentStatus = BOOKING_PAYMENT_STATUS.PAID;
+  booking.paymentMethod = 'wallet';
+  booking.timeline.paymentReceivedAt = new Date();
+
+  await booking.save();
+
+  const userPayload = {
+    bookingId: String(booking._id),
+    status: booking.status,
+    paymentStatus: booking.paymentStatus,
+    paymentMode: booking.paymentMode,
+  };
+  emitToUser(booking.userId, S2C_EVENTS.BOOKING_UPDATED, userPayload);
+  emitToBooking(booking._id, S2C_EVENTS.BOOKING_UPDATED, userPayload);
+  if (booking.driverId) {
+    emitToDriver(booking.driverId, S2C_EVENTS.BOOKING_UPDATED, userPayload);
+  }
+
+  return booking.toObject();
+}
+
+/**
+ * Settle a post-trip payment using cash.
+ */
+export async function payBookingWithCashService(userId, bookingId) {
+  const booking = await Booking.findOne({ _id: bookingId, userId, isDeleted: false });
+  if (!booking) throw new ApiError(404, 'Booking not found');
+
+  const remaining = amountDueForBooking(booking);
+  booking.paymentStatus = BOOKING_PAYMENT_STATUS.PAID;
+  booking.paymentMethod = 'cash';
+  booking.payment = {
+    ...(booking.payment?.toObject?.() || booking.payment || {}),
+    amountPaidRupees: Number(((booking.payment?.amountPaidRupees || 0) + remaining).toFixed(2)),
+  };
+  booking.timeline.paymentReceivedAt = new Date();
+
+  await booking.save();
+
+  const userPayload = {
+    bookingId: String(booking._id),
+    status: booking.status,
+    paymentStatus: booking.paymentStatus,
+    paymentMode: booking.paymentMode,
+  };
+  emitToUser(booking.userId, S2C_EVENTS.BOOKING_UPDATED, userPayload);
+  emitToBooking(booking._id, S2C_EVENTS.BOOKING_UPDATED, userPayload);
+  if (booking.driverId) {
+    emitToDriver(booking.driverId, S2C_EVENTS.BOOKING_UPDATED, userPayload);
+  }
+
+  return booking.toObject();
+}
+

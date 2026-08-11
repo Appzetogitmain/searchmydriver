@@ -40,6 +40,8 @@ import {
   cancelBooking,
   createBookingPayment,
   verifyBookingPayment,
+  payBookingWithWallet,
+  payBookingWithCash,
   initiateBookingExtension,
   verifyBookingExtensionOtp,
   payBookingExtension,
@@ -112,6 +114,8 @@ router.get('/bookings/:id/invoice', downloadBookingInvoice);
 router.post('/bookings/:id/cancel', cancelBooking);
 router.post('/bookings/:id/pay', createBookingPayment);
 router.post('/bookings/:id/verify-payment', verifyBookingPayment);
+router.post('/bookings/:id/pay-wallet', payBookingWithWallet);
+router.post('/bookings/:id/pay-cash', payBookingWithCash);
 // Extension flow is a 3-step handshake (initiate → driver OTP →
 // customer verifies → customer pays). The old single-shot endpoint is
 // gone; the service throws 410 if anything still calls it.

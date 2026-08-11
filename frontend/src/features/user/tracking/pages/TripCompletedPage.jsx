@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { CheckCircle, Clock, MapPin } from 'lucide-react';
+import { CheckCircle, Clock, MapPin, Wallet, HandCoins, CreditCard, ShieldCheck } from 'lucide-react';
+import toast from 'react-hot-toast';
 import Card from '../../../../components/Card';
 import Button from '../../../../components/Button';
 import useUserActiveBookingStore from '../../../../store/user/useUserActiveBookingStore';
+import useUserWalletStore from '../../../../store/user/useUserWalletStore';
+import { useRazorpayCheckout } from '../../../../hooks/useRazorpayCheckout';
 import { formatDistance, haversineMeters } from '../../../../utils/geo';
 import api from '../../../../utils/api';
 
@@ -21,8 +24,19 @@ const TripCompletedPage = () => {
   const fetchById = useUserActiveBookingStore((s) => s.fetchById);
   const setBooking = useUserActiveBookingStore((s) => s.setBooking);
 
+  const wallet = useUserWalletStore((s) => s.wallet);
+  const fetchWallet = useUserWalletStore((s) => s.fetchWallet);
+
+  const { openCheckout } = useRazorpayCheckout();
+
   const [fetchedBooking, setFetchedBooking] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState('wallet');
+  const [paying, setPaying] = useState(false);
+
+  useEffect(() => {
+    fetchWallet().catch(() => {});
+  }, [fetchWallet]);
 
   useEffect(() => {
     let active = true;
@@ -93,6 +107,65 @@ const TripCompletedPage = () => {
     return sum > 0 ? sum : (booking.fareSnapshot?.total || null);
   }, [booking]);
 
+  const isPaid = booking?.paymentStatus === 'paid';
+
+  const handleSettlePayment = async () => {
+    if (!booking?._id || paying || isPaid) return;
+    setPaying(true);
+    try {
+      if (paymentMethod === 'wallet') {
+        const res = await api.post(`/auth/bookings/${booking._id}/pay-wallet`);
+        toast.success('Paid from wallet successfully!');
+        if (res?.data?.data?.booking) {
+          setFetchedBooking(res.data.data.booking);
+          setBooking(res.data.data.booking);
+        }
+        fetchWallet().catch(() => {});
+      } else if (paymentMethod === 'cash') {
+        const res = await api.post(`/auth/bookings/${booking._id}/pay-cash`);
+        toast.success('Cash payment recorded!');
+        if (res?.data?.data?.booking) {
+          setFetchedBooking(res.data.data.booking);
+          setBooking(res.data.data.booking);
+        }
+      } else if (paymentMethod === 'online') {
+        const orderRes = await api.post(`/auth/bookings/${booking._id}/pay`);
+        const order = orderRes?.data?.data?.razorpay;
+        if (!order?.orderId) {
+          toast.error('Could not initialize online payment');
+          return;
+        }
+        await openCheckout({
+          razorpay: {
+            keyId: order.keyId,
+            orderId: order.orderId,
+            amount: order.amount,
+            currency: order.currency,
+            name: order.name,
+            description: order.description,
+          },
+          order: { _id: order.bookingId },
+          onSuccess: async (response) => {
+            const verifyRes = await api.post(`/auth/bookings/${booking._id}/verify-payment`, {
+              orderId: response.razorpay_order_id,
+              paymentId: response.razorpay_payment_id,
+              signature: response.razorpay_signature,
+            });
+            toast.success('Online payment verified!');
+            if (verifyRes?.data?.data?.booking) {
+              setFetchedBooking(verifyRes.data.data.booking);
+              setBooking(verifyRes.data.data.booking);
+            }
+          },
+        });
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || 'Payment failed');
+    } finally {
+      setPaying(false);
+    }
+  };
+
   const durationMinutes = useMemo(() => {
     if (!booking) return null;
     const started = booking.timeline?.startedAt;
@@ -141,7 +214,7 @@ const TripCompletedPage = () => {
   }, [booking]);
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center bg-white min-h-dvh px-6">
+    <div className="flex-1 flex flex-col items-center justify-center bg-white min-h-dvh px-6 py-8">
       <div className="animate-bounce-in mb-6">
         <div className="w-20 h-20 bg-success-light rounded-full flex items-center justify-center">
           <CheckCircle className="w-10 h-10 text-success" />
@@ -154,7 +227,7 @@ const TripCompletedPage = () => {
 
       <Card className="w-full animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
         <div className="text-center mb-4">
-          <p className="text-sm text-text-muted">Total Fare</p>
+          <p className="text-sm text-text-muted">Total Fare Calculated</p>
           <p className="text-3xl font-bold text-text">
             {loading && !booking ? '...' : totalFare != null ? `₹${totalFare}` : '—'}
           </p>
@@ -163,6 +236,11 @@ const TripCompletedPage = () => {
               {booking.bookingNumber}
             </p>
           ) : null}
+          {isPaid && (
+            <span className="inline-block mt-2 px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-semibold rounded-full">
+              ✓ Paid
+            </span>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="text-center p-3 bg-bg rounded-xl">
@@ -182,9 +260,41 @@ const TripCompletedPage = () => {
         </div>
       </Card>
 
+      {!isPaid && (
+        <div className="w-full mt-4 p-4 rounded-3xl border border-border-light bg-slate-50 space-y-3 animate-fade-in-up">
+          <p className="text-xs font-bold text-text text-center">Select Payment Method to Pay</p>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { id: 'wallet', label: 'Wallet', icon: Wallet },
+              { id: 'cash', label: 'Cash', icon: HandCoins },
+              { id: 'online', label: 'Online', icon: CreditCard },
+            ].map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setPaymentMethod(id)}
+                className={`p-3 rounded-2xl border flex flex-col items-center justify-center transition-all ${
+                  paymentMethod === id
+                    ? 'border-primary bg-primary/10 text-primary font-bold shadow-sm'
+                    : 'border-border bg-white text-text-muted hover:border-primary/30'
+                }`}
+              >
+                <Icon className="w-5 h-5 mb-1" />
+                <span className="text-xs font-semibold">{label}</span>
+              </button>
+            ))}
+          </div>
+
+          <Button fullWidth loading={paying} onClick={handleSettlePayment}>
+            Pay ₹{totalFare || 0} with {paymentMethod === 'wallet' ? 'Wallet' : paymentMethod === 'cash' ? 'Cash' : 'UPI / Online'}
+          </Button>
+        </div>
+      )}
+
       <div className="w-full mt-6 animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
         <Button
           fullWidth
+          variant={isPaid ? 'primary' : 'outline'}
           onClick={() =>
             navigate(
               booking?._id
@@ -193,7 +303,7 @@ const TripCompletedPage = () => {
             )
           }
         >
-          Rate & Pay
+          Rate Driver
         </Button>
       </div>
     </div>
@@ -201,3 +311,4 @@ const TripCompletedPage = () => {
 };
 
 export default TripCompletedPage;
+

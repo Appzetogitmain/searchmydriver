@@ -39,6 +39,8 @@ import {
 import {
   createBookingPaymentOrderService,
   verifyBookingPaymentService,
+  payBookingWithWalletService,
+  payBookingWithCashService,
 } from '../services/bookingPayment.service.js';
 import {
   markDriverEnRouteService,
@@ -147,6 +149,16 @@ export const verifyBookingPayment = asyncHandler(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, { booking }, 'Payment verified'));
 });
 
+export const payBookingWithWallet = asyncHandler(async (req, res) => {
+  const booking = await payBookingWithWalletService(req.user._id, req.params.id);
+  return res.status(200).json(new ApiResponse(200, { booking }, 'Paid from wallet successfully'));
+});
+
+export const payBookingWithCash = asyncHandler(async (req, res) => {
+  const booking = await payBookingWithCashService(req.user._id, req.params.id);
+  return res.status(200).json(new ApiResponse(200, { booking }, 'Cash payment recorded'));
+});
+
 export const addOfflineTip = asyncHandler(async (req, res) => {
   const { amount } = req.body;
   if (typeof amount !== 'number' || amount < 0) {
@@ -224,7 +236,10 @@ export const driverStartTrip = asyncHandler(async (req, res) => {
 });
 
 export const driverCompleteTrip = asyncHandler(async (req, res) => {
-  const booking = await completeTripService(req.driver._id, req.params.id);
+  const { actualKm } = req.body || {};
+  const booking = await completeTripService(req.driver._id, req.params.id, {
+    actualKm: Number(actualKm) || 0,
+  });
   return res
     .status(200)
     .json(new ApiResponse(200, { booking: sanitizeBookingForDriver(booking) }, 'Trip completed'));

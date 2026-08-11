@@ -317,19 +317,6 @@ const ConfirmAndPayPage = () => {
   const submitBooking = useCallback(async () => {
     if (submitting || !total) return;
 
-    // Only block on wallet shortfall if paying via wallet
-    if (paymentMethod === 'wallet') {
-      const freshWallet = useUserWalletStore.getState().wallet || {};
-      const freshBalance = Number(freshWallet.balance || 0);
-      const freshHeld = Number(freshWallet.heldRupees || 0);
-      const freshAvailable = Math.max(0, freshBalance - freshHeld);
-      if (freshAvailable < total) {
-        setShortfall(Math.max(0, Math.round((total - freshAvailable) * 100) / 100));
-        setTopupOpen(true);
-        return;
-      }
-    }
-
     setSubmitting(true);
 
     try {
@@ -438,10 +425,9 @@ const ConfirmAndPayPage = () => {
             <ArrowLeft className="w-5 h-5 text-text" />
           </button>
           <div className="min-w-0 flex-1">
-            <h1 className="text-lg font-bold text-text">Review &amp; pay</h1>
+            <h1 className="text-lg font-bold text-text">Review Trip Details</h1>
             <p className="text-xs text-text-muted">
-              Confirm the details and pay from your wallet to start
-              searching for a driver.
+              Review your trip details and estimated fare. Final payment is collected at the end of your ride.
             </p>
           </div>
         </div>
@@ -587,21 +573,23 @@ const ConfirmAndPayPage = () => {
 
       {/* Sticky footer — pay CTA (with the running total) is always
           reachable without scrolling. */}
-      <div className="sticky bottom-0 z-30 bg-white border-t border-border-light px-4 py-3 shadow-[0_-4px_12px_-8px_rgba(0,0,0,0.15)]">
+      <div className="sticky bottom-0 z-30 bg-white border-t border-border-light px-4 py-3 shadow-[0_-4px_12px_-8px_rgba(0,0,0,0.15)] space-y-2">
+        <div className="flex items-center justify-center gap-1.5 text-[11px] text-emerald-600 font-medium bg-emerald-50 py-1.5 px-3 rounded-xl border border-emerald-200">
+          <ShieldCheck className="w-3.5 h-3.5" />
+          No upfront payment required • Pay estimated ₹{total || 0} at end of trip
+        </div>
         <Button
           fullWidth
-          icon={paymentMethod === 'wallet' ? WalletIcon : paymentMethod === 'cash' ? HandCoins : CreditCard}
+          icon={CheckCircle2}
           loading={submitting}
-          disabled={!estimate || estimating || total <= 0 || foodGateUnmet || (paymentMethod === 'wallet' && !canPay)}
+          disabled={!estimate || estimating || total <= 0 || foodGateUnmet}
           onClick={handlePay}
         >
           {!total
             ? 'Calculating fare\u2026'
             : foodGateUnmet
               ? 'Confirm driver\u2019s meal to continue'
-              : paymentMethod === 'wallet' && !canPay
-                ? `Add \u20B9${Math.max(0, total - balance).toFixed(2)} & pay`
-                : `Pay \u20B9${total} with ${paymentMethod === 'wallet' ? 'Wallet' : paymentMethod === 'cash' ? 'Cash' : 'Online'}`}
+              : 'Confirm Booking'}
         </Button>
       </div>
 

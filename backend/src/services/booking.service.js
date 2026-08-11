@@ -964,9 +964,13 @@ export async function createBookingService(userId, body) {
   const isOnline = reqPaymentMethod === 'online';
   const isWallet = reqPaymentMethod === 'wallet';
 
+  // For Hourly & Outstation bookings, payment is deferred to end of trip.
+  // Upfront wallet debiting is bypassed so the customer reviews estimates now and pays post-ride.
+  const isDeferredPayment = serviceType === SERVICE_TYPES.HOURLY || serviceType === SERVICE_TYPES.OUTSTATION;
+
   let walletTx = null;
 
-  if (isWallet) {
+  if (isWallet && !isDeferredPayment) {
     const walletSnapshot = await getWalletService(userId);
     if ((walletSnapshot?.availableRupees ?? 0) < requiredAmount) {
       const available = walletSnapshot?.availableRupees ?? 0;
@@ -1056,6 +1060,7 @@ export async function createBookingService(userId, body) {
               durationHours: hourly.durationHours,
               slabId: estimate.selectedSlab?._id || null,
               isCustomDuration: !!hourly.isCustomDuration,
+              tripType: hourly.tripType || 'round_trip',
             }
           : null,
       outstation:
@@ -1089,14 +1094,11 @@ export async function createBookingService(userId, body) {
           : null,
       fareSnapshot,
       waiting: waitingSnapshot,
-      paymentMode: (isCash || isOnline) ? PAYMENT_MODE.POST_RIDE : PAYMENT_MODE.PRE_RIDE,
+      paymentMode: isDeferredPayment ? PAYMENT_MODE.POST_RIDE : ((isCash || isOnline) ? PAYMENT_MODE.POST_RIDE : PAYMENT_MODE.PRE_RIDE),
       paymentMethod: isCash ? 'cash' : (isOnline ? 'online' : 'wallet'),
-      // Cash/Online: NOT_DUE_YET (pay after trip). Wallet: already paid (PAID).
-      paymentStatus: (isCash || isOnline)
-        ? BOOKING_PAYMENT_STATUS.NOT_DUE_YET
-        : BOOKING_PAYMENT_STATUS.PAID,
+      paymentStatus: isDeferredPayment ? BOOKING_PAYMENT_STATUS.NOT_DUE_YET : ((isCash || isOnline) ? BOOKING_PAYMENT_STATUS.NOT_DUE_YET : BOOKING_PAYMENT_STATUS.PAID),
       payment: {
-        amountPaidRupees: (isCash || isOnline) ? 0 : fareTotal,
+        amountPaidRupees: (isDeferredPayment || isCash || isOnline) ? 0 : fareTotal,
         attempts: 0,
         walletTxId: walletTx ? walletTx._id : null,
       },

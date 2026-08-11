@@ -52,7 +52,10 @@ import {
   buildCommissionRevenueMeta,
   settleDriverEarning,
 } from './bookingExtension.service.js';
-import { debitWalletService } from './wallet.service.js';
+import {
+  debitWalletService,
+} from './wallet.service.js';
+import { calculateFinalTripFare } from './pricing.service.js';
 import { WALLET_TXN_SOURCE } from '../models/walletTransaction.model.js';
 
 /**
@@ -684,13 +687,44 @@ async function applyWaitingChargeOnStart(booking, startedAt, flags = {}) {
  * booking's payment status to `pending` so the user app knows to surface
  * the post-ride payment flow.
  */
-export async function completeTripService(driverId, bookingId) {
+export async function completeTripService(driverId, bookingId, { actualKm = 0 } = {}) {
   const booking = await loadDriverBooking(driverId, bookingId);
   assertStatus(booking, [BOOKING_STATUS.STARTED], 'complete the ride');
 
   booking.status = BOOKING_STATUS.COMPLETED;
   const completedAt = new Date();
   booking.timeline.completedAt = completedAt;
+
+  // Compute actual elapsed trip duration
+  const startedAt = booking.timeline?.startedAt ? new Date(booking.timeline.startedAt) : null;
+  const actualDurationMin = startedAt ? Math.ceil((completedAt.getTime() - startedAt.getTime()) / (1000 * 60)) : 0;
+
+  // Dynamically recalculate final trip fare (Time + KM for One-Way, Hours base for Round Trip)
+  try {
+    const finalTripFare = await calculateFinalTripFare({
+      booking,
+      actualDurationMin,
+      actualKm,
+    });
+    if (finalTripFare?.fareBreakdown) {
+      const bd = finalTripFare.fareBreakdown;
+      const baseFare = bd.packagePrice ?? bd.dailyRateTotal ?? 0;
+      const subtotal = bd.subtotal ?? 0;
+      const extras = Math.max(0, Number(subtotal) - Number(baseFare));
+      booking.fareSnapshot = {
+        pricingId: finalTripFare.pricingId || booking.fareSnapshot?.pricingId || null,
+        baseFare: Math.round((Number(baseFare) + Number.EPSILON) * 100) / 100,
+        extras: Math.round((Number(extras) + Number.EPSILON) * 100) / 100,
+        serviceCharge: Math.round((Number(bd.serviceCharge || 0) + Number.EPSILON) * 100) / 100,
+        gst: Math.round((Number(bd.gstAmount || 0) + Number.EPSILON) * 100) / 100,
+        discount: Math.round((Number(bd.subscriptionDiscount || 0) + Number.EPSILON) * 100) / 100,
+        total: Math.round((Number(bd.totalPayable || 0) + Number.EPSILON) * 100) / 100,
+        breakdown: bd,
+      };
+    }
+  } catch (err) {
+    console.warn('[bookingTrip] recalculate final trip fare failed:', err?.message);
+  }
 
   // Stamp invoice number (INV-YYYYMMDD-XXXX)
   const yyyymmdd = completedAt.toISOString().slice(0, 10).replace(/-/g, '');
@@ -705,15 +739,8 @@ export async function completeTripService(driverId, bookingId) {
     }
   });
 
-  // Post-pay bookings move from `not_due_yet` → `pending` so the user app
-  // knows to surface a "pay now" screen. Pre-pay bookings were already
-  // paid before EN_ROUTE.
-  if (
-    booking.paymentMode === PAYMENT_MODE.POST_RIDE &&
-    booking.paymentStatus === BOOKING_PAYMENT_STATUS.NOT_DUE_YET
-  ) {
-    booking.paymentStatus = BOOKING_PAYMENT_STATUS.PENDING;
-  }
+  // Post-pay bookings move to `pending` so user can settle payment
+  booking.paymentStatus = BOOKING_PAYMENT_STATUS.PENDING;
 
   // Settle the pre-collected waiting buffer: caps `waiting.chargeRupees`
   // at the buffer and credits the unused portion back to the user's
