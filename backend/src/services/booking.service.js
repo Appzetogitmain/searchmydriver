@@ -64,6 +64,7 @@ import {
   emitToBooking,
   emitToAdmins,
   emitToDriver,
+  emitNotification,
 } from '../utils/socketEmitters.js';
 import { findActiveZoneIdsForPointService } from './zone.service.js';
 import {
@@ -1767,4 +1768,90 @@ export async function listAdminBookingsService(query = {}, staff = null) {
   };
 
   return { bookings, total, page: parseInt(page, 10), pages: Math.ceil(total / limit), stats };
+}
+
+export async function updateAdminBookingStatusService(bookingId, targetStatus, staff = null) {
+  const booking = await Booking.findById(bookingId);
+  if (!booking) {
+    throw new ApiError(404, 'Booking not found');
+  }
+
+  const ALLOWED_STATUSES = [
+    BOOKING_STATUS.SEARCHING,
+    BOOKING_STATUS.PENDING_ASSIGNMENT,
+    BOOKING_STATUS.DRIVER_ASSIGNED,
+    BOOKING_STATUS.EN_ROUTE,
+    BOOKING_STATUS.ARRIVED,
+    BOOKING_STATUS.STARTED,
+    BOOKING_STATUS.COMPLETED,
+    BOOKING_STATUS.CANCELLED,
+    BOOKING_STATUS.IN_EMERGENCY_POOL,
+    BOOKING_STATUS.NO_DRIVERS_FOUND,
+  ];
+
+  if (!ALLOWED_STATUSES.includes(targetStatus)) {
+    throw new ApiError(400, `Invalid status: ${targetStatus}`);
+  }
+
+  booking.status = targetStatus;
+  const now = new Date();
+
+  if (!booking.timeline) booking.timeline = {};
+
+  if (targetStatus === BOOKING_STATUS.DRIVER_ASSIGNED && !booking.timeline.driverAssignedAt) {
+    booking.timeline.driverAssignedAt = now;
+  }
+  if (targetStatus === BOOKING_STATUS.STARTED && !booking.timeline.startedAt) {
+    booking.timeline.startedAt = now;
+  }
+  if (targetStatus === BOOKING_STATUS.COMPLETED && !booking.timeline.completedAt) {
+    booking.timeline.completedAt = now;
+  }
+  if (targetStatus === BOOKING_STATUS.CANCELLED && !booking.timeline.cancelledAt) {
+    booking.timeline.cancelledAt = now;
+  }
+
+  await booking.save();
+
+  const populated = await Booking.findById(booking._id)
+    .populate('userId', 'name phone_no email')
+    .populate('driverId', 'name phone_no email')
+    .populate('zoneIds', 'name code city')
+    .lean();
+
+  const statusLabel = targetStatus.replace(/_/g, ' ');
+
+  try {
+    emitToBooking(booking._id, S2C_EVENTS.BOOKING_UPDATED, populated);
+    if (booking.userId) {
+      const uId = typeof booking.userId === 'object' ? String(booking.userId._id) : String(booking.userId);
+      emitToUser(uId, S2C_EVENTS.BOOKING_UPDATED, populated);
+      emitNotification(
+        { userId: uId },
+        {
+          title: 'Booking Status Updated',
+          body: `Your booking status has been updated to ${statusLabel} by admin.`,
+          severity: targetStatus === BOOKING_STATUS.COMPLETED ? 'success' : targetStatus === BOOKING_STATUS.CANCELLED ? 'warn' : 'info',
+          data: { bookingId: String(booking._id), status: targetStatus },
+        }
+      );
+    }
+    if (booking.driverId) {
+      const dId = typeof booking.driverId === 'object' ? String(booking.driverId._id) : String(booking.driverId);
+      emitToDriver(dId, S2C_EVENTS.BOOKING_UPDATED, populated);
+      emitNotification(
+        { driverId: dId },
+        {
+          title: 'Booking Status Updated',
+          body: `Booking ${booking.bookingNumber || String(booking._id).slice(-6)} status updated to ${statusLabel} by admin.`,
+          severity: 'info',
+          data: { bookingId: String(booking._id), status: targetStatus },
+        }
+      );
+    }
+  } catch (err) {
+    console.error('Failed to emit booking status update socket event:', err);
+  }
+
+  return populated;
 }

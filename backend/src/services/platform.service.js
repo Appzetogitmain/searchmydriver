@@ -64,18 +64,37 @@ export const deleteConditionService = async (id) => {
 
 // ─── Driver training videos ───────────────────────────────────────────────────
 
-export const createTrainingVideoService = async (data) => {
-  const { title, description, videoUrl, cloudinaryPublicId, durationSeconds, isRequired, isActive, sortOrder } = data;
+export function extractYouTubeId(url) {
+  if (!url) return '';
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|shorts\/|watch\?v=|&v=)([^#&?]*).*/;
+  const match = url.match(regExp);
+  return match && match[2].length === 11 ? match[2] : '';
+}
 
-  if (!title || !videoUrl || !cloudinaryPublicId) {
-    throw new ApiError(400, 'Title, video URL, and Cloudinary ID are required');
+export const createTrainingVideoService = async (data) => {
+  const { title, description, videoUrl, videoType, youtubeId, cloudinaryPublicId, durationSeconds, isRequired, isActive, sortOrder } = data;
+
+  if (!title || !videoUrl) {
+    throw new ApiError(400, 'Title and video URL are required');
+  }
+
+  const extractedYtId = extractYouTubeId(videoUrl);
+  const isYt = videoType === 'youtube' || Boolean(extractedYtId);
+  const finalType = isYt ? 'youtube' : 'upload';
+  const finalYtId = isYt ? (youtubeId || extractedYtId) : '';
+  const finalVideoUrl = isYt && finalYtId ? `https://www.youtube.com/embed/${finalYtId}` : videoUrl;
+
+  if (finalType === 'upload' && !cloudinaryPublicId) {
+    throw new ApiError(400, 'Cloudinary ID is required for uploaded video files');
   }
 
   return TrainingVideo.create({
     title,
     description,
-    videoUrl,
-    cloudinaryPublicId,
+    videoType: finalType,
+    videoUrl: finalVideoUrl,
+    youtubeId: finalYtId,
+    cloudinaryPublicId: finalType === 'upload' ? (cloudinaryPublicId || '') : '',
     durationSeconds: durationSeconds || 0,
     isRequired: isRequired !== false,
     isActive: isActive !== false,
@@ -92,15 +111,23 @@ export const updateTrainingVideoService = async (id, data) => {
   const existing = await TrainingVideo.findById(id);
   if (!existing) throw new ApiError(404, 'Training video not found');
 
-  const nextPublicId = data.cloudinaryPublicId || existing.cloudinaryPublicId;
-  if (data.cloudinaryPublicId && data.cloudinaryPublicId !== existing.cloudinaryPublicId) {
-    await deleteFromCloudinary(existing.cloudinaryPublicId, 'video');
+  const incomingUrl = data.videoUrl || existing.videoUrl;
+  const extractedYtId = extractYouTubeId(incomingUrl);
+  const isYt = (data.videoType === 'youtube') || Boolean(extractedYtId);
+  const finalType = isYt ? 'youtube' : (data.videoType || existing.videoType || 'upload');
+  const finalYtId = isYt ? (data.youtubeId || extractedYtId || existing.youtubeId) : '';
+  const finalVideoUrl = isYt && finalYtId ? `https://www.youtube.com/embed/${finalYtId}` : incomingUrl;
+
+  if (data.cloudinaryPublicId && existing.videoType === 'upload' && existing.cloudinaryPublicId && data.cloudinaryPublicId !== existing.cloudinaryPublicId) {
+    await deleteFromCloudinary(existing.cloudinaryPublicId, 'video').catch(() => {});
   }
 
   existing.title = data.title ?? existing.title;
   existing.description = data.description ?? existing.description;
-  existing.videoUrl = data.videoUrl ?? existing.videoUrl;
-  existing.cloudinaryPublicId = nextPublicId;
+  existing.videoType = finalType;
+  existing.videoUrl = finalVideoUrl;
+  existing.youtubeId = finalYtId;
+  existing.cloudinaryPublicId = finalType === 'upload' ? (data.cloudinaryPublicId || existing.cloudinaryPublicId) : '';
   if (data.durationSeconds !== undefined) existing.durationSeconds = data.durationSeconds;
   if (data.isRequired !== undefined) existing.isRequired = data.isRequired;
   if (data.isActive !== undefined) existing.isActive = data.isActive;
@@ -114,7 +141,9 @@ export const deleteTrainingVideoService = async (id) => {
   const video = await TrainingVideo.findById(id);
   if (!video) throw new ApiError(404, 'Training video not found');
 
-  await deleteFromCloudinary(video.cloudinaryPublicId, 'video');
+  if (video.videoType === 'upload' && video.cloudinaryPublicId) {
+    await deleteFromCloudinary(video.cloudinaryPublicId, 'video').catch(() => {});
+  }
   await TrainingVideo.findByIdAndDelete(id);
   return { id };
 };

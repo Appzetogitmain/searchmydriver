@@ -7,6 +7,7 @@ import ServerPaginatedTable from '../components/ServerPaginatedTable';
 import BookingDetailsModal from '../components/ManageBookings/BookingDetailsModal';
 import BookingFilters from '../components/ManageBookings/BookingFilters';
 import BookingStats from '../components/ManageBookings/BookingStats';
+import BookingStatusDropdown from '../components/ManageBookings/BookingStatusDropdown';
 
 const ManageBookings = () => {
   const [page, setPage] = useState(1);
@@ -178,27 +179,14 @@ const ManageBookings = () => {
       {
         key: 'status',
         label: 'Status',
-        width: '10%',
-        render: (val, row) => {
-          const variants = {
-            completed: 'success',
-            started: 'primary',
-            driver_assigned: 'primary',
-            arrived: 'primary',
-            en_route: 'primary',
-            searching: 'warning',
-            pending_assignment: 'info',
-            awaiting_payment: 'warning',
-            in_emergency_pool: 'danger',
-            no_drivers_found: 'danger',
-            cancelled: 'danger',
-          };
-          return (
-            <Badge variant={variants[row.status] || 'default'} className="capitalize">
-              {row.status?.replace(/_/g, ' ')}
-            </Badge>
-          );
-        },
+        width: '12%',
+        render: (val, row) => (
+          <BookingStatusDropdown
+            bookingId={row._id}
+            currentStatus={row.status}
+            onStatusUpdated={() => refetch()}
+          />
+        ),
       },
       {
         key: 'createdAt',

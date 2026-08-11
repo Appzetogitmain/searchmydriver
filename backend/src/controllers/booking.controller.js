@@ -12,6 +12,7 @@ import {
   sanitizeBookingForDriver,
   listAdminBookingsService,
   adminCancelBookingService,
+  updateAdminBookingStatusService,
 } from '../services/booking.service.js';
 import { buildBookingInvoicePdf } from '../services/invoicePdf.service.js';
 import {
@@ -417,6 +418,24 @@ export const cancelAdminBooking = asyncHandler(async (req, res) => {
     req.body?.reason || '',
   );
   res.json(new ApiResponse(200, result, 'Booking cancelled successfully'));
+});
+
+/**
+ * @desc    Update booking status by admin
+ * @route   PATCH /api/v1/admin/bookings/:id/status
+ * @access  Private (staff)
+ */
+export const updateAdminBookingStatus = asyncHandler(async (req, res) => {
+  const { status } = req.body;
+  if (!status) {
+    throw new ApiError(400, 'Status is required');
+  }
+  const result = await updateAdminBookingStatusService(
+    req.params.id,
+    status,
+    req.staff,
+  );
+  res.json(new ApiResponse(200, result, 'Booking status updated successfully'));
 });
 
 /**

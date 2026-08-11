@@ -21,6 +21,7 @@ import {
 import ChatViewer from './ChatViewer';
 import { ACTIVE_BOOKING_STATUSES } from '../../../../constants/bookingStatus';
 import { cancelAdminBooking } from '../../../../store/admin/useAdminBookingsStore';
+import BookingStatusDropdown from './BookingStatusDropdown';
 
 const STATUS_VARIANTS = {
   completed: 'success',
@@ -224,9 +225,11 @@ const BookingDetailsModal = ({
               {new Date(booking.createdAt).toLocaleString()}
             </p>
           </div>
-          <Badge variant={statusVariant} className="capitalize shrink-0">
-            {booking.status?.replace(/_/g, ' ') || ''}
-          </Badge>
+          <BookingStatusDropdown
+            bookingId={booking._id}
+            currentStatus={booking.status}
+            onStatusUpdated={() => onCancelled?.()}
+          />
         </div>
       }
     >

@@ -12,14 +12,24 @@ const trainingVideoSchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    videoType: {
+      type: String,
+      enum: ['upload', 'youtube'],
+      default: 'upload',
+    },
     videoUrl: {
       type: String,
       required: true,
       trim: true,
     },
+    youtubeId: {
+      type: String,
+      default: '',
+      trim: true,
+    },
     cloudinaryPublicId: {
       type: String,
-      required: true,
+      default: '',
       trim: true,
     },
     durationSeconds: {

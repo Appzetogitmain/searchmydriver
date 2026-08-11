@@ -113,6 +113,7 @@ import {
   getAdminBookings,
   getAdminBookingById,
   cancelAdminBooking,
+  updateAdminBookingStatus,
   getEmergencyPoolBookings,
   getEmergencyPoolAvailableDrivers,
   assignDriverToEmergencyPoolBooking,
@@ -249,6 +250,12 @@ router.patch(
   protectStaff,
   restrictTo(...OPERATIONS),
   cancelAdminBooking,
+);
+router.patch(
+  '/bookings/:id/status',
+  protectStaff,
+  restrictTo(...ALL_STAFF),
+  updateAdminBookingStatus,
 );
 
 /* ---- Emergency Pool (scheduled-ride manual assignment) ---------------- */
