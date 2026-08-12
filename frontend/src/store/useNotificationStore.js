@@ -60,10 +60,16 @@ const useNotificationStore = create((set, get) => ({
       }
     );
 
-    set((state) => ({
-      notifications: [notification, ...state.notifications],
-      unreadCount: state.unreadCount + 1,
-    }));
+    set((state) => {
+      const targetId = notification._id || notification.id;
+      if (targetId && state.notifications.some((n) => (n._id || n.id) === targetId)) {
+        return state;
+      }
+      return {
+        notifications: [notification, ...state.notifications],
+        unreadCount: state.unreadCount + 1,
+      };
+    });
   },
 
   markAsRead: async (id, prefix = '/auth') => {

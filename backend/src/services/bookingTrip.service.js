@@ -574,11 +574,15 @@ export async function startTripService(driverId, bookingId, { otp } = {}) {
     const { getDriverKitEligibility } = await import('../utils/kitEligibility.util.js');
     const eligibility = await getDriverKitEligibility(driverId);
     if (!eligibility.hasKit) {
+      const hasPendingOrder = !!eligibility.activeOrder;
+      const body = hasPendingOrder
+        ? 'Your Driver Kit purchase has been placed and is currently awaiting admin approval.'
+        : 'You have started a trip without a Driver Kit. A penalty will be deducted at the end of this trip. Please purchase a kit to avoid this.';
       emitNotification(
         { driverId },
         {
-          title: 'Missing Driver Kit',
-          body: 'You have started a trip without a Driver Kit. A penalty will be deducted at the end of this trip. Please purchase a kit to avoid this.',
+          title: hasPendingOrder ? 'Driver Kit Awaiting Approval' : 'Missing Driver Kit',
+          body,
           severity: 'warning',
         }
       ).catch(() => {});

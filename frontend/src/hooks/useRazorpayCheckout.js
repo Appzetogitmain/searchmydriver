@@ -26,7 +26,7 @@ export function useRazorpayCheckout() {
   }, []);
 
   const openCheckout = useCallback(
-    async ({ razorpay, order, driver, onSuccess, onDismiss, onFailed }) => {
+    async ({ razorpay, order, driver, user, onSuccess, onDismiss, onFailed }) => {
       setLoading(true);
       try {
         const Razorpay = await loadRazorpayScript();
@@ -36,18 +36,19 @@ export function useRazorpayCheckout() {
 
         return await new Promise((resolve, reject) => {
           const orderId = order?._id || order?.id;
+          const prefillUser = user || driver;
 
           const rzp = new Razorpay({
             key: razorpay.keyId,
             amount: razorpay.amount,
-            currency: razorpay.currency,
+            currency: razorpay.currency || 'INR',
             name: razorpay.name || 'SearchMyDriver',
-            description: razorpay.description || 'Driver Kit',
+            description: razorpay.description || 'Booking Payment',
             order_id: razorpay.orderId,
             prefill: {
-              name: driver?.name || '',
-              email: driver?.email || '',
-              contact: driver?.phone ? `+91${driver.phone}` : '',
+              name: prefillUser?.name || '',
+              email: prefillUser?.email || '',
+              contact: prefillUser?.phone || prefillUser?.phone_no ? `+91${(prefillUser.phone || prefillUser.phone_no).replace(/^\+91/, '')}` : '',
             },
             theme: { color: '#F5C518' },
             handler: async (response) => {

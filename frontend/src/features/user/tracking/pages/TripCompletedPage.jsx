@@ -137,14 +137,15 @@ const TripCompletedPage = () => {
         }
         await openCheckout({
           razorpay: {
-            keyId: order.keyId,
+            keyId: order.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID,
             orderId: order.orderId,
             amount: order.amount,
-            currency: order.currency,
-            name: order.name,
-            description: order.description,
+            currency: order.currency || 'INR',
+            name: order.name || 'SearchMyDriver',
+            description: order.description || `Trip Payment - ${booking.bookingNumber || booking._id}`,
           },
-          order: { _id: order.bookingId },
+          order: { _id: order.bookingId || booking._id },
+          user: typeof booking.userId === 'object' ? booking.userId : null,
           onSuccess: async (response) => {
             const verifyRes = await api.post(`/auth/bookings/${booking._id}/verify-payment`, {
               orderId: response.razorpay_order_id,
@@ -156,6 +157,12 @@ const TripCompletedPage = () => {
               setFetchedBooking(verifyRes.data.data.booking);
               setBooking(verifyRes.data.data.booking);
             }
+          },
+          onDismiss: () => {
+            toast.error('Payment window closed');
+          },
+          onFailed: () => {
+            toast.error('Online payment failed. Please try again.');
           },
         });
       }
