@@ -55,37 +55,40 @@ export const protectUser = (req, res, next) => {
  * Customer profile: own id only, or staff (admin / team_member) for any customer id.
  */
 export const protectProfileViewer = async (req, res, next) => {
-  // Reachable from both the customer app (own profile) and the admin panel
-  // (any customer), so accept either audience's cookie.
-  const token =
-    readAccessToken(req, AUDIENCES.ADMIN) || readAccessToken(req, AUDIENCES.USER);
-  if (!token) {
+  const candidateTokens = readCandidateAccessTokens(req);
+  if (!candidateTokens.length) {
     return res.status(401).json({ status: 401, message: 'Not authorized, no token' });
   }
 
   try {
-    const decoded = verifyAccessToken(token);
-    if (inferAccountType(decoded) !== ACCOUNT_USER) {
-      return res.status(401).json({ status: 401, message: 'Access denied' });
-    }
-
-    const entity = await User.findById(decoded.id);
-    if (!entity || entity.isDeleted) {
-      return res.status(401).json({ status: 401, message: 'Account not found or deactivated' });
-    }
-
     const targetId = req.params.userId;
-    if (STAFF_ROLES.includes(entity.role)) {
-      if (!entity.isActive) {
-        return res.status(403).json({ status: 403, message: 'Your account has been deactivated.' });
-      }
-      req.staff = entity;
-      return next();
-    }
 
-    if (entity.role === USER_ROLES.USER && String(entity._id) === String(targetId)) {
-      req.user = entity;
-      return next();
+    for (const candidate of candidateTokens) {
+      try {
+        const decoded = verifyAccessToken(candidate.token);
+        if (inferAccountType(decoded) !== ACCOUNT_USER) continue;
+
+        const entity = await User.findById(decoded.id);
+        if (!entity || entity.isDeleted) continue;
+
+        if (STAFF_ROLES.includes(entity.role)) {
+          if (!entity.isActive) {
+            return res.status(403).json({ status: 403, message: 'Your account has been deactivated.' });
+          }
+          req.staff = entity;
+          return next();
+        }
+
+        if (
+          entity.role === USER_ROLES.USER &&
+          (String(entity._id) === String(targetId) || entity.userId === targetId)
+        ) {
+          req.user = entity;
+          return next();
+        }
+      } catch {
+        // Continue to next candidate token
+      }
     }
 
     return res.status(403).json({ status: 403, message: 'Access denied' });

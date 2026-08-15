@@ -258,6 +258,7 @@ async function drawImageCell({ doc, x, y, w, h, url, caption, hint }) {
  */
 export async function buildDriverProfilePdf(driverId, { res } = {}) {
   const driver = await Driver.findById(driverId)
+    .populate('homeZone', 'name code city description')
     .populate('carTypeExperience', 'name')
     .populate('vehicleExperience.carTypeId', 'name')
     .populate('vehicleExperience.brandId', 'name')
@@ -404,6 +405,10 @@ export async function buildDriverProfilePdf(driverId, { res } = {}) {
 
   /* ───── Driving credentials ───────────────────────────────────── */
 
+  const serviceZoneLabel = driver.homeZone
+    ? `${driver.homeZone.name || ''}${driver.homeZone.city ? ` (${driver.homeZone.city})` : ''}`.trim()
+    : driver.city || null;
+
   sectionHeading(doc, 'Driving credentials');
   infoGrid(doc, [
     { label: 'Licence number', value: driver.drivingLicense?.number || null },
@@ -415,6 +420,7 @@ export async function buildDriverProfilePdf(driverId, { res } = {}) {
     },
     { label: 'Experience (years)', value: driver.experienceYears ?? 0 },
     { label: 'Availability', value: driver.availability || null },
+    { label: 'Service zone', value: serviceZoneLabel },
     {
       label: 'Safety declaration',
       value: driver.safetyDeclaration?.agreed

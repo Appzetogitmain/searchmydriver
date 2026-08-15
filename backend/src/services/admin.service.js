@@ -76,13 +76,18 @@ export const getStaffProfileService = async (staffId) => {
 export const getCustomersService = async (query) => {
   const { search, page = 1, limit = 10 } = query;
 
-  const filter = { role: USER_ROLES.USER, isDeleted: false };
+  const filter = { role: USER_ROLES.USER, isDeleted: { $ne: true } };
   if (search) {
+    const s = String(search).trim();
     filter.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { email: { $regex: search, $options: 'i' } },
-      { phone_no: { $regex: search, $options: 'i' } },
+      { name: { $regex: s, $options: 'i' } },
+      { email: { $regex: s, $options: 'i' } },
+      { phone_no: { $regex: s, $options: 'i' } },
+      { userId: { $regex: s, $options: 'i' } },
     ];
+    if (mongoose.Types.ObjectId.isValid(s)) {
+      filter.$or.push({ _id: s });
+    }
   }
 
   const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
@@ -142,7 +147,7 @@ export const getDriversService = async (staff, query) => {
     return { data: [], pagination: scope.pagination };
   }
 
-  const filter = {};
+  const filter = { isDeleted: { $ne: true } };
   if (status) filter.approvalStatus = status;
   if (search) {
     filter.$or = [
@@ -168,6 +173,7 @@ export const getDriversService = async (staff, query) => {
   const total = await Driver.countDocuments(filter);
   const data = await Driver.find(filter)
     .populate('carTypeExperience', 'name')
+    .populate('homeZone', 'name city code')
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(parseInt(limit));
@@ -194,6 +200,7 @@ export const getDriverByIdService = async (staff, driverId) => {
   await assertStaffCanAccessResource(staff, AdminTask, TASK_TYPE.DRIVER_REVIEW, driverId);
 
   const driver = await Driver.findById(driverId)
+    .populate('homeZone', 'name code city description')
     .populate('carTypeExperience', 'name image')
     .populate('vehicleExperience.carTypeId', 'name')
     .populate('vehicleExperience.brandId', 'name')
@@ -331,7 +338,7 @@ export const unsuspendDriverService = async (adminId, driverId) => {
 };
 
 export const updateDriverDocumentService = async (staff, driverId, docData) => {
-  const { type, fileUrl, status = 'approved' } = docData;
+  const { docId, type, fileUrl, status = 'approved', verificationStatus = 'approved' } = docData;
   if (!type || !fileUrl) {
     throw new ApiError(400, 'Document type and fileUrl are required');
   }
@@ -341,18 +348,53 @@ export const updateDriverDocumentService = async (staff, driverId, docData) => {
     throw new ApiError(404, 'Driver not found');
   }
 
-  const existingIndex = driver.documents.findIndex(d => d.type === type);
+  let existingIndex = -1;
+  if (docId) {
+    existingIndex = driver.documents.findIndex(d => d._id?.toString() === docId.toString());
+  }
+  if (existingIndex === -1) {
+    existingIndex = driver.documents.findIndex(d => d.type === type);
+  }
+
+  const docStatus = status || verificationStatus || 'approved';
+
   if (existingIndex > -1) {
+    driver.documents[existingIndex].type = type;
     driver.documents[existingIndex].fileUrl = fileUrl;
-    driver.documents[existingIndex].status = status;
+    driver.documents[existingIndex].verificationStatus = docStatus;
+    driver.documents[existingIndex].status = docStatus;
     driver.documents[existingIndex].uploadedAt = new Date();
   } else {
     driver.documents.push({
       type,
       fileUrl,
-      status,
-      uploadedAt: new Date()
+      verificationStatus: docStatus,
+      status: docStatus,
+      uploadedAt: new Date(),
     });
+  }
+
+  await driver.save();
+  return driver;
+};
+
+export const deleteDriverDocumentService = async (staff, driverId, docId) => {
+  if (!docId) {
+    throw new ApiError(400, 'Document ID or type is required');
+  }
+
+  const driver = await Driver.findById(driverId);
+  if (!driver) {
+    throw new ApiError(404, 'Driver not found');
+  }
+
+  const initialLength = driver.documents.length;
+  driver.documents = driver.documents.filter(
+    (d) => d._id?.toString() !== docId && d.type !== docId
+  );
+
+  if (driver.documents.length === initialLength) {
+    throw new ApiError(404, 'Document not found');
   }
 
   await driver.save();
@@ -446,10 +488,15 @@ export const getAdminTeamService = async (query) => {
   };
 
   if (search) {
+    const s = String(search).trim();
     filter.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { email: { $regex: search, $options: 'i' } }
+      { name: { $regex: s, $options: 'i' } },
+      { email: { $regex: s, $options: 'i' } },
+      { userId: { $regex: s, $options: 'i' } },
     ];
+    if (mongoose.Types.ObjectId.isValid(s)) {
+      filter.$or.push({ _id: s });
+    }
   }
 
   const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -864,8 +911,17 @@ export const getDashboardStatsService = async () => {
   };
 };
 
+const findUserByIdOrCustomId = async (id) => {
+  if (!id) return null;
+  if (mongoose.Types.ObjectId.isValid(id)) {
+    const user = await User.findById(id);
+    if (user) return user;
+  }
+  return await User.findOne({ userId: id });
+};
+
 export const suspendUserService = async (adminId, userId, reason) => {
-  const user = await User.findById(userId);
+  const user = await findUserByIdOrCustomId(userId);
   if (!user) {
     throw new ApiError(404, 'User not found');
   }
@@ -876,14 +932,14 @@ export const suspendUserService = async (adminId, userId, reason) => {
 
   user.isSuspended = true;
   user.suspensionReason = (reason || '').trim();
-  user.isActive = false; 
+  user.isActive = false;
 
   await user.save();
   return user;
 };
 
 export const unsuspendUserService = async (adminId, userId) => {
-  const user = await User.findById(userId);
+  const user = await findUserByIdOrCustomId(userId);
   if (!user) {
     throw new ApiError(404, 'User not found');
   }
@@ -899,3 +955,57 @@ export const unsuspendUserService = async (adminId, userId) => {
   await user.save();
   return user;
 };
+
+export const toggleUserActiveService = async (adminId, userId, isActive) => {
+  const user = await findUserByIdOrCustomId(userId);
+  if (!user || user.isDeleted) {
+    throw new ApiError(404, 'User not found');
+  }
+
+  user.isActive = typeof isActive === 'boolean' ? isActive : !user.isActive;
+  await user.save();
+  return user;
+};
+
+export const deleteUserService = async (adminId, userId) => {
+  const user = await findUserByIdOrCustomId(userId);
+  if (!user) {
+    throw new ApiError(404, 'User not found');
+  }
+
+  if (!user.isDeleted) {
+    user.isDeleted = true;
+    user.deletedAt = new Date();
+    user.isActive = false;
+    await user.save();
+  }
+
+  return { id: user._id, message: 'User account deleted successfully' };
+};
+
+export const deleteDriverService = async (adminId, driverId) => {
+  const findDriverByIdOrCustomId = async (id) => {
+    if (!id) return null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      const d = await Driver.findById(id);
+      if (d) return d;
+    }
+    return await Driver.findOne({ driverId: id });
+  };
+
+  const driver = await findDriverByIdOrCustomId(driverId);
+  if (!driver) {
+    throw new ApiError(404, 'Driver not found');
+  }
+
+  if (!driver.isDeleted) {
+    driver.isDeleted = true;
+    driver.deletedAt = new Date();
+    driver.isOnline = false;
+    driver.approvalStatus = 'rejected';
+    await driver.save();
+  }
+
+  return { id: driver._id, message: 'Driver account deleted successfully' };
+};
+

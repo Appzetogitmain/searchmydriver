@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Car, Loader2, Mail, Phone, RefreshCw, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Car, Loader2, Mail, MapPin, Phone, RefreshCw, ShieldAlert } from 'lucide-react';
 import Avatar from '../../../components/Avatar';
 import { useCachedQuery } from '../../../hooks/useCachedQuery';
 import { buildCacheKey } from '../../../store/lib/buildCacheKey';
@@ -52,6 +52,11 @@ const UserProfilePage = () => {
   const { user, cars, checklist, hasChecklist, carsCount } = profile;
   const isDeleted = Boolean(user.isDeleted);
 
+  const extraSavedLocations = (user.savedLocations || []).filter(
+    (loc) => loc.label !== 'Registration Location' && loc.address !== user.city
+  );
+  const totalLocationsCount = (user.city ? 1 : 0) + extraSavedLocations.length;
+
   return (
     <div className="space-y-6 animate-fade-in-up pb-8">
       <div className="flex items-center justify-between gap-4">
@@ -86,6 +91,11 @@ const UserProfilePage = () => {
               <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${user.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
                 {user.isActive ? 'Active' : 'Inactive'}
               </span>
+              {(user.userId || user._id) && (
+                <span className="text-xs font-mono font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">
+                  ID: {user.userId || user._id}
+                </span>
+              )}
             </div>
             <div className="flex flex-wrap gap-4 text-sm text-slate-600">
               <span className="inline-flex items-center gap-1.5"><Phone className="w-4 h-4" />{user.phone_no}</span>
@@ -101,8 +111,9 @@ const UserProfilePage = () => {
         <SectionCard title="Account details">
           <InfoGrid
             items={[
-              { label: 'User ID', value: user._id },
+              { label: 'User ID', value: user.userId || user._id },
               { label: 'Joined', value: formatDate(user.createdAt) },
+              { label: 'Registration Location', value: user.city || 'Not specified' },
               { label: 'Rating', value: user.rating ? `${Number(user.rating).toFixed(1)} (${user.ratingCount || 0} reviews)` : 'New' },
               { label: 'Phone verified', value: user.isPhoneVerified ? 'Yes' : 'No' },
               { label: 'Email verified', value: user.isEmailVerified ? 'Yes' : 'No' },
@@ -163,13 +174,27 @@ const UserProfilePage = () => {
           )}
         </SectionCard>
 
-        <SectionCard title={`Saved Locations (${user.savedLocations?.length || 0})`}>
-          {!user.savedLocations?.length ? (
+        <SectionCard title={`Saved Locations (${totalLocationsCount})`}>
+          {!user.city && !user.savedLocations?.length ? (
             <p className="text-sm text-slate-500">No saved locations.</p>
           ) : (
             <ul className="space-y-3">
-              {user.savedLocations.map((loc) => (
-                <li key={loc._id} className="text-sm border border-slate-100 bg-slate-50 rounded-lg p-3">
+              {user.city && (
+                <li className="text-sm border border-emerald-200 bg-emerald-50/60 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="font-bold text-slate-900 flex items-center gap-1.5">
+                      <MapPin className="w-4 h-4 text-emerald-600" />
+                      Registration Location
+                    </p>
+                    <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                      Registration
+                    </span>
+                  </div>
+                  <p className="text-slate-700 font-medium">{user.city}</p>
+                </li>
+              )}
+              {extraSavedLocations.map((loc) => (
+                <li key={loc._id || loc.address} className="text-sm border border-slate-100 bg-slate-50 rounded-lg p-3">
                   <p className="font-bold text-slate-800">{loc.label || 'Unnamed Location'}</p>
                   <p className="text-slate-600 mt-1">{loc.address}</p>
                   {loc.city && <p className="text-slate-500 mt-0.5 text-xs">{loc.city}</p>}

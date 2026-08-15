@@ -8,7 +8,7 @@ import {
 } from '../services/adminWallet.service.js';
 
 export const getAdminWalletState = asyncHandler(async (req, res) => {
-  const state = await getAdminWalletStateService();
+  const state = await getAdminWalletStateService(req.query);
   return res.status(200).json(new ApiResponse(200, state, 'Admin wallet state fetched'));
 });
 

@@ -41,9 +41,14 @@ const useAdminRevenueStore = create((set, get) => ({
     return get().fetchRevenue();
   },
 
-  setFilter(key, value) {
-    const filters = { ...get().filters, [key]: value };
-    set({ filters, page: 1 });
+  setFilter(keyOrObj, value) {
+    let newFilters;
+    if (typeof keyOrObj === 'object' && keyOrObj !== null) {
+      newFilters = { ...get().filters, ...keyOrObj };
+    } else {
+      newFilters = { ...get().filters, [keyOrObj]: value };
+    }
+    set({ filters: newFilters, page: 1 });
     return get().fetchRevenue();
   },
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Headset,
   Phone,
@@ -26,6 +26,8 @@ const useSupportTicketsStore = createQueryStore(async () => {
 const ManageWebTickets = () => {
   const [search, setSearch] = useState('');
   const [selectedTicket, setSelectedTicket] = useState(null);
+  const [replyMessage, setReplyMessage] = useState('');
+  const [sendingReply, setSendingReply] = useState(false);
   const cacheKey = buildCacheKey('admin-support-tickets-web', {});
   const { data, loading, refetch } = useCachedQuery(useSupportTicketsStore, cacheKey, {});
   const tickets = data || [];
@@ -34,6 +36,16 @@ const ManageWebTickets = () => {
   useSocketEvent(S2C_EVENTS.ADMIN_ALERT, () => {
     refetch();
   });
+
+  // Sync selectedTicket with fresh data when tickets list updates
+  useEffect(() => {
+    if (selectedTicket) {
+      const updated = tickets.find((t) => String(t._id) === String(selectedTicket._id));
+      if (updated) {
+        setSelectedTicket(updated);
+      }
+    }
+  }, [tickets]);
 
   const handleResolve = async (id) => {
     try {
@@ -46,6 +58,42 @@ const ManageWebTickets = () => {
     } catch (err) {
       toast.error('Failed to resolve ticket');
       console.error(err);
+    }
+  };
+
+  const handleSendReply = async (resolveStatus = false) => {
+    if (!replyMessage.trim() || !selectedTicket) return;
+    setSendingReply(true);
+    try {
+      const { data } = await api.post(`/admin/support/tickets/${selectedTicket._id}/reply`, {
+        message: replyMessage.trim(),
+        status: resolveStatus ? 'resolved' : undefined,
+      });
+      toast.success(resolveStatus ? 'Reply sent & ticket resolved' : 'Reply sent successfully');
+      if (data?.ticket) {
+        setSelectedTicket(data.ticket);
+      } else {
+        setSelectedTicket((prev) => ({
+          ...prev,
+          status: resolveStatus ? 'resolved' : prev.status,
+          replies: [
+            ...(prev.replies || []),
+            {
+              senderType: 'admin',
+              senderName: 'Admin',
+              message: replyMessage.trim(),
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        }));
+      }
+      setReplyMessage('');
+      refetch();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to send reply');
+      console.error('Failed to send reply:', err);
+    } finally {
+      setSendingReply(false);
     }
   };
 
@@ -117,7 +165,10 @@ const ManageWebTickets = () => {
                     {filteredTickets.map((t) => (
                       <tr
                         key={t._id}
-                        onClick={() => setSelectedTicket(t)}
+                        onClick={() => {
+                          setSelectedTicket(t);
+                          setReplyMessage('');
+                        }}
                         className={`hover:bg-slate-50/80 cursor-pointer transition-colors ${
                           selectedTicket?._id === t._id ? 'bg-slate-100/50' : ''
                         }`}
@@ -157,14 +208,28 @@ const ManageWebTickets = () => {
             <Card className="border-slate-200 p-6 space-y-6">
               <div className="flex justify-between items-start border-b border-slate-100 pb-4">
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900">{selectedTicket.ticketNumber}</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-slate-900">{selectedTicket.ticketNumber}</h3>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                        selectedTicket.status === 'resolved'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}
+                    >
+                      {selectedTicket.status}
+                    </span>
+                  </div>
                   <p className="text-xs text-slate-400 mt-0.5">
                     Created on {new Date(selectedTicket.createdAt).toLocaleString()}
                   </p>
                 </div>
                 <button
-                  onClick={() => setSelectedTicket(null)}
-                  className="p-1 hover:bg-slate-100 rounded-lg text-slate-400"
+                  onClick={() => {
+                    setSelectedTicket(null);
+                    setReplyMessage('');
+                  }}
+                  className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -199,18 +264,94 @@ const ManageWebTickets = () => {
                     {selectedTicket.description}
                   </div>
                 </div>
-              </div>
 
-              {selectedTicket.status === 'open' && (
-                <div className="pt-4 border-t border-slate-100">
-                  <button
-                    onClick={() => handleResolve(selectedTicket._id)}
-                    className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle className="w-4 h-4" /> Mark as Resolved
-                  </button>
+                {/* Conversation History / Replies */}
+                {selectedTicket.replies && selectedTicket.replies.length > 0 && (
+                  <div className="space-y-3 pt-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                      <MessageSquare className="w-3.5 h-3.5 text-amber-500" /> Replies & Activity ({selectedTicket.replies.length})
+                    </h4>
+                    <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                      {selectedTicket.replies.map((reply, idx) => {
+                        const isAdmin = reply.senderType === 'admin';
+                        return (
+                          <div
+                            key={idx}
+                            className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}
+                          >
+                            <div
+                              className={`max-w-[90%] rounded-2xl p-3 text-sm shadow-sm space-y-1 ${
+                                isAdmin
+                                  ? 'bg-amber-500 text-slate-950 font-medium rounded-br-none'
+                                  : 'bg-slate-100 text-slate-800 rounded-bl-none border border-slate-200'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-3 text-[11px] font-semibold opacity-75">
+                                <span>{reply.senderName || (isAdmin ? 'Admin' : 'Visitor')}</span>
+                                <span>
+                                  {reply.createdAt ? new Date(reply.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                </span>
+                              </div>
+                              <p className="whitespace-pre-wrap text-xs sm:text-sm">{reply.message}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Reply Input Box */}
+                <div className="pt-3 border-t border-slate-100 space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                      Reply to Ticket
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={replyMessage}
+                      onChange={(e) => setReplyMessage(e.target.value)}
+                      placeholder="Type your reply or resolution details..."
+                      className="w-full p-3 bg-slate-50/50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 resize-none"
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    {replyMessage.trim() ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleSendReply(false)}
+                          disabled={sendingReply}
+                          className="flex-1 py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                        >
+                          {sendingReply ? 'Sending...' : 'Send Reply'}
+                        </button>
+                        {selectedTicket.status !== 'resolved' && (
+                          <button
+                            type="button"
+                            onClick={() => handleSendReply(true)}
+                            disabled={sendingReply}
+                            className="flex-1 py-2.5 px-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-sm transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                          >
+                            <CheckCircle className="w-3.5 h-3.5" /> Reply & Resolve
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      selectedTicket.status !== 'resolved' && (
+                        <button
+                          type="button"
+                          onClick={() => handleResolve(selectedTicket._id)}
+                          className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-2"
+                        >
+                          <CheckCircle className="w-4 h-4" /> Mark as Resolved
+                        </button>
+                      )
+                    )}
+                  </div>
                 </div>
-              )}
+              </div>
             </Card>
           </div>
         )}

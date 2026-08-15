@@ -71,7 +71,14 @@ const ManageDrivers = () => {
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">{row.phone}</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {row.phone}
+                  {row.homeZone?.name
+                    ? ` · ${row.homeZone.name}`
+                    : row.city
+                    ? ` · ${row.city}`
+                    : ''}
+                </p>
               </div>
             </div>
           );
