@@ -55,6 +55,11 @@ export const updateDriverDocument = asyncHandler(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, result, 'Driver document updated successfully'));
 });
 
+export const deleteDriverDocument = asyncHandler(async (req, res) => {
+  const result = await adminService.deleteDriverDocumentService(req.staff, req.params.id, req.params.docId);
+  return res.status(200).json(new ApiResponse(200, result, 'Driver document deleted successfully'));
+});
+
 export const suspendUser = asyncHandler(async (req, res) => {
   const result = await adminService.suspendUserService(req.staff._id, req.params.id, req.body.reason);
   return res.status(200).json(new ApiResponse(200, result, 'User suspended successfully'));
@@ -64,6 +69,22 @@ export const unsuspendUser = asyncHandler(async (req, res) => {
   const result = await adminService.unsuspendUserService(req.staff._id, req.params.id);
   return res.status(200).json(new ApiResponse(200, result, 'User unsuspended successfully'));
 });
+
+export const toggleUserActive = asyncHandler(async (req, res) => {
+  const result = await adminService.toggleUserActiveService(req.staff._id, req.params.id, req.body.isActive);
+  return res.status(200).json(new ApiResponse(200, result, 'User status updated successfully'));
+});
+
+export const deleteUser = asyncHandler(async (req, res) => {
+  const result = await adminService.deleteUserService(req.staff._id, req.params.id);
+  return res.status(200).json(new ApiResponse(200, result, 'User deleted successfully'));
+});
+
+export const deleteDriver = asyncHandler(async (req, res) => {
+  const result = await adminService.deleteDriverService(req.staff._id, req.params.id);
+  return res.status(200).json(new ApiResponse(200, result, 'Driver deleted successfully'));
+});
+
 
 export const addAdminMember = asyncHandler(async (req, res) => {
   const result = await adminService.addAdminMemberService(req.body);

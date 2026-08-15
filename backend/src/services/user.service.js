@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import User from '../models/user.model.js';
 import { Driver } from '../models/driverModels/driver.model.js';
@@ -85,6 +86,7 @@ export const verifyUserOtpAndRegisterService = async ({ name, phone, password, o
     isPhoneVerified: true,
     referralCode: myReferralCode,
     city: city || '',
+    savedLocations: city ? [{ label: 'Registration Location', address: city, city: city, lat: 0, lng: 0 }] : [],
   });
 
   // Handle incoming referral code
@@ -206,17 +208,23 @@ async function isChecklistComplete(user) {
 }
 
 export const getUserProfileService = async (userId) => {
-  const user = await User.findById(userId).populate('conditions.conditionId');
+  const isObjId = mongoose.Types.ObjectId.isValid(userId);
+  const user = await User.findOne({
+    $or: isObjId ? [{ _id: userId }, { userId }] : [{ userId }],
+  }).populate('conditions.conditionId');
+
   if (!user || user.isDeleted || user.role !== USER_ROLES.USER) {
     throw new ApiError(404, 'User not found');
   }
 
+  const targetId = user._id;
+
   if (!user.referralCode) {
     user.referralCode = 'USER' + Math.random().toString(36).substring(2, 8).toUpperCase();
-    await User.findByIdAndUpdate(userId, { referralCode: user.referralCode });
+    await User.findByIdAndUpdate(targetId, { referralCode: user.referralCode });
   }
 
-  const cars = await Car.find({ userId, isActive: true })
+  const cars = await Car.find({ userId: targetId, isActive: true })
     .populate('carTypeId', 'name')
     .populate('brandId', 'name')
     .populate('modelId', 'name')

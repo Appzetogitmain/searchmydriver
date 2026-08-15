@@ -13,7 +13,7 @@ const UserFilters = ({ search, onSearchChange, onRefresh, refreshing = false }) 
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Search by name, email, or phone..."
+            placeholder="Search by name, email, phone, or User ID..."
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             className="w-full h-12 pl-11 pr-4 rounded-2xl border border-slate-200 bg-white shadow-sm text-sm focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all"

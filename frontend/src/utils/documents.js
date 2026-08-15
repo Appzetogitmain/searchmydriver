@@ -1,10 +1,15 @@
 export const DOCUMENT_LABELS = {
   profile_picture: 'Profile Picture',
-  driving_license: 'Driving License',
+  driving_license: 'Driving License (Front)',
+  driving_license_front: 'Driving License (Front)',
+  driving_license_back: 'Driving License (Back)',
   selfie: 'Selfie / Photo',
   aadhaar_front: 'Aadhaar (Front)',
   aadhaar_back: 'Aadhaar (Back)',
   police_verification: 'Police Verification',
+  address_proof: 'Electricity Bill / Rent Agreement',
+  driver_registration: 'Driver Registration Form',
+  live_selfie: 'Live Selfie',
 };
 
 export const EMPTY_DOCUMENT = Object.freeze({

@@ -8,7 +8,7 @@ const require = createRequire(import.meta.url);
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    port: 5173,
+    port: 5180,
     host: true,
   },
   build: {

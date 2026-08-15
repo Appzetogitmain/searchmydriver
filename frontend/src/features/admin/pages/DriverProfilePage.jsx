@@ -33,11 +33,13 @@ import {
   ONBOARDING_STEP_LABELS,
 } from '../components/ManageDrivers/driverProfileUtils';
 import { formatVehicleExperienceLabel } from '../../../utils/vehicleCatalog';
+import { DOCUMENT_LABELS } from '../../../utils/documents';
 
 const DriverProfilePage = () => {
   const { driverId } = useParams();
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [editingDocument, setEditingDocument] = useState(null);
 
   const queryParams = useMemo(() => ({ driverId }), [driverId]);
   const cacheKey = buildCacheKey('driver-profile', queryParams);
@@ -92,6 +94,21 @@ const DriverProfilePage = () => {
   const handleStatusUpdated = () => {
     invalidateAfterReview();
     refetch();
+  };
+
+  const handleDeleteDocument = async (doc) => {
+    const label = DOCUMENT_LABELS[doc.type] || doc.type.replace(/_/g, ' ');
+    if (!window.confirm(`Are you sure you want to delete the "${label}" document?`)) {
+      return;
+    }
+    try {
+      const docId = doc._id || doc.type;
+      await api.delete(`/admin/drivers/${driverId}/documents/${docId}`);
+      toast.success('Document deleted successfully');
+      handleStatusUpdated();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete document');
+    }
   };
 
   if (loading && !profile) {
@@ -212,7 +229,7 @@ const DriverProfilePage = () => {
         <SectionCard title="Driver information">
           <InfoGrid
             items={[
-              { label: 'Driver ID', value: driver._id },
+              { label: 'Driver ID', value: driver.driverId || driver._id },
               { label: 'Rating', value: driver.rating ? `${Number(driver.rating).toFixed(1)} (${driver.ratingCount || 0} reviews)` : 'New' },
               { label: 'Experience', value: `${driver.experienceYears ?? 0} years` },
               {
@@ -276,6 +293,12 @@ const DriverProfilePage = () => {
               {
                 label: 'Approved at',
                 value: driver.approvedAt ? formatDate(driver.approvedAt) : '—',
+              },
+              {
+                label: 'Service zone',
+                value: driver.homeZone?.name
+                  ? `${driver.homeZone.name}${driver.homeZone.city ? ` (${driver.homeZone.city})` : ''}`
+                  : (driver.city || '—'),
               },
             ]}
           />
@@ -350,21 +373,36 @@ const DriverProfilePage = () => {
         <div className="flex items-center justify-between w-full">
           <span>Documents</span>
           <button
-            onClick={() => setUploadModalOpen(true)}
-            className="text-xs text-primary font-medium hover:underline flex items-center gap-1"
+            type="button"
+            onClick={() => {
+              setEditingDocument(null);
+              setUploadModalOpen(true);
+            }}
+            className="px-3.5 py-1.5 text-xs font-semibold text-slate-900 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer"
           >
-            <UploadCloud className="w-4 h-4" />
+            <UploadCloud className="w-4 h-4 text-slate-900" />
             Upload Document
           </button>
         </div>
       }>
-        <DocumentGallery documents={driver.documents} />
+        <DocumentGallery
+          documents={driver.documents}
+          onEdit={(doc) => {
+            setEditingDocument(doc);
+            setUploadModalOpen(true);
+          }}
+          onDelete={handleDeleteDocument}
+        />
       </SectionCard>
 
       <AdminDocumentUploadModal
         open={uploadModalOpen}
-        onClose={() => setUploadModalOpen(false)}
+        onClose={() => {
+          setUploadModalOpen(false);
+          setEditingDocument(null);
+        }}
         driverId={driverId}
+        editingDocument={editingDocument}
         onSuccess={handleStatusUpdated}
       />
     </div>

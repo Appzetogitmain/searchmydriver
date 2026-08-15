@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 
 const DOCUMENT_TYPES = [
-  'driving_license', 'selfie', 'aadhaar_front', 'aadhaar_back', 'police_verification',
+  'driving_license', 'driving_license_front', 'driving_license_back', 'selfie', 'aadhaar_front', 'aadhaar_back', 'police_verification',
   'address_proof', 'driver_registration', 'live_selfie'
 ];
 

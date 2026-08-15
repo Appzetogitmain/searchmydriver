@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Ban, UserCheck, Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { Ban, UserCheck, Loader2, CheckCircle, XCircle, Trash2 } from 'lucide-react';
 import api from '../../../../utils/api';
 import toast from 'react-hot-toast';
+import { useAdminDriversStore } from '../../../../store/admin/useAdminDriversStore';
 
 /**
- * Suspend / unsuspend controls for driver list rows and profile.
+ * Suspend / unsuspend / delete controls for driver list rows and profile.
  */
 const DriverSuspendActions = ({
   driver,
@@ -22,8 +23,6 @@ const DriverSuspendActions = ({
   const canApprove = driver.approvalStatus === 'pending' || driver.approvalStatus === 'under_review';
   const canReject = driver.approvalStatus === 'pending' || driver.approvalStatus === 'under_review';
 
-  if (!canSuspend && !canUnsuspend && !canApprove && !canReject) return null;
-
   const handleStatusChange = async (status, note, confirmMsg, loaderState, successMsg) => {
     if (!window.confirm(confirmMsg)) return;
 
@@ -34,6 +33,7 @@ const DriverSuspendActions = ({
         approvalNote: note,
       });
       toast.success(successMsg);
+      useAdminDriversStore.getState().invalidate('admin-drivers');
       onSuccess?.();
     } catch (err) {
       toast.error(err.response?.data?.message || `Failed to ${loaderState} driver`);
@@ -70,6 +70,7 @@ const DriverSuspendActions = ({
         note: 'Suspended by admin',
       });
       toast.success('Driver suspended');
+      useAdminDriversStore.getState().invalidate('admin-drivers');
       onSuccess?.();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to suspend driver');
@@ -86,6 +87,7 @@ const DriverSuspendActions = ({
     try {
       await api.patch(`/admin/drivers/${driver._id}/unsuspend`);
       toast.success('Driver unsuspended');
+      useAdminDriversStore.getState().invalidate('admin-drivers');
       onSuccess?.();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to unsuspend driver');
@@ -94,13 +96,30 @@ const DriverSuspendActions = ({
     }
   };
 
+  const handleDelete = async (e) => {
+    e?.stopPropagation?.();
+    if (!window.confirm(`Delete driver account for ${driver.name}? This action will deactivate their account.`)) return;
+
+    setLoading('delete');
+    try {
+      await api.delete(`/admin/drivers/${driver._id}`);
+      toast.success('Driver deleted');
+      useAdminDriversStore.getState().invalidate('admin-drivers');
+      onSuccess?.();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete driver');
+    } finally {
+      setLoading(null);
+    }
+  };
+
   const btnBase = compact
-    ? 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors disabled:opacity-50'
+    ? 'inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold transition-colors disabled:opacity-50'
     : 'inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50';
 
   return (
     <div
-      className={`flex flex-wrap gap-2 ${className}`}
+      className={`flex flex-wrap items-center gap-1.5 ${className}`}
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}
       role="presentation"
@@ -165,8 +184,23 @@ const DriverSuspendActions = ({
           Unsuspend
         </button>
       )}
+      <button
+        type="button"
+        disabled={Boolean(loading)}
+        onClick={handleDelete}
+        className={`${btnBase} border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100`}
+        title="Delete driver account"
+      >
+        {loading === 'delete' ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        ) : (
+          <Trash2 className="w-3.5 h-3.5" />
+        )}
+        Delete
+      </button>
     </div>
   );
 };
 
 export default DriverSuspendActions;
+

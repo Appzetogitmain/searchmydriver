@@ -17,23 +17,41 @@ import { useDriverProfileStore } from '../../../../store/driver/useDriverProfile
 import { buildCacheKey } from '../../../../store/lib/buildCacheKey';
 
 import { DRIVER_ONBOARDING_STEPS } from '../../../../utils/driverOnboarding';
-const CREDENTIAL_DOC_TYPES = ['driving_license', 'live_selfie', 'address_proof', 'police_verification', 'driver_registration'];
+const CREDENTIAL_DOC_TYPES = [
+  'live_selfie',
+  'driving_license',
+  'driving_license_back',
+  'aadhaar_front',
+  'aadhaar_back',
+  'police_verification',
+  'address_proof',
+];
 
 const CREDENTIAL_DOCUMENTS = [
-  {
-    type: 'driving_license',
-    title: 'Driving licence (front)',
-    hint: 'Clear photo of the front of your valid driving licence',
-  },
   {
     type: 'live_selfie',
     title: 'Live Selfie',
     hint: 'Recent photo of your face, good lighting, no sunglasses or mask',
   },
   {
-    type: 'address_proof',
-    title: 'Address Proof',
-    hint: 'Upload an electric bill or rent agreement',
+    type: 'driving_license',
+    title: 'Driving licence (front)',
+    hint: 'Clear photo of the front of your valid driving licence',
+  },
+  {
+    type: 'driving_license_back',
+    title: 'Driving licence (back)',
+    hint: 'Clear photo of the back of your valid driving licence',
+  },
+  {
+    type: 'aadhaar_front',
+    title: 'Aadhaar Card (Front)',
+    hint: 'Clear photo of the front of your Aadhaar card',
+  },
+  {
+    type: 'aadhaar_back',
+    title: 'Aadhaar Card (Back)',
+    hint: 'Clear photo of the back of your Aadhaar card',
   },
   {
     type: 'police_verification',
@@ -41,9 +59,9 @@ const CREDENTIAL_DOCUMENTS = [
     hint: 'Clear photo of your police verification certificate',
   },
   {
-    type: 'driver_registration',
-    title: 'Driver Registration',
-    hint: 'Clear photo of your driver registration document',
+    type: 'address_proof',
+    title: 'Electricity bill / Rent Agreement',
+    hint: 'Upload an electric bill or rent agreement',
   },
 ];
 

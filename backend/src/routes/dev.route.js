@@ -40,6 +40,11 @@
  *
  *   GET  /api/v1/dev/queue/jobs
  *        → Lists pending BullMQ scheduled-booking jobs (requires Redis)
+ *
+ *   GET  /api/v1/dev/dispatch/diagnose?bookingId=...
+ *        → Per-driver breakdown of exactly which dispatch filter excluded
+ *          them, plus whether each driver has a live socket to receive on.
+ *          Answers "why didn't the driver's phone ring?" in one call.
  */
 
 import express from 'express';
@@ -323,6 +328,149 @@ router.get(
       }
     }
     res.json(new ApiResponse(200, sockets, 'Connected sockets list'));
+  }),
+);
+
+/* ------------------------------------------------------------------ */
+/* GET /dispatch/diagnose?bookingId=...                                */
+/* Why didn't the driver's phone ring? Replays every clause of the     */
+/* dispatcher's eligibility query one driver at a time and names the   */
+/* ones that actually excluded them — then checks whether the driver   */
+/* even has a live socket in `driver:{id}` to receive the offer on.    */
+/*                                                                     */
+/* A driver can be perfectly eligible and still see nothing if their   */
+/* app isn't connected, so both halves are reported side by side.      */
+/* ------------------------------------------------------------------ */
+router.get(
+  '/dispatch/diagnose',
+  asyncHandler(async (req, res) => {
+    const { bookingId } = req.query;
+    if (!bookingId) throw new ApiError(400, 'bookingId query param is required');
+
+    const booking = await Booking.findById(bookingId).lean();
+    if (!booking) throw new ApiError(404, 'Booking not found');
+
+    const [{ default: Car }, { SERVICE_TYPES }, { resolveOutstationWalletFloorService }] =
+      await Promise.all([
+        import('../models/user/car.model.js'),
+        import('../constants/serviceTypes.js'),
+        import('../services/platform.service.js'),
+      ]);
+    await import('../models/carType.model.js');
+
+    const car = booking.carId
+      ? await Car.findById(booking.carId).populate('carTypeId', 'name').lean()
+      : null;
+    const requiredCarTypeId = car?.carTypeId?._id ? String(car.carTypeId._id) : null;
+
+    // Mirror the dispatcher's own rule set exactly — see
+    // `dispatchNextDriverService` / `findAllEligibleOnlineDrivers`.
+    const isCash = booking.paymentMethod === 'cash';
+    const allowsOnTrip = booking.serviceType === SERVICE_TYPES.MONTHLY;
+    const minWalletBalance =
+      booking.serviceType === SERVICE_TYPES.OUTSTATION
+        ? await resolveOutstationWalletFloorService()
+        : null;
+
+    const rejectedIds = new Set(
+      (booking.dispatch?.offers || [])
+        .filter((o) => o.response === 'rejected')
+        .map((o) => String(o.driverId)),
+    );
+
+    // Live socket rooms, so "eligible but unreachable" is distinguishable
+    // from "never selected in the first place".
+    const { getIoOrNull } = await import('../config/socket.js');
+    const io = getIoOrNull();
+    const connectedDriverIds = new Set();
+    if (io) {
+      for (const socket of io.sockets.sockets.values()) {
+        const p = socket.data?.principal;
+        if (p?.type === 'driver') connectedDriverIds.add(String(p.id));
+      }
+    }
+
+    const drivers = await Driver.find({ isDeleted: { $ne: true } })
+      .select('name isOnline isOnTrip approvalStatus carTypeExperience wallet.balance location')
+      .populate('carTypeExperience', 'name')
+      .lean();
+
+    const report = drivers.map((d) => {
+      const id = String(d._id);
+      const balance = d.wallet?.balance ?? 0;
+      const blockedBy = [];
+
+      if (!d.isOnline) blockedBy.push('isOnline: driver is offline');
+      if (d.approvalStatus !== 'approved') {
+        blockedBy.push(`approvalStatus: "${d.approvalStatus}" (needs "approved")`);
+      }
+      if (d.isOnTrip && !allowsOnTrip) blockedBy.push('isOnTrip: already on a trip');
+      if (requiredCarTypeId) {
+        const has = (d.carTypeExperience || []).some(
+          (t) => String(t?._id ?? t) === requiredCarTypeId,
+        );
+        if (!has) {
+          blockedBy.push(
+            `carTypeExperience: missing "${car.carTypeId.name}" ` +
+              `(driver has: ${(d.carTypeExperience || []).map((t) => t?.name).filter(Boolean).join(', ') || 'none'})`,
+          );
+        }
+      }
+      if (isCash && minWalletBalance === null && balance < 0) {
+        blockedBy.push(`wallet.balance: ${balance} is negative (cash booking requires >= 0)`);
+      }
+      if (minWalletBalance !== null && balance < minWalletBalance) {
+        blockedBy.push(
+          `wallet.balance: ${balance} is below the outstation floor of ${minWalletBalance}`,
+        );
+      }
+      if (rejectedIds.has(id)) blockedBy.push('dispatch: driver already rejected this booking');
+
+      const eligible = blockedBy.length === 0;
+      return {
+        driverId: id,
+        name: d.name,
+        eligible,
+        blockedBy,
+        socketConnected: connectedDriverIds.has(id),
+        // The case that looks like a backend bug but isn't: the offer was
+        // emitted into `driver:{id}` with nobody listening in that room.
+        wouldReceiveOffer: eligible && connectedDriverIds.has(id),
+      };
+    });
+
+    const eligible = report.filter((r) => r.eligible);
+    res.json(
+      new ApiResponse(
+        200,
+        {
+          booking: {
+            bookingNumber: booking.bookingNumber,
+            status: booking.status,
+            serviceType: booking.serviceType,
+            bookingType: booking.bookingType,
+            paymentMethod: booking.paymentMethod,
+            requiredCarType: car?.carTypeId?.name || null,
+            pickupCoordinates: booking.pickup?.location?.coordinates || null,
+            dispatchAttempts: booking.dispatch?.attemptsCount || 0,
+            pendingOfferIds: (booking.dispatch?.pendingOfferIds || []).map(String),
+          },
+          rulesApplied: {
+            requiresCarType: car?.carTypeId?.name || null,
+            requiresNonNegativeWallet: isCash && minWalletBalance === null,
+            outstationWalletFloor: minWalletBalance,
+            allowsDriversOnTrip: allowsOnTrip,
+          },
+          summary: {
+            totalDrivers: report.length,
+            eligible: eligible.length,
+            eligibleAndConnected: report.filter((r) => r.wouldReceiveOffer).length,
+          },
+          drivers: report,
+        },
+        'Dispatch eligibility diagnosis',
+      ),
+    );
   }),
 );
 

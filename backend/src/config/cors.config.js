@@ -1,6 +1,10 @@
 const DEFAULT_DEV_ORIGINS = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:5174',
+  'http://localhost:5180',
+  'http://127.0.0.1:5180',
   'https://searchmydriver.vercel.app',
   'https://searchmydrivers.com',
   'https://www.searchmydrivers.com',
@@ -51,6 +55,9 @@ export function getCorsOptions() {
     origin(origin, callback) {
       if (!origin) return callback(null, true);
       if (allowed.has(origin)) return callback(null, true);
+      if (process.env.NODE_ENV !== 'production' && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) {
+        return callback(null, true);
+      }
       return callback(new Error(`CORS: origin "${origin}" is not allowed`));
     },
   };

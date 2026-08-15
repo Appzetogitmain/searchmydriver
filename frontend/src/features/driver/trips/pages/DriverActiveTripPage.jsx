@@ -149,6 +149,14 @@ const DriverActiveTripPage = () => {
   const [chatOpen, setChatOpen] = useState(false);
 
   const handleCallClick = () => {
+    const customer = typeof booking?.userId === 'object' ? booking.userId : null;
+    const phone = customer?.phone_no || customer?.phone || null;
+    if (phone) {
+      const cleanPhone = String(phone).replace(/\D/g, '');
+      const formattedPhone = cleanPhone.length === 10 ? `+91${cleanPhone}` : phone;
+      window.location.href = `tel:${formattedPhone}`;
+      return;
+    }
     if (startCall && booking) {
       startCall(booking._id, booking.userId?.name, booking.userId?.profilePicture);
     }
@@ -1514,6 +1522,7 @@ function CustomerHeroCard({ photo, name, phone, email, since, onCallClick, onMes
             label="Phone"
             value={phone}
             iconClass="text-emerald-600 bg-emerald-50"
+            href={`tel:${String(phone).replace(/\D/g, '').length === 10 ? '+91' + String(phone).replace(/\D/g, '') : phone}`}
           />
         )}
         {email && (
@@ -1554,8 +1563,8 @@ function CustomerHeroCard({ photo, name, phone, email, since, onCallClick, onMes
   );
 }
 
-function ContactRow({ icon: Icon, label, value, iconClass = '', mono = true }) {
-  return (
+function ContactRow({ icon: Icon, label, value, iconClass = '', mono = true, href = null }) {
+  const content = (
     <div className="flex items-center gap-3">
       <div
         className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${iconClass || 'text-text-muted bg-gray-100'
@@ -1576,6 +1585,16 @@ function ContactRow({ icon: Icon, label, value, iconClass = '', mono = true }) {
       </div>
     </div>
   );
+
+  if (href) {
+    return (
+      <a href={href} className="block hover:opacity-80 transition">
+        {content}
+      </a>
+    );
+  }
+
+  return content;
 }
 
 /**
