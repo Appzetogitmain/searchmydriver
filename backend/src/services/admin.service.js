@@ -35,12 +35,19 @@ import {
 import { TASK_TYPE } from '../constants/adminTask.js';
 import AdminTask from '../models/adminTask.model.js';
 
+import {
+  getStaffScope,
+  assertStaffCanAccessDriver,
+} from '../utils/staffScope.util.js';
+
 export const loginStaffService = async (email, password) => {
   if (!email || !password) {
     throw new ApiError(400, 'Email and password required');
   }
   console.log("email and password is ", email, password);
-  const staff = await User.findOne({ email: email.toLowerCase() }).select('+password');
+  const staff = await User.findOne({ email: email.toLowerCase() })
+    .populate('assignedZones', 'name city code')
+    .select('+password');
   if (!staff || !STAFF_ROLES.includes(staff.role)) {
     throw new ApiError(401, 'Invalid credentials or unauthorized');
   }
@@ -66,27 +73,77 @@ export const loginStaffService = async (email, password) => {
 };
 
 export const getStaffProfileService = async (staffId) => {
-  const staff = await User.findById(staffId).select('-password');
+  const staff = await User.findById(staffId)
+    .populate('assignedZones', 'name city code')
+    .select('-password');
   if (!staff || staff.isDeleted || !STAFF_ROLES.includes(staff.role)) {
     throw new ApiError(404, 'Profile not found');
   }
   return staff;
 };
 
-export const getCustomersService = async (query) => {
+export const getCustomersService = async (staff, query = {}) => {
   const { search, page = 1, limit = 10 } = query;
 
+  const staffScope = await getStaffScope(staff);
+  if (staffScope.isScoped && staffScope.isEmptyScope) {
+    return {
+      data: [],
+      pagination: {
+        total: 0,
+        page: parseInt(page, 10) || 1,
+        pages: 1,
+      },
+    };
+  }
+
   const filter = { role: USER_ROLES.USER, isDeleted: { $ne: true } };
+
+  if (staffScope.isScoped) {
+    const matchingBookingsUserIds = staffScope.zoneObjectIds.length > 0
+      ? await Booking.distinct('userId', { zoneIds: { $in: staffScope.zoneObjectIds } })
+      : [];
+
+    const userScopeConditions = [];
+    if (staffScope.cityRegexes.length > 0) {
+      userScopeConditions.push({ city: { $in: staffScope.cityRegexes } });
+    }
+    if (matchingBookingsUserIds.length > 0) {
+      userScopeConditions.push({ _id: { $in: matchingBookingsUserIds } });
+    }
+
+    if (userScopeConditions.length > 0) {
+      filter.$and = filter.$and || [];
+      filter.$and.push({ $or: userScopeConditions });
+    } else {
+      return {
+        data: [],
+        pagination: {
+          total: 0,
+          page: parseInt(page, 10) || 1,
+          pages: 1,
+        },
+      };
+    }
+  }
+
   if (search) {
     const s = String(search).trim();
-    filter.$or = [
-      { name: { $regex: s, $options: 'i' } },
-      { email: { $regex: s, $options: 'i' } },
-      { phone_no: { $regex: s, $options: 'i' } },
-      { userId: { $regex: s, $options: 'i' } },
-    ];
+    const searchFilter = {
+      $or: [
+        { name: { $regex: s, $options: 'i' } },
+        { email: { $regex: s, $options: 'i' } },
+        { phone_no: { $regex: s, $options: 'i' } },
+        { userId: { $regex: s, $options: 'i' } },
+      ],
+    };
     if (mongoose.Types.ObjectId.isValid(s)) {
-      filter.$or.push({ _id: s });
+      searchFilter.$or.push({ _id: s });
+    }
+    if (filter.$and) {
+      filter.$and.push(searchFilter);
+    } else {
+      filter.$and = [searchFilter];
     }
   }
 
@@ -136,6 +193,11 @@ export const getCustomersService = async (query) => {
 export const getDriversService = async (staff, query) => {
   const { status, search, assigneeId, page = 1, limit = 10 } = query;
 
+  const staffScope = await getStaffScope(staff);
+  if (staffScope.isScoped && staffScope.isEmptyScope) {
+    return { data: [], pagination: { total: 0, page: parseInt(page, 10) || 1, pages: 1 } };
+  }
+
   const scope = await getResourceIdScopeForStaff(
     staff,
     TASK_TYPE.DRIVER_REVIEW,
@@ -160,12 +222,24 @@ export const getDriversService = async (staff, query) => {
     filter._id = { $in: scope.resourceIds };
   }
 
-  // Enforce zone restrictions for team members by filtering by zone cities
-  if (staff && staff.role === 'team_member' && staff.assignedZones?.length) {
-    const zones = await Zone.find({ _id: { $in: staff.assignedZones } }).select('city');
-    const cities = zones.map((z) => z.city).filter(Boolean);
-    const regexes = cities.map((c) => new RegExp(`^${c.trim()}$`, 'i'));
-    filter.city = { $in: regexes };
+  // Enforce zone/city restrictions for scoped staff
+  if (staffScope.isScoped) {
+    const scopeOr = [];
+    if (staffScope.cityRegexes.length > 0) {
+      scopeOr.push({ city: { $in: staffScope.cityRegexes } });
+      scopeOr.push({ 'address.city': { $in: staffScope.cityRegexes } });
+    }
+    if (staffScope.zoneObjectIds.length > 0) {
+      scopeOr.push({ homeZone: { $in: staffScope.zoneObjectIds } });
+    }
+    if (scopeOr.length > 0) {
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, { $or: scopeOr }];
+        delete filter.$or;
+      } else {
+        filter.$or = scopeOr;
+      }
+    }
   }
 
   const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -212,6 +286,8 @@ export const getDriverByIdService = async (staff, driverId) => {
     throw new ApiError(404, 'Driver not found');
   }
 
+  await assertStaffCanAccessDriver(staff, driver);
+
   const doc = driver.toObject();
   doc.documents = dedupeDocumentsByType(doc.documents);
 
@@ -246,6 +322,8 @@ export const updateDriverStatusService = async (staff, driverId, data) => {
   if (!driver) {
     throw new ApiError(404, 'Driver not found');
   }
+
+  await assertStaffCanAccessDriver(staff, driver);
 
   driver.approvalStatus = approvalStatus;
   driver.approvalNote = note;
@@ -291,11 +369,16 @@ export const updateDriverStatusService = async (staff, driverId, data) => {
   return driver;
 };
 
-export const suspendDriverService = async (adminId, driverId, data = {}) => {
+export const suspendDriverService = async (staffOrId, driverId, data = {}) => {
   const driver = await Driver.findById(driverId);
   if (!driver) {
     throw new ApiError(404, 'Driver not found');
   }
+
+  const staff = (staffOrId && typeof staffOrId === 'object' && staffOrId.role)
+    ? staffOrId
+    : await User.findById(staffOrId);
+  await assertStaffCanAccessDriver(staff, driver);
 
   if (driver.approvalStatus === 'suspended') {
     throw new ApiError(400, 'Driver is already suspended');
@@ -315,11 +398,16 @@ export const suspendDriverService = async (adminId, driverId, data = {}) => {
   return driver;
 };
 
-export const unsuspendDriverService = async (adminId, driverId) => {
+export const unsuspendDriverService = async (staffOrId, driverId) => {
   const driver = await Driver.findById(driverId);
   if (!driver) {
     throw new ApiError(404, 'Driver not found');
   }
+
+  const staff = (staffOrId && typeof staffOrId === 'object' && staffOrId.role)
+    ? staffOrId
+    : await User.findById(staffOrId);
+  await assertStaffCanAccessDriver(staff, driver);
 
   if (driver.approvalStatus !== 'suspended') {
     throw new ApiError(400, 'Driver is not suspended');
@@ -330,7 +418,7 @@ export const unsuspendDriverService = async (adminId, driverId) => {
     driver.approvedAt = new Date();
   }
   if (!driver.approvedBy) {
-    driver.approvedBy = adminId;
+    driver.approvedBy = staff?._id || staffOrId;
   }
 
   await driver.save();
@@ -347,6 +435,8 @@ export const updateDriverDocumentService = async (staff, driverId, docData) => {
   if (!driver) {
     throw new ApiError(404, 'Driver not found');
   }
+
+  await assertStaffCanAccessDriver(staff, driver);
 
   let existingIndex = -1;
   if (docId) {
@@ -388,6 +478,8 @@ export const deleteDriverDocumentService = async (staff, driverId, docId) => {
     throw new ApiError(404, 'Driver not found');
   }
 
+  await assertStaffCanAccessDriver(staff, driver);
+
   const initialLength = driver.documents.length;
   driver.documents = driver.documents.filter(
     (d) => d._id?.toString() !== docId && d.type !== docId
@@ -415,16 +507,14 @@ async function assertSingleSuperAdmin(role, excludeUserId = null) {
 
 /**
  * Normalise an `assignedZones` payload into an array of valid ObjectIds.
- * Drops `null`/`undefined` and anything that can't be coerced. Used for
- * both create + update so the team_member zone-scoped emergency-pool
- * filter has a clean array to work with.
+ * Drops `null`/`undefined` and anything that can't be coerced.
  */
 function normalizeAssignedZones(value) {
   if (!Array.isArray(value)) return [];
   return value
     .map((id) => {
       try {
-        return new mongoose.Types.ObjectId(String(id));
+        return new mongoose.Types.ObjectId(String(id?._id || id));
       } catch {
         return null;
       }
@@ -468,10 +558,10 @@ export const addAdminMemberService = async (data) => {
     phone_no,
     password: hashedPassword,
     role,
-    // Only team_member uses `assignedZones`; admin + sub_admin see all
-    // zones regardless. Empty array for other roles keeps schemas tidy.
     assignedZones:
-      role === USER_ROLES.TEAM_MEMBER ? normalizeAssignedZones(assignedZones) : [],
+      [USER_ROLES.SUB_ADMIN, USER_ROLES.TEAM_MEMBER].includes(role)
+        ? normalizeAssignedZones(assignedZones)
+        : [],
     permissions: Array.isArray(permissions) ? permissions : [],
   });
 
@@ -504,6 +594,7 @@ export const getAdminTeamService = async (query) => {
   const total = await User.countDocuments(filter);
   const data = await User.find(filter)
     .select('-password')
+    .populate('assignedZones', 'name city code')
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(parseInt(limit));
@@ -539,15 +630,12 @@ export const updateAdminMemberService = async (id, data) => {
     staff.role = role;
   }
   if (isActive !== undefined) staff.isActive = isActive;
-  // Zone assignments only matter for team_members (the others see all
-  // emergency-pool entries regardless). Switching a member off of
-  // team_member clears the array so stale data doesn't linger.
   if (assignedZones !== undefined) {
     staff.assignedZones =
-      staff.role === USER_ROLES.TEAM_MEMBER
+      [USER_ROLES.SUB_ADMIN, USER_ROLES.TEAM_MEMBER].includes(staff.role)
         ? normalizeAssignedZones(assignedZones)
         : [];
-  } else if (staff.role !== USER_ROLES.TEAM_MEMBER && staff.assignedZones?.length) {
+  } else if (![USER_ROLES.SUB_ADMIN, USER_ROLES.TEAM_MEMBER].includes(staff.role) && staff.assignedZones?.length) {
     staff.assignedZones = [];
   }
   
@@ -574,16 +662,39 @@ export const deleteAdminMemberService = async (id) => {
   return { id };
 };
 
-export const getIncomingRegistrationsService = async (query) => {
+export const getIncomingRegistrationsService = async (staff, query = {}) => {
   const { page = 1, limit = 10 } = query;
   const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
   const parsedLimit = parseInt(limit, 10);
+
+  const staffScope = await getStaffScope(staff);
+  if (staffScope.isScoped && staffScope.isEmptyScope) {
+    return {
+      drivers: { data: [], pagination: { total: 0, page: parseInt(page, 10) || 1, pages: 1 } },
+      users: { data: [], pagination: { total: 0, page: parseInt(page, 10) || 1, pages: 1 } },
+    };
+  }
 
   // 1. Fetch incomplete drivers
   const driverFilter = {
     isDeleted: false,
     $or: [{ approvalStatus: 'pending' }, { onboardingStep: { $lt: 6 } }],
   };
+
+  if (staffScope.isScoped) {
+    const scopeOr = [];
+    if (staffScope.cityRegexes.length > 0) {
+      scopeOr.push({ city: { $in: staffScope.cityRegexes } });
+      scopeOr.push({ 'address.city': { $in: staffScope.cityRegexes } });
+    }
+    if (staffScope.zoneObjectIds.length > 0) {
+      scopeOr.push({ homeZone: { $in: staffScope.zoneObjectIds } });
+    }
+    if (scopeOr.length > 0) {
+      driverFilter.$and = [{ $or: scopeOr }];
+    }
+  }
+
   const totalDrivers = await Driver.countDocuments(driverFilter);
   const incompleteDrivers = await Driver.find(driverFilter)
     .sort({ createdAt: -1 })
@@ -592,8 +703,11 @@ export const getIncomingRegistrationsService = async (query) => {
     .lean();
 
   // 2. Fetch incomplete users
-  // An incomplete user has no verified phone OR no cars
   const userFilter = { role: 'user', isDeleted: false };
+  if (staffScope.isScoped && staffScope.cityRegexes.length > 0) {
+    userFilter.city = { $in: staffScope.cityRegexes };
+  }
+
   const allUsers = await User.find(userFilter)
     .sort({ createdAt: -1 })
     .select('-password')
@@ -610,7 +724,6 @@ export const getIncomingRegistrationsService = async (query) => {
 
   const incompleteUsers = allUsers.filter((u) => {
     const carsCount = countMap.get(String(u._id)) || 0;
-    // Condition check can be added if needed, but phone and cars cover 99%
     return !u.isPhoneVerified || carsCount === 0;
   });
 
@@ -637,10 +750,15 @@ export const getIncomingRegistrationsService = async (query) => {
   };
 };
 
-export const getDriverWalletHistoryService = async (query) => {
+export const getDriverWalletHistoryService = async (staff, query = {}) => {
   const { page = 1, limit = 20, type = 'all', search = '' } = query;
   const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
   const parsedLimit = parseInt(limit, 10);
+
+  const staffScope = await getStaffScope(staff);
+  if (staffScope.isScoped && staffScope.isEmptyScope) {
+    return { data: [], pagination: { total: 0, page: parseInt(page, 10) || 1, pages: 1 } };
+  }
 
   const filter = { driverId: { $ne: null } };
 
@@ -650,19 +768,38 @@ export const getDriverWalletHistoryService = async (query) => {
     filter.purpose = { $ne: 'withdrawal' };
   }
 
+  if (staffScope.isScoped) {
+    const scopedDrivers = await Driver.find({
+      isDeleted: { $ne: true },
+      $or: [
+        { city: { $in: staffScope.cityRegexes } },
+        { 'address.city': { $in: staffScope.cityRegexes } },
+        { homeZone: { $in: staffScope.zoneObjectIds } },
+      ],
+    }).select('_id').lean();
+    const scopedDriverIds = scopedDrivers.map((d) => d._id);
+    filter.driverId = { $in: scopedDriverIds };
+  }
+
   // If search is provided, we need to lookup driver by name/phone.
-  let driverIds = [];
   if (search) {
-    const drivers = await Driver.find({
+    const searchFilter = {
       $or: [
         { name: { $regex: search, $options: 'i' } },
         { phone: { $regex: search, $options: 'i' } },
       ],
-    })
+    };
+    const drivers = await Driver.find(searchFilter)
       .select('_id')
       .lean();
-    driverIds = drivers.map((d) => d._id);
-    filter.driverId = { $in: driverIds };
+    const searchedDriverIds = drivers.map((d) => d._id);
+
+    if (filter.driverId && Array.isArray(filter.driverId.$in)) {
+      const allowedSet = new Set(filter.driverId.$in.map(String));
+      filter.driverId = { $in: searchedDriverIds.filter((id) => allowedSet.has(String(id))) };
+    } else {
+      filter.driverId = { $in: searchedDriverIds };
+    }
   }
 
   const [total, payments] = await Promise.all([
@@ -775,10 +912,15 @@ export const adjustDriverWalletService = async (driverId, amount, action, reason
   return { payment };
 };
 
-export const getUserWalletHistoryService = async (query) => {
+export const getUserWalletHistoryService = async (staff, query = {}) => {
   const { page = 1, limit = 10, type, search } = query;
   const parsedLimit = parseInt(limit, 10) || 10;
   const skip = (parseInt(page, 10) - 1) * parsedLimit;
+
+  const staffScope = await getStaffScope(staff);
+  if (staffScope.isScoped && staffScope.isEmptyScope) {
+    return { data: [], pagination: { total: 0, page: parseInt(page, 10) || 1, pages: 1 } };
+  }
 
   let filter = { userType: 'User' };
 
@@ -786,6 +928,15 @@ export const getUserWalletHistoryService = async (query) => {
     filter.direction = 'credit';
   } else if (type === 'debit') {
     filter.direction = 'debit';
+  }
+
+  if (staffScope.isScoped && staffScope.cityRegexes.length > 0) {
+    const scopedUsers = await User.find({
+      role: USER_ROLES.USER,
+      isDeleted: { $ne: true },
+      city: { $in: staffScope.cityRegexes },
+    }).select('_id').lean();
+    filter.userId = { $in: scopedUsers.map((u) => u._id) };
   }
 
   // Search by name or phone
@@ -798,7 +949,14 @@ export const getUserWalletHistoryService = async (query) => {
     })
       .select('_id')
       .lean();
-    filter.userId = { $in: users.map((u) => u._id) };
+    const searchedUserIds = users.map((u) => u._id);
+
+    if (filter.userId && Array.isArray(filter.userId.$in)) {
+      const allowedSet = new Set(filter.userId.$in.map(String));
+      filter.userId = { $in: searchedUserIds.filter((id) => allowedSet.has(String(id))) };
+    } else {
+      filter.userId = { $in: searchedUserIds };
+    }
   }
 
   const [total, txns] = await Promise.all([
@@ -865,17 +1023,58 @@ export const adjustUserWalletService = async (staff, userId, amount, action, rea
   }
 };
 
-export const getDashboardStatsService = async () => {
+export const getDashboardStatsService = async (staff = null) => {
+  const staffScope = await getStaffScope(staff);
+
+  const userFilter = { role: USER_ROLES.USER, isDeleted: false };
+  const driverFilter = { isDeleted: { $ne: true } };
+  const bookingFilter = { isDeleted: false };
+
+  if (staffScope.isScoped) {
+    if (staffScope.isEmptyScope) {
+      return {
+        stats: {
+          totalUsers: 0,
+          totalDrivers: 0,
+          bookingsToday: 0,
+          revenueMonth: 0,
+        },
+        recentDrivers: [],
+        recentBookings: [],
+      };
+    }
+
+    if (staffScope.cityRegexes.length > 0) {
+      userFilter.city = { $in: staffScope.cityRegexes };
+    }
+
+    const driverOr = [];
+    if (staffScope.cityRegexes.length > 0) {
+      driverOr.push({ city: { $in: staffScope.cityRegexes } });
+      driverOr.push({ 'address.city': { $in: staffScope.cityRegexes } });
+    }
+    if (staffScope.zoneObjectIds.length > 0) {
+      driverOr.push({ homeZone: { $in: staffScope.zoneObjectIds } });
+    }
+    if (driverOr.length > 0) {
+      driverFilter.$or = driverOr;
+    }
+
+    if (staffScope.zoneObjectIds.length > 0) {
+      bookingFilter.zoneIds = { $in: staffScope.zoneObjectIds };
+    }
+  }
+
   const [
     totalUsers,
     totalDrivers,
     recentDrivers,
     recentBookings,
   ] = await Promise.all([
-    User.countDocuments({ role: USER_ROLES.USER, isDeleted: false }),
-    Driver.countDocuments({}),
-    Driver.find({}).sort({ createdAt: -1 }).limit(4).select('name phone approvalStatus createdAt profilePicture').lean(),
-    Booking.find({}).sort({ createdAt: -1 }).limit(4).select('_id serviceType status createdAt').lean(),
+    User.countDocuments(userFilter),
+    Driver.countDocuments(driverFilter),
+    Driver.find(driverFilter).sort({ createdAt: -1 }).limit(4).select('name phone approvalStatus createdAt profilePicture city').lean(),
+    Booking.find(bookingFilter).sort({ createdAt: -1 }).limit(4).select('_id serviceType status createdAt bookingNumber pickup').lean(),
   ]);
 
   // Bookings Today
@@ -885,6 +1084,7 @@ export const getDashboardStatsService = async () => {
   endOfDay.setHours(23, 59, 59, 999);
 
   const bookingsToday = await Booking.countDocuments({
+    ...bookingFilter,
     createdAt: { $gte: startOfDay, $lte: endOfDay }
   });
 
@@ -893,8 +1093,17 @@ export const getDashboardStatsService = async () => {
   startOfMonth.setDate(1);
   startOfMonth.setHours(0, 0, 0, 0);
   
+  const revenueMatch = {
+    createdAt: { $gte: startOfMonth },
+  };
+
+  if (staffScope.isScoped && staffScope.zoneObjectIds.length > 0) {
+    const zoneBookingIds = await Booking.distinct('_id', { zoneIds: { $in: staffScope.zoneObjectIds } });
+    revenueMatch.bookingId = { $in: zoneBookingIds };
+  }
+
   const revenueAggregation = await PlatformRevenue.aggregate([
-    { $match: { createdAt: { $gte: startOfMonth } } },
+    { $match: revenueMatch },
     { $group: { _id: null, total: { $sum: '$amountRupees' } } }
   ]);
   const revenueMonth = revenueAggregation.length > 0 ? revenueAggregation[0].total : 0;
@@ -983,7 +1192,7 @@ export const deleteUserService = async (adminId, userId) => {
   return { id: user._id, message: 'User account deleted successfully' };
 };
 
-export const deleteDriverService = async (adminId, driverId) => {
+export const deleteDriverService = async (staffOrId, driverId) => {
   const findDriverByIdOrCustomId = async (id) => {
     if (!id) return null;
     if (mongoose.Types.ObjectId.isValid(id)) {
@@ -997,6 +1206,11 @@ export const deleteDriverService = async (adminId, driverId) => {
   if (!driver) {
     throw new ApiError(404, 'Driver not found');
   }
+
+  const staff = (staffOrId && typeof staffOrId === 'object' && staffOrId.role)
+    ? staffOrId
+    : await User.findById(staffOrId);
+  await assertStaffCanAccessDriver(staff, driver);
 
   if (!driver.isDeleted) {
     driver.isDeleted = true;

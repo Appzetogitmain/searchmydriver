@@ -2,6 +2,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { AUDIENCES, setAuthCookies } from '../utils/cookie.util.js';
 import * as adminService from '../services/admin.service.js';
+import { ApiError } from '../utils/apiError.js';
 
 export const loginAdmin = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
@@ -21,7 +22,7 @@ export const getStaffMe = asyncHandler(async (req, res) => {
 });
 
 export const getCustomers = asyncHandler(async (req, res) => {
-  const result = await adminService.getCustomersService(req.query);
+  const result = await adminService.getCustomersService(req.staff, req.query);
   return res.status(200).json(new ApiResponse(200, result, 'Users fetched successfully'));
 });
 
@@ -41,12 +42,12 @@ export const updateDriverStatus = asyncHandler(async (req, res) => {
 });
 
 export const suspendDriver = asyncHandler(async (req, res) => {
-  const result = await adminService.suspendDriverService(req.staff._id, req.params.id, req.body);
+  const result = await adminService.suspendDriverService(req.staff, req.params.id, req.body);
   return res.status(200).json(new ApiResponse(200, result, 'Driver suspended successfully'));
 });
 
 export const unsuspendDriver = asyncHandler(async (req, res) => {
-  const result = await adminService.unsuspendDriverService(req.staff._id, req.params.id);
+  const result = await adminService.unsuspendDriverService(req.staff, req.params.id);
   return res.status(200).json(new ApiResponse(200, result, 'Driver unsuspended successfully'));
 });
 
@@ -81,7 +82,7 @@ export const deleteUser = asyncHandler(async (req, res) => {
 });
 
 export const deleteDriver = asyncHandler(async (req, res) => {
-  const result = await adminService.deleteDriverService(req.staff._id, req.params.id);
+  const result = await adminService.deleteDriverService(req.staff, req.params.id);
   return res.status(200).json(new ApiResponse(200, result, 'Driver deleted successfully'));
 });
 
@@ -107,12 +108,12 @@ export const deleteAdminMember = asyncHandler(async (req, res) => {
 });
 
 export const getIncomingRegistrations = asyncHandler(async (req, res) => {
-  const result = await adminService.getIncomingRegistrationsService(req.query);
+  const result = await adminService.getIncomingRegistrationsService(req.staff, req.query);
   return res.status(200).json(new ApiResponse(200, result, "Incoming registrations fetched successfully"));
 });
 
 export const getDriverWalletHistory = asyncHandler(async (req, res) => {
-  const result = await adminService.getDriverWalletHistoryService(req.query);
+  const result = await adminService.getDriverWalletHistoryService(req.staff, req.query);
   return res.status(200).json(new ApiResponse(200, result, "Driver wallet history fetched successfully"));
 });
 
@@ -127,7 +128,7 @@ export const adjustDriverWallet = asyncHandler(async (req, res) => {
 });
 
 export const getUserWalletHistory = asyncHandler(async (req, res) => {
-  const result = await adminService.getUserWalletHistoryService(req.query);
+  const result = await adminService.getUserWalletHistoryService(req.staff, req.query);
   return res.status(200).json(new ApiResponse(200, result, "User wallet history fetched successfully"));
 });
 
@@ -142,6 +143,6 @@ export const adjustUserWallet = asyncHandler(async (req, res) => {
 });
 
 export const getDashboardStats = asyncHandler(async (req, res) => {
-  const result = await adminService.getDashboardStatsService();
+  const result = await adminService.getDashboardStatsService(req.staff);
   return res.status(200).json(new ApiResponse(200, result, "Dashboard stats fetched successfully"));
 });

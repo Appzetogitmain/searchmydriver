@@ -15,7 +15,7 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
 
   // Role Protection: Team members go straight to Drivers page
-  if (admin?.role !== 'admin') {
+  if (admin?.role !== 'admin' && admin?.role !== 'sub_admin') {
     return <Navigate to="/admin/drivers" replace />;
   }
 
@@ -56,10 +56,21 @@ const AdminDashboard = () => {
       }
     };
 
-    if (admin?.role === 'admin') {
+    if (admin?.role === 'admin' || admin?.role === 'sub_admin') {
       fetchStats();
     }
   }, [admin]);
+
+  const assignedZoneNames = (admin?.assignedZones || [])
+    .map((z) => (typeof z === 'object' ? z.city || z.name : 'Zone'))
+    .filter(Boolean);
+
+  const scopeLabel =
+    admin?.role === 'admin'
+      ? 'All Cities (Global Super Admin)'
+      : assignedZoneNames.length > 0
+        ? `Scoped to: ${[...new Set(assignedZoneNames)].join(', ')}`
+        : 'No City Assigned';
 
   const driverColumns = [
     {
@@ -97,6 +108,27 @@ const AdminDashboard = () => {
 
   return (
     <div className="space-y-6 animate-fade-in-up">
+      {/* Scope Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">
+            {admin?.role === 'admin' ? 'Super Admin Dashboard' : 'City Admin Dashboard'}
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">Overview of active metrics, drivers, and trips</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Access Scope:</span>
+          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold ${
+            admin?.role === 'admin'
+              ? 'bg-amber-50 text-amber-700 border border-amber-200'
+              : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+          }`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${admin?.role === 'admin' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+            {scopeLabel}
+          </span>
+        </div>
+      </div>
+
       {/* Overview Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard

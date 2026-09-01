@@ -17,7 +17,7 @@ import {
   emitToBooking,
   emitToAdmins,
 } from '../utils/socketEmitters.js';
-import { hasOperationalStaffAccess } from '../constants/staffPermissions.js';
+import { isSuperAdmin } from '../constants/staffPermissions.js';
 import {
   estimateBookingWindow,
   applyBuffer,
@@ -76,11 +76,11 @@ async function resolveBufferMinutesFor(serviceType) {
 
 function zoneScopeForStaff(staff) {
   if (!staff) return [];
-  if (hasOperationalStaffAccess(staff)) return null;
+  if (isSuperAdmin(staff)) return null;
   const ids = (staff.assignedZones || [])
     .map((id) => {
       try {
-        return new mongoose.Types.ObjectId(String(id));
+        return new mongoose.Types.ObjectId(String(id?._id || id));
       } catch {
         return null;
       }

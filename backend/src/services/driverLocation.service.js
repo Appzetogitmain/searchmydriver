@@ -194,6 +194,8 @@ export async function updateDriverTripStatusLive(driverId, isOnTrip) {
   }
 }
 
+import { getStaffScope } from '../utils/staffScope.util.js';
+
 /**
  * Snapshot of all currently-online drivers from Mongo. Used by the admin
  * live-map page to seed initial markers before the Firebase subscription
@@ -201,13 +203,33 @@ export async function updateDriverTripStatusLive(driverId, isOnTrip) {
  *
  * For radius-bound / distance-aware queries, see `driverFinder.service.js`.
  */
-export async function listOnlineDriversSnapshot() {
-  return Driver.find({
+export async function listOnlineDriversSnapshot(staff = null) {
+  const filter = {
     isOnline: true,
     approvalStatus: 'approved',
     isDeleted: false,
-  })
-    .select('_id name phone rating location lastLocationAt isOnTrip')
+  };
+
+  if (staff) {
+    const scope = await getStaffScope(staff);
+    if (scope.isScoped) {
+      if (scope.isEmptyScope) return [];
+      const orClauses = [];
+      if (scope.cityRegexes.length > 0) {
+        orClauses.push({ city: { $in: scope.cityRegexes } });
+        orClauses.push({ 'address.city': { $in: scope.cityRegexes } });
+      }
+      if (scope.zoneObjectIds.length > 0) {
+        orClauses.push({ homeZone: { $in: scope.zoneObjectIds } });
+      }
+      if (orClauses.length > 0) {
+        filter.$or = orClauses;
+      }
+    }
+  }
+
+  return Driver.find(filter)
+    .select('_id name phone rating location lastLocationAt isOnTrip city')
     .lean();
 }
 

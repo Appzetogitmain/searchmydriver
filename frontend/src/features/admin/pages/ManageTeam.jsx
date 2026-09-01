@@ -126,10 +126,8 @@ const ManageTeam = () => {
     e.preventDefault();
     setSubmitting(true);
     try {
-      // Only team_members carry zone assignments — backend already
-      // wipes them for other roles, but be tidy and don't send noise.
       const zonesForPayload =
-        formData.role === 'team_member' ? formData.assignedZones || [] : [];
+        ['team_member', 'sub_admin'].includes(formData.role) ? formData.assignedZones || [] : [];
       if (selectedMember) {
         await api.put(`/admin/team/${selectedMember._id}`, {
           name: formData.name,
@@ -174,7 +172,7 @@ const ManageTeam = () => {
     {
       key: 'name',
       label: 'Team Member',
-      width: '35%',
+      width: '30%',
       render: (val, row) => (
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-500 font-bold uppercase ring-1 ring-slate-200 shadow-sm">
@@ -189,14 +187,36 @@ const ManageTeam = () => {
     },
     {
       key: 'role',
-      label: 'Role',
-      width: '15%',
-      render: (val) => (
-        <Badge
-          variant={val === 'admin' ? 'warning' : val === 'sub_admin' ? 'success' : 'info'}
-          text={STAFF_ROLE_LABELS[val] || val}
-        />
-      ),
+      label: 'Role & Scope',
+      width: '25%',
+      render: (val, row) => {
+        const zones = row.assignedZones || [];
+        return (
+          <div className="space-y-1">
+            <Badge
+              variant={val === 'admin' ? 'warning' : val === 'sub_admin' ? 'success' : 'info'}
+              text={STAFF_ROLE_LABELS[val] || val}
+            />
+            {val === 'admin' ? (
+              <p className="text-[11px] text-slate-400 font-medium">All Cities (Global)</p>
+            ) : zones.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {zones.map((z, idx) => (
+                  <span
+                    key={z._id || idx}
+                    className="inline-flex items-center gap-1 text-[10px] bg-slate-100 text-slate-700 font-medium px-1.5 py-0.5 rounded-md border border-slate-200"
+                  >
+                    <MapPin className="w-2.5 h-2.5 text-primary" />
+                    {z.city || z.name || 'Zone'}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-amber-600 font-medium">No Zones Assigned</p>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: 'phone_no',
@@ -390,7 +410,7 @@ const ManageTeam = () => {
             )}
           </div>
 
-          {formData.role === 'team_member' && (
+          {['team_member', 'sub_admin'].includes(formData.role) && (
             <AssignedZonesPicker
               zones={allZones}
               loading={!!zonesEntry?.loading}

@@ -20,8 +20,8 @@ import { NEARBY_DRIVERS } from '../constants/bookingStatus.js';
  * subscription will overwrite them within seconds for any driver actively
  * moving.
  */
-export const getLiveDriversSnapshot = asyncHandler(async (_req, res) => {
-  const drivers = await listOnlineDriversSnapshot();
+export const getLiveDriversSnapshot = asyncHandler(async (req, res) => {
+  const drivers = await listOnlineDriversSnapshot(req.staff);
 
   const items = drivers.map((d) => {
     const [lng = 0, lat = 0] = d.location?.coordinates || [];

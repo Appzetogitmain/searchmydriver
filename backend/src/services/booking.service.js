@@ -58,6 +58,11 @@ import {
   SCHEDULED_BOOKING,
 } from '../constants/bookingStatus.js';
 import { SERVICE_TYPES, SERVICE_TYPE_LIST } from '../constants/serviceTypes.js';
+import { USER_ROLES } from '../constants/roles.js';
+import {
+  getStaffScope,
+  assertStaffCanAccessBooking,
+} from '../utils/staffScope.util.js';
 import { S2C_EVENTS } from '../constants/socketEvents.js';
 import {
   emitToUser,
@@ -489,7 +494,7 @@ export async function listAllBookingsForUserService(userId) {
   return Promise.all(bookings.map((b) => attachCancellationPreview(b, 'user')));
 }
 
-export async function getBookingByIdService(bookingId, { userId, driverId } = {}) {
+export async function getBookingByIdService(bookingId, { userId, driverId } = {}, staff = null) {
   const filter = { _id: bookingId, isDeleted: false };
   if (userId) filter.userId = userId;
   if (driverId) filter.driverId = driverId;
@@ -504,6 +509,11 @@ export async function getBookingByIdService(bookingId, { userId, driverId } = {}
   query.populate(CAR_DRIVER_POPULATE);
   const booking = await query.lean();
   if (!booking) throw new ApiError(404, 'Booking not found');
+
+  if (staff && staff.role !== USER_ROLES.ADMIN) {
+    await assertStaffCanAccessBooking(staff, booking);
+  }
+
   if (driverId) {
     return attachCancellationPreview(
       sanitizeBookingForDriver(booking),
@@ -1462,14 +1472,9 @@ export async function adminCancelBookingService(bookingId, staff, reason = '') {
     );
   }
 
-  // Zone-scoped staff may only cancel bookings inside a zone they own —
-  // mirrors the read scoping in `listAdminBookingsService`.
-  if (staff?.role === 'team_member') {
-    const allowed = (staff.assignedZones || []).map(String);
-    const bookingZones = (booking.zoneIds || []).map(String);
-    if (!bookingZones.some((z) => allowed.includes(z))) {
-      throw new ApiError(403, 'This booking is outside your assigned zones.');
-    }
+  // Zone-scoped staff may only cancel bookings inside a zone they own
+  if (staff && staff.role !== USER_ROLES.ADMIN) {
+    await assertStaffCanAccessBooking(staff, booking);
   }
 
   const previouslyAssignedDriver = booking.driverId;
@@ -1685,15 +1690,26 @@ export async function listAdminBookingsService(query = {}, staff = null) {
   } = query;
   const skip = (Math.max(1, parseInt(page, 10)) - 1) * parseInt(limit, 10);
 
+  const staffScope = await getStaffScope(staff);
+  if (staffScope.isScoped && staffScope.isEmptyScope) {
+    return {
+      bookings: [],
+      total: 0,
+      page: parseInt(page, 10) || 1,
+      pages: 1,
+      stats: { total: 0, searching: 0, active: 0, completed: 0, cancelled: 0 },
+    };
+  }
+
   const filter = { isDeleted: false };
   if (status) filter.status = status;
   if (bookingType) filter.bookingType = bookingType;
   if (serviceType) filter.serviceType = serviceType;
   if (paymentStatus) filter.paymentStatus = paymentStatus;
 
-  // Enforce zone restrictions for team members
-  if (staff && staff.role === 'team_member') {
-    filter.zoneIds = { $in: staff.assignedZones || [] };
+  // Enforce zone restrictions for scoped staff
+  if (staffScope.isScoped && staffScope.zoneObjectIds.length > 0) {
+    filter.zoneIds = { $in: staffScope.zoneObjectIds };
   }
 
   // Date range over createdAt — admins typically want "show me bookings
@@ -1725,8 +1741,8 @@ export async function listAdminBookingsService(query = {}, staff = null) {
 
   // Aggregate true stats for the dashboard across all bookings (ignoring current page filters)
   const statsMatch = { isDeleted: false };
-  if (staff && staff.role === 'team_member') {
-    statsMatch.zoneIds = { $in: staff.assignedZones || [] };
+  if (staffScope.isScoped && staffScope.zoneObjectIds.length > 0) {
+    statsMatch.zoneIds = { $in: staffScope.zoneObjectIds };
   }
 
   const statsPromise = Booking.aggregate([
@@ -1776,6 +1792,10 @@ export async function updateAdminBookingStatusService(bookingId, targetStatus, s
   const booking = await Booking.findById(bookingId);
   if (!booking) {
     throw new ApiError(404, 'Booking not found');
+  }
+
+  if (staff && staff.role !== USER_ROLES.ADMIN) {
+    await assertStaffCanAccessBooking(staff, booking);
   }
 
   const ALLOWED_STATUSES = [

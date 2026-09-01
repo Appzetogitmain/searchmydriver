@@ -12,6 +12,7 @@ import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM, GOOGLE_MAP_ID } from '../../../co
 import Modal from '../../../components/Modal';
 import Avatar from '../../../components/Avatar';
 import Button from '../../../components/Button';
+import useAdminAuthStore from '../../../store/useAdminAuthStore';
 
 /* ------------------------------------------------------------------ */
 /* Snapshot fetcher (Mongo seed)                                       */
@@ -106,11 +107,18 @@ const LiveDriverMap = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedZone, setSelectedZone] = useState('');
   const [activeUsers, setActiveUsers] = useState([]);
+  const { admin } = useAdminAuthStore();
   const [locationSearching, setLocationSearching] = useState(false);
 
   // Fetch zones for the dropdown
   const { data: zonesData } = useCachedQuery(useAdminZonesStore, 'admin-zones', {});
   const zones = zonesData || [];
+
+  const visibleZones = useMemo(() => {
+    if (!admin || admin.role === 'admin') return zones;
+    const allowedIds = new Set((admin.assignedZones || []).map((z) => String(z?._id || z)));
+    return zones.filter((z) => allowedIds.has(String(z._id)));
+  }, [admin, zones]);
 
   // Fetch active bookings to get live users
   useEffect(() => {
@@ -223,7 +231,20 @@ const LiveDriverMap = () => {
       mapTypeControl: false,
     });
     infoWindowRef.current = new maps.InfoWindow();
-  }, [ready, maps]);
+
+    // Auto center on assigned zone if scoped
+    if (admin?.role !== 'admin' && admin?.assignedZones?.length > 0 && zones?.length > 0) {
+      const assignedId = typeof admin.assignedZones[0] === 'object' ? admin.assignedZones[0]._id : admin.assignedZones[0];
+      const matchZone = zones.find(z => String(z._id) === String(assignedId));
+      if (matchZone && matchZone.center?.coordinates?.length === 2) {
+        mapInstanceRef.current.panTo({
+          lat: matchZone.center.coordinates[1],
+          lng: matchZone.center.coordinates[0],
+        });
+        mapInstanceRef.current.setZoom(12);
+      }
+    }
+  }, [ready, maps, admin, zones]);
 
   /* ---- sync markers & click popup --------------------------------------------- */
 
@@ -381,8 +402,8 @@ const LiveDriverMap = () => {
             onChange={(e) => setSelectedZone(e.target.value)}
             className="w-full sm:w-48 px-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white"
           >
-            <option value="">All Zones</option>
-            {zones.map(z => (
+            <option value="">{admin?.role === 'admin' ? 'All Zones' : 'Assigned Zones'}</option>
+            {visibleZones.map(z => (
               <option key={z._id} value={z._id}>{z.name} ({z.city})</option>
             ))}
           </select>
