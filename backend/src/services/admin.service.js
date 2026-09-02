@@ -83,7 +83,7 @@ export const getStaffProfileService = async (staffId) => {
 };
 
 export const getCustomersService = async (staff, query = {}) => {
-  const { search, page = 1, limit = 10 } = query;
+  const { search, page = 1, limit = 10, city } = query;
 
   const staffScope = await getStaffScope(staff);
   if (staffScope.isScoped && staffScope.isEmptyScope) {
@@ -127,16 +127,65 @@ export const getCustomersService = async (staff, query = {}) => {
     }
   }
 
+  // Location filter (via City Dropdown)
+  if (city && typeof city === 'string' && city.trim() && city.trim().toLowerCase() !== 'all') {
+    const c = city.trim();
+    const cityRegex = new RegExp(`^${c}$`, 'i');
+
+    const bookingUserIds = await Booking.distinct('userId', {
+      $or: [
+        { city: cityRegex },
+        { 'pickup.address': { $regex: c, $options: 'i' } },
+      ],
+    });
+
+    const cityFilter = {
+      $or: [
+        { city: cityRegex },
+        { 'savedLocations.city': cityRegex },
+        { 'savedAddresses.city': cityRegex },
+      ],
+    };
+
+    if (bookingUserIds.length > 0) {
+      cityFilter.$or.push({ _id: { $in: bookingUserIds } });
+    }
+
+    if (filter.$and) {
+      filter.$and.push(cityFilter);
+    } else {
+      filter.$and = [cityFilter];
+    }
+  }
+
+  // General & Location-wise search
   if (search) {
     const s = String(search).trim();
+    const matchingCityBookingUserIds = await Booking.distinct('userId', {
+      $or: [
+        { city: { $regex: s, $options: 'i' } },
+        { 'pickup.address': { $regex: s, $options: 'i' } },
+      ],
+    });
+
     const searchFilter = {
       $or: [
         { name: { $regex: s, $options: 'i' } },
         { email: { $regex: s, $options: 'i' } },
         { phone_no: { $regex: s, $options: 'i' } },
         { userId: { $regex: s, $options: 'i' } },
+        { city: { $regex: s, $options: 'i' } },
+        { 'savedLocations.city': { $regex: s, $options: 'i' } },
+        { 'savedLocations.address': { $regex: s, $options: 'i' } },
+        { 'savedAddresses.city': { $regex: s, $options: 'i' } },
+        { 'savedAddresses.address': { $regex: s, $options: 'i' } },
       ],
     };
+
+    if (matchingCityBookingUserIds.length > 0) {
+      searchFilter.$or.push({ _id: { $in: matchingCityBookingUserIds } });
+    }
+
     if (mongoose.Types.ObjectId.isValid(s)) {
       searchFilter.$or.push({ _id: s });
     }

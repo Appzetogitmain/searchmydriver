@@ -39,6 +39,7 @@ import {
 
 import { protectStaff, restrictTo, requirePermission } from '../middlewares/authMiddleware.js';
 import { ROUTE_ROLES, PERMISSIONS } from '../constants/staffPermissions.js';
+import { getActiveServiceCities } from '../controllers/serviceCities.controller.js';
 import {
   createCarType,
   updateCarType,
@@ -207,6 +208,7 @@ router.get('/broadcasts/stats', restrictTo(...ALL_STAFF), requirePermission(PERM
 router.get('/broadcasts/search-users', restrictTo(...ALL_STAFF), requirePermission(PERMISSIONS.BROADCAST), searchUsers);
 router.get('/broadcasts/search-drivers', restrictTo(...ALL_STAFF), requirePermission(PERMISSIONS.BROADCAST), searchDrivers);
 
+router.get('/service-cities', restrictTo(...ALL_STAFF), getActiveServiceCities);
 router.get('/users', restrictTo(...ALL_STAFF), requirePermission(PERMISSIONS.USERS), getCustomers);
 router.get('/users/:userId/profile', restrictTo(...ALL_STAFF), requirePermission(PERMISSIONS.USERS), getUserProfile);
 router.get('/users/:userId', restrictTo(...ALL_STAFF), requirePermission(PERMISSIONS.USERS), getUserProfile);

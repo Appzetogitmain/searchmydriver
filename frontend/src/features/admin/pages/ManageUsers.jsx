@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Trash2 } from 'lucide-react';
+import { Trash2, MapPin } from 'lucide-react';
 import Avatar from '../../../components/Avatar';
 import { useCachedQuery } from '../../../hooks/useCachedQuery';
 import { buildCacheKey } from '../../../store/lib/buildCacheKey';
 import { useAdminUsersStore } from '../../../store/admin/useAdminUsersStore';
+import { useAdminServiceCitiesStore } from '../../../store/admin/useAdminServiceCitiesStore';
 import ServerPaginatedTable from '../components/ServerPaginatedTable';
 import UserFilters from '../components/ManageUsers/UserFilters';
 import UserStats from '../components/ManageUsers/UserStats';
@@ -19,6 +20,15 @@ const ManageUsers = () => {
   const [limit] = useState(10);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [selectedCity, setSelectedCity] = useState('');
+
+  // Available service cities for dropdown filter
+  const { data: serviceCities, loading: citiesLoading } = useCachedQuery(
+    useAdminServiceCitiesStore,
+    'admin-service-cities',
+    {},
+  );
+  const availableCities = Array.isArray(serviceCities) ? serviceCities : [];
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
@@ -26,8 +36,8 @@ const ManageUsers = () => {
   }, [search]);
 
   const queryParams = useMemo(
-    () => ({ page, limit, search: debouncedSearch }),
-    [page, limit, debouncedSearch],
+    () => ({ page, limit, search: debouncedSearch, city: selectedCity }),
+    [page, limit, debouncedSearch, selectedCity],
   );
 
   const cacheKey = buildCacheKey('admin-users', queryParams);
@@ -112,7 +122,7 @@ const ManageUsers = () => {
       {
         key: 'name',
         label: 'User',
-        width: '26%',
+        width: '23%',
         render: (val, row) => (
           <div className="flex items-center gap-3 py-1">
             <Avatar name={val} size="sm" src={row.profilePicture} />
@@ -127,13 +137,24 @@ const ManageUsers = () => {
       {
         key: 'phone_no',
         label: 'Phone',
-        width: '15%',
+        width: '13%',
         render: (val) => <span className="text-sm text-slate-600">{val || '—'}</span>,
+      },
+      {
+        key: 'city',
+        label: 'City',
+        width: '12%',
+        render: (val) => (
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 bg-slate-100/80 px-2 py-0.5 rounded-lg">
+            <MapPin className="w-3 h-3 text-primary shrink-0" />
+            {val || '—'}
+          </span>
+        ),
       },
       {
         key: 'carsCount',
         label: 'Vehicles',
-        width: '11%',
+        width: '10%',
         render: (val) => (
           <span
             className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${
@@ -279,6 +300,13 @@ const ManageUsers = () => {
           setSearch(val);
           setPage(1);
         }}
+        selectedCity={selectedCity}
+        onCityChange={(val) => {
+          setSelectedCity(val);
+          setPage(1);
+        }}
+        cities={availableCities}
+        citiesLoading={citiesLoading}
         onRefresh={refetch}
         refreshing={loading}
       />
