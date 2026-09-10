@@ -15,17 +15,13 @@ import {
   ChevronRight,
   Sparkles,
   ShieldCheck,
-  Trash2,
   FileText,
 } from 'lucide-react';
 import useUserAuthStore from '../../../../store/useUserAuthStore';
 import useUserWalletStore from '../../../../store/user/useUserWalletStore';
 import { useUserProfileStore } from '../../../../store/user/useUserProfileStore';
-import ConfirmDialog from '../../../../components/ConfirmDialog';
 import { useCachedQuery } from '../../../../hooks/useCachedQuery';
 import { buildCacheKey } from '../../../../store/lib/buildCacheKey';
-import api from '../../../../utils/api';
-import toast from 'react-hot-toast';
 
 const menuItems = [
   { id: 'profile', icon: User, label: 'My Profile', path: '/user/account/profile' },
@@ -49,8 +45,6 @@ const UserAccountPage = () => {
   const logout = useUserAuthStore((s) => s.logout);
   const wallet = useUserWalletStore((s) => s.wallet);
   const fetchWallet = useUserWalletStore((s) => s.fetchWallet);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const profileKey = buildCacheKey('user-profile', { userId: user?._id || '' });
   const { data: profile, refetch } = useCachedQuery(useUserProfileStore, profileKey, { userId: user?._id || '' });
 
@@ -77,22 +71,6 @@ const UserAccountPage = () => {
   const handleLogout = () => {
     logout();
     navigate('/login');
-  };
-
-  const handleDeleteAccount = async () => {
-    if (deleting) return;
-    setDeleting(true);
-    try {
-      await api.delete('/auth/account');
-      toast.success('Account deleted successfully');
-      logout();
-      navigate('/login', { replace: true });
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to delete account');
-    } finally {
-      setDeleting(false);
-      setDeleteOpen(false);
-    }
   };
 
   return (
@@ -141,7 +119,7 @@ const UserAccountPage = () => {
           })}
         </Card>
 
-        <div className="mt-4 space-y-3">
+        <div className="mt-4">
           <button
             onClick={handleLogout}
             className="w-full flex items-center justify-center gap-2 py-3.5 bg-white rounded-2xl shadow-card text-danger font-medium text-sm hover:bg-danger-light transition-colors"
@@ -149,27 +127,7 @@ const UserAccountPage = () => {
             <LogOut className="w-5 h-5" />
             Logout
           </button>
-
-          <button
-            type="button"
-            onClick={() => setDeleteOpen(true)}
-            className="w-full flex items-center justify-center gap-2 py-3.5 bg-white border border-red-200 rounded-2xl shadow-card text-red-600 font-semibold text-sm hover:bg-red-50 transition-colors"
-          >
-            <Trash2 className="w-5 h-5" />
-            Delete Account
-          </button>
         </div>
-
-        <ConfirmDialog
-          open={deleteOpen}
-          onClose={() => setDeleteOpen(false)}
-          onConfirm={handleDeleteAccount}
-          title="Delete your account?"
-          description="This permanently deletes your customer account and signs you out. Any active bookings must be finished or cancelled first."
-          confirmLabel="Delete account"
-          variant="danger"
-          loading={deleting}
-        />
       </div>
     </div>
   );

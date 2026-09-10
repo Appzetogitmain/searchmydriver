@@ -35,6 +35,7 @@ const navItems = [
       { path: '/admin/banners', label: 'Banners Control', icon: LayoutTemplate, roles: ['admin', 'sub_admin'], permission: STAFF_PERMISSIONS.BANNERS },
       { path: '/admin/ads', label: 'Ads Control', icon: Megaphone, roles: ['admin', 'sub_admin'], permission: STAFF_PERMISSIONS.ADS },
       { path: '/admin/user-faqs', label: 'User FAQs', icon: HelpCircle, roles: ['admin', 'sub_admin'], permission: STAFF_PERMISSIONS.SUPPORT || 'SUPPORT' },
+      { path: '/admin/user-support-tickets', label: 'Support Tickets', icon: Headset, roles: ['admin', 'sub_admin'], permission: STAFF_PERMISSIONS.SUPPORT || 'SUPPORT' },
     ],
   },
   {

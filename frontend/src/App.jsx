@@ -192,6 +192,7 @@ const TaskActivityLogPage = lazy(() => import('./features/admin/pages/TaskActivi
 const StaffProfilePage = lazy(() => import('./features/admin/pages/StaffProfilePage'));
 const ManageBanners = lazy(() => import('./features/admin/pages/ManageBanners'));
 const ManageAds = lazy(() => import('./features/admin/pages/ManageAds'));
+const ManageUserSupportTickets = lazy(() => import('./features/admin/pages/ManageUserSupportTickets'));
 const ManageWebBanners = lazy(() => import('./features/admin/pages/ManageWebBanners'));
 const ManageDriverBanners = lazy(() => import('./features/admin/pages/ManageDriverBanners'));
 const ManageWebTickets = lazy(() => import('./features/admin/pages/ManageWebTickets'));
@@ -473,6 +474,7 @@ function App() {
             <Route path="/admin/web-cities" element={<ManageWebCities />} />
             <Route path="/admin/web-faqs" element={<ManageWebFaqs category="website" title="Website FAQs" />} />
             <Route path="/admin/user-faqs" element={<ManageWebFaqs category="user_app" title="User App FAQs" />} />
+            <Route path="/admin/user-support-tickets" element={<ManageUserSupportTickets />} />
             <Route path="/admin/driver-banners" element={<ManageDriverBanners />} />
             <Route path="/admin/driver-faqs" element={<ManageWebFaqs category="driver_app" title="Driver App FAQs" />} />
             <Route path="/admin/driver-settings" element={<DriverSettings />} />

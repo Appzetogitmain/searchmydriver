@@ -1,6 +1,6 @@
 import express from 'express';
 import { uploadImage, uploadVideo } from '../controllers/common.controller.js';
-import { getCarTypes, getConditions, getTrainingVideos, getPublicPlatformSettings } from '../controllers/platform.controller.js';
+import { getCarTypes, getConditions, getTrainingVideos, getPublicPlatformSettings, getUserSupportSettings } from '../controllers/platform.controller.js';
 import {
   getFuelTypes,
   getCarBrands,
@@ -26,6 +26,7 @@ router.get('/conditions', getConditions);
 router.get('/training-videos', getTrainingVideos);
 router.get('/zones', listActiveZones);
 router.get('/settings', getPublicPlatformSettings);
+router.get('/user-support', getUserSupportSettings);
 router.get('/zones/check', checkZoneForPoint);
 router.get('/helplines', listActiveHelplines);
 

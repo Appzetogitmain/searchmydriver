@@ -201,11 +201,46 @@ export const updatePlatformSettingsService = async (data, updatedBy) => {
     }
     if (data.supportEmail !== undefined) settings.supportEmail = data.supportEmail;
     if (data.supportPhone !== undefined) settings.supportPhone = data.supportPhone;
+    if (data.userSupportPhone !== undefined) settings.userSupportPhone = data.userSupportPhone;
+    if (data.userSupportEmail !== undefined) settings.userSupportEmail = data.userSupportEmail;
+    if (data.userSupportResponseTime !== undefined) settings.userSupportResponseTime = data.userSupportResponseTime;
     if (data.ratingQuestions !== undefined) settings.ratingQuestions = data.ratingQuestions;
     if (data.driverRatingQuestions !== undefined) settings.driverRatingQuestions = data.driverRatingQuestions;
     settings.updatedBy = updatedBy;
     await settings.save();
   }
   return settings;
+};
+
+export const getUserSupportSettingsService = async () => {
+  const settings = await getPlatformSettingsService();
+  return {
+    userSupportPhone: settings.userSupportPhone || '9981570665',
+    userSupportEmail: settings.userSupportEmail || 'Searchmydrivers@gmail.com',
+    userSupportResponseTime: settings.userSupportResponseTime || 'We usually reply within 24 hours.',
+  };
+};
+
+export const updateUserSupportSettingsService = async (data, updatedBy) => {
+  let settings = await PlatformSettings.findOne();
+  if (!settings) {
+    settings = await PlatformSettings.create({
+      userSupportPhone: data.userSupportPhone,
+      userSupportEmail: data.userSupportEmail,
+      userSupportResponseTime: data.userSupportResponseTime,
+      updatedBy,
+    });
+  } else {
+    if (data.userSupportPhone !== undefined) settings.userSupportPhone = data.userSupportPhone;
+    if (data.userSupportEmail !== undefined) settings.userSupportEmail = data.userSupportEmail;
+    if (data.userSupportResponseTime !== undefined) settings.userSupportResponseTime = data.userSupportResponseTime;
+    settings.updatedBy = updatedBy;
+    await settings.save();
+  }
+  return {
+    userSupportPhone: settings.userSupportPhone,
+    userSupportEmail: settings.userSupportEmail,
+    userSupportResponseTime: settings.userSupportResponseTime,
+  };
 };
 

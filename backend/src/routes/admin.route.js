@@ -55,6 +55,8 @@ import {
   deleteTrainingVideo,
   getPlatformSettings,
   updatePlatformSettings,
+  getUserSupportSettings,
+  updateUserSupportSettings,
 } from '../controllers/platform.controller.js';
 import {
   getAdminFuelTypes,
@@ -225,10 +227,13 @@ router.get('/user-wallet-history', restrictTo(...ALL_STAFF), requirePermission(P
 router.post('/user-wallet/adjust', restrictTo(...OPERATIONS), requirePermission(PERMISSIONS.USERS), adjustUserWallet);
 
 // ----- Help Desk / Support Tickets -----
-// Only SUPER_ADMIN (or others if you assign them the permission, defaulting to SUPER_ADMIN here)
-router.get('/support/tickets', protectStaff, restrictTo(...SUPER_ADMIN), getAdminSupportTickets);
-router.patch('/support/tickets/:id/status', protectStaff, restrictTo(...SUPER_ADMIN), resolveSupportTicket);
-router.post('/support/tickets/:id/reply', protectStaff, restrictTo(...SUPER_ADMIN), replySupportTicketAdmin);
+router.get('/support/tickets', protectStaff, restrictTo(...OPERATIONS), getAdminSupportTickets);
+router.patch('/support/tickets/:id/status', protectStaff, restrictTo(...OPERATIONS), resolveSupportTicket);
+router.post('/support/tickets/:id/reply', protectStaff, restrictTo(...OPERATIONS), replySupportTicketAdmin);
+
+// ----- User App Support Contact Info Settings -----
+router.get('/user-support/settings', protectStaff, restrictTo(...OPERATIONS), getUserSupportSettings);
+router.put('/user-support/settings', protectStaff, restrictTo(...OPERATIONS), updateUserSupportSettings);
 
 router.get('/tasks/assignees', protectStaff, restrictTo(...OPERATIONS), requirePermission(PERMISSIONS.TEAM_TASKS), getTaskAssignees);
 router.get('/tasks/activity', protectStaff, restrictTo(...SUPER_ADMIN), listTaskActivity);

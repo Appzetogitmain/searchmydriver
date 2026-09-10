@@ -872,10 +872,20 @@ export async function createBookingService(userId, body) {
       cfg.MIN_SCHEDULED_LEAD_HOURS ?? SCHEDULED_BOOKING.MIN_SCHEDULED_LEAD_HOURS;
     const minLeadMs = minLeadHours * 60 * 60 * 1000;
     const startMs = new Date(hourly.scheduledStartAt).getTime();
-    if (!Number.isFinite(startMs) || startMs - Date.now() < minLeadMs) {
+    // Allow a 60-second grace window for client-to-server clock skew / transit time
+    if (!Number.isFinite(startMs) || startMs - Date.now() < minLeadMs - 60 * 1000) {
+      const minLeadText = minLeadHours < 1 ? `${Math.round(minLeadHours * 60)} minutes` : `${minLeadHours} hour${minLeadHours === 1 ? '' : 's'}`;
       throw new ApiError(
         422,
-        `Scheduled rides must start at least ${minLeadHours} hours from now. Pick a later pickup time or use Instant.`,
+        `Scheduled rides must start at least ${minLeadText} from now. Pick a later pickup time or use Instant.`,
+      );
+    }
+    // Hourly scheduled rides cannot exceed the next 24 hours
+    const maxFutureMs = 24 * 60 * 60 * 1000 + 60 * 1000;
+    if (startMs - Date.now() > maxFutureMs) {
+      throw new ApiError(
+        422,
+        'Hourly scheduled rides can only be booked within the next 24 hours.',
       );
     }
   }

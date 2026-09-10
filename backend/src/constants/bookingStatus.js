@@ -237,10 +237,8 @@ export const SCHEDULED_BOOKING = Object.freeze({
   REMINDER_OFFSETS_MINUTES: Object.freeze([60, 15]),
   /**
    * Hard floor on how far in advance a scheduled booking can be created.
-   * The emergency-pool window opens `EMERGENCY_POOL_MINUTES` before
-   * pickup, so anything sooner than that has no safety net — we
-   * require ≥ 2h lead time to keep the dispatcher honest. Users
-   * needing a ride sooner should pick "Instant".
+   * Default floor is 30 minutes (0.5 hours). Users needing a ride sooner
+   * should pick "Instant".
    */
-  MIN_SCHEDULED_LEAD_HOURS: 2,
+  MIN_SCHEDULED_LEAD_HOURS: 0.5,
 });

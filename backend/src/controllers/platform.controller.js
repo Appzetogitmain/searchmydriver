@@ -101,6 +101,11 @@ export const getPublicPlatformSettings = asyncHandler(async (req, res) => {
   const publicSettings = {
     supportEmail: settings.supportEmail,
     supportPhone: settings.supportPhone,
+    userSupport: {
+      phone: settings.userSupportPhone || settings.supportPhone || '9981570665',
+      email: settings.userSupportEmail || settings.supportEmail || 'Searchmydrivers@gmail.com',
+      responseTime: settings.userSupportResponseTime || 'We usually reply within 24 hours.',
+    },
     ratingQuestions: settings.ratingQuestions?.filter(q => q.isActive) || [],
   };
   return res.status(200).json(new ApiResponse(200, publicSettings, 'Public platform settings fetched successfully'));
@@ -110,5 +115,16 @@ export const updatePlatformSettings = asyncHandler(async (req, res) => {
   const updatedBy = req.staff?._id || req.admin?._id || null;
   const settings = await platformService.updatePlatformSettingsService(req.body, updatedBy);
   return res.status(200).json(new ApiResponse(200, settings, 'Platform settings updated successfully'));
+});
+
+export const getUserSupportSettings = asyncHandler(async (req, res) => {
+  const settings = await platformService.getUserSupportSettingsService();
+  return res.status(200).json(new ApiResponse(200, settings, 'User support settings fetched successfully'));
+});
+
+export const updateUserSupportSettings = asyncHandler(async (req, res) => {
+  const updatedBy = req.staff?._id || req.admin?._id || null;
+  const settings = await platformService.updateUserSupportSettingsService(req.body, updatedBy);
+  return res.status(200).json(new ApiResponse(200, settings, 'User support settings updated successfully'));
 });
 

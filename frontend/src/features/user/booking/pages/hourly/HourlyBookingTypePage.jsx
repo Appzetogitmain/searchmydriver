@@ -69,14 +69,15 @@ const HourlyBookingTypePage = () => {
     setServiceType(SERVICE_TYPES.HOURLY);
   }, [setServiceType]);
 
-  const minLeadHours = dispatchConfig.MIN_SCHEDULED_LEAD_HOURS;
-  // Lazy-snapshot the wall clock so `Date.now()` stays out of render
-  // (react-hooks/purity) — the floor is stable for the mount, the
-  // backend re-validates against the live clock on Continue.
+  // Minimum 30 minutes lead time, and maximum 24 hours window
   const [nowAnchorMs] = useState(() => Date.now());
   const minScheduledDate = useMemo(
-    () => new Date(nowAnchorMs + minLeadHours * 60 * 60_000),
-    [nowAnchorMs, minLeadHours],
+    () => new Date(nowAnchorMs + 30 * 60_000),
+    [nowAnchorMs],
+  );
+  const maxScheduledDate = useMemo(
+    () => new Date(nowAnchorMs + 24 * 60 * 60_000),
+    [nowAnchorMs],
   );
   const handleContinue = () => {
     if (!selected) return;
@@ -96,7 +97,8 @@ const HourlyBookingTypePage = () => {
     selected === BOOKING_TYPE.INSTANT ||
     (selected === BOOKING_TYPE.SCHEDULED &&
       scheduledAt &&
-      new Date(scheduledAt).getTime() >= minScheduledDate.getTime());
+      new Date(scheduledAt).getTime() >= minScheduledDate.getTime() &&
+      new Date(scheduledAt).getTime() <= maxScheduledDate.getTime());
 
   return (
     <PageShell
@@ -174,8 +176,9 @@ const HourlyBookingTypePage = () => {
                 value={scheduledAt}
                 onChange={setScheduledAt}
                 minDate={minScheduledDate}
+                maxDate={maxScheduledDate}
                 placeholder="Tap to choose pickup"
-                helper={`Earliest available is ${formatPickupDateTime(minScheduledDate)} — we need at least ${minLeadHours} hour${minLeadHours === 1 ? '' : 's'} lead time for scheduled rides.`}
+                helper={`Earliest pickup is ${formatPickupDateTime(minScheduledDate)} (at least 30 minutes from now). Bookings can be scheduled up to 24 hours in advance.`}
                 sheetTitle="Pickup date & time"
               />
             </div>

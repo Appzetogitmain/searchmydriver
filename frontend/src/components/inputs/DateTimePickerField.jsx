@@ -212,13 +212,20 @@ function DateTimeSheetBody({
 
   const days = useMemo(() => {
     const out = [];
-    for (let i = 0; i < dayWindow; i += 1) {
+    let count = dayWindow;
+    if (Number.isFinite(maxMs)) {
+      const diffDays = Math.ceil((maxMs - todayMidnight.getTime()) / (24 * 60 * 60_000));
+      if (diffDays > 0 && diffDays < dayWindow) {
+        count = diffDays;
+      }
+    }
+    for (let i = 0; i < count; i += 1) {
       const d = new Date(todayMidnight);
       d.setDate(d.getDate() + i);
       out.push(d);
     }
     return out;
-  }, [todayMidnight, dayWindow]);
+  }, [todayMidnight, dayWindow, maxMs]);
 
   const timeSlots = useMemo(
     () => buildTimeSlots(dayStartHour, dayEndHour, stepMinutes),
@@ -382,34 +389,76 @@ function DateTimeSheetBody({
           </h4>
         </div>
         {draftDay ? (
-          <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto pr-1">
-            {timeSlots.map((slot) => {
-              const slotDisabled = isSlotDisabled(slot);
-              const isSelected =
-                draftTime && draftTime.h === slot.h && draftTime.m === slot.m;
-              return (
-                <button
-                  key={`${slot.h}:${slot.m}`}
-                  type="button"
-                  disabled={slotDisabled}
-                  onClick={() => setDraftTime({ h: slot.h, m: slot.m })}
-                  className={`relative h-10 rounded-xl border text-[12px] font-semibold transition ${
-                    isSelected
-                      ? 'border-primary bg-primary text-slate-900'
-                      : slotDisabled
-                        ? 'border-border bg-gray-50 text-text-muted/60 cursor-not-allowed'
-                        : 'border-border bg-white text-text hover:border-primary/50'
-                  }`}
-                >
-                  {formatHourMinute(slot.h, slot.m)}
-                  {isSelected && (
-                    <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-slate-900 text-primary flex items-center justify-center">
-                      <Check className="w-2.5 h-2.5" />
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+          <div className="space-y-3">
+            {/* Manual time input */}
+            <div className="bg-gray-50 border border-border p-3 rounded-2xl space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-text">
+                  Write / Enter exact time
+                </span>
+                {draftTime && (
+                  <span className="text-xs font-bold text-primary">
+                    {formatHourMinute(draftTime.h, draftTime.m)}
+                  </span>
+                )}
+              </div>
+              <input
+                type="time"
+                value={
+                  draftTime
+                    ? `${pad2(draftTime.h)}:${pad2(draftTime.m)}`
+                    : ''
+                }
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (!val) {
+                    setDraftTime(null);
+                    return;
+                  }
+                  const [hStr, mStr] = val.split(':');
+                  const h = Number(hStr);
+                  const m = Number(mStr);
+                  if (!Number.isNaN(h) && !Number.isNaN(m)) {
+                    setDraftTime({ h, m });
+                  }
+                }}
+                className="w-full h-11 bg-white border border-border rounded-xl px-3 text-sm font-semibold text-text focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <p className="text-[11px] text-text-muted">
+                Type any custom time or select from the 30-minute slots below.
+              </p>
+            </div>
+
+            {/* Time slots grid */}
+            <div className="grid grid-cols-4 gap-2 max-h-56 overflow-y-auto pr-1">
+              {timeSlots.map((slot) => {
+                const slotDisabled = isSlotDisabled(slot);
+                const isSelected =
+                  draftTime && draftTime.h === slot.h && draftTime.m === slot.m;
+                return (
+                  <button
+                    key={`${slot.h}:${slot.m}`}
+                    type="button"
+                    disabled={slotDisabled}
+                    onClick={() => setDraftTime({ h: slot.h, m: slot.m })}
+                    className={`relative h-10 rounded-xl border text-[12px] font-semibold transition ${
+                      isSelected
+                        ? 'border-primary bg-primary text-slate-900'
+                        : slotDisabled
+                          ? 'border-border bg-gray-50 text-text-muted/60 cursor-not-allowed'
+                          : 'border-border bg-white text-text hover:border-primary/50'
+                    }`}
+                  >
+                    {formatHourMinute(slot.h, slot.m)}
+                    {isSelected && (
+                      <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-slate-900 text-primary flex items-center justify-center">
+                        <Check className="w-2.5 h-2.5" />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         ) : (
           <p className="text-[12px] text-text-muted py-3 px-3 bg-gray-50 rounded-xl">
@@ -440,8 +489,11 @@ function DateTimeSheetBody({
         <p className="text-[12px] text-amber-700 inline-flex items-start gap-1.5 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>
-            That time is outside the allowed window. Pick another day
-            or a later time.
+            {draftMoment && draftMoment.getTime() < minMs
+              ? 'Please select a time at least 30 minutes from now.'
+              : draftMoment && draftMoment.getTime() > maxMs
+              ? 'Bookings can only be scheduled within the next 24 hours.'
+              : 'That time is outside the allowed window. Pick another day or time.'}
           </span>
         </p>
       )}

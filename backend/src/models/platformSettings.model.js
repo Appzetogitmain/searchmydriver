@@ -26,6 +26,10 @@ const platformSettingsSchema = new mongoose.Schema(
     },
     responseTime: { type: String, default: 'Usually under 15 minutes', trim: true },
     officeAddress: { type: String, default: '123 Main Street, Suite 400, City, Country', trim: true },
+    // User App support contact info
+    userSupportPhone: { type: String, default: '9981570665', trim: true },
+    userSupportEmail: { type: String, default: 'Searchmydrivers@gmail.com', trim: true },
+    userSupportResponseTime: { type: String, default: 'We usually reply within 24 hours.', trim: true },
     referral: {
       user: {
         enabled: { type: Boolean, default: false },

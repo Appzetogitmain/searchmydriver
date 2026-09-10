@@ -13,6 +13,11 @@ export default function HelpSupportPage() {
   const [tickets, setTickets] = useState([]);
   const [loadingTickets, setLoadingTickets] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
+  const [supportContact, setSupportContact] = useState({
+    phone: '9981570665',
+    email: 'Searchmydrivers@gmail.com',
+    responseTime: 'We usually reply within 24 hours.',
+  });
 
   const fetchMyTickets = async () => {
     setLoadingTickets(true);
@@ -26,8 +31,25 @@ export default function HelpSupportPage() {
     }
   };
 
+  const fetchSupportContact = async () => {
+    try {
+      const res = await api.get('/common/settings');
+      const us = res?.data?.data?.userSupport;
+      if (us) {
+        setSupportContact({
+          phone: us.phone || '9981570665',
+          email: us.email || 'Searchmydrivers@gmail.com',
+          responseTime: us.responseTime || 'We usually reply within 24 hours.',
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch support contact details:', err);
+    }
+  };
+
   useEffect(() => {
     fetchMyTickets();
+    fetchSupportContact();
   }, []);
 
   return (
@@ -95,17 +117,23 @@ export default function HelpSupportPage() {
         </Card>
 
         <Card className="p-4 space-y-3">
-          <a href="tel:9981570665" className="flex items-center gap-3 rounded-2xl border border-border-light px-3 py-3 bg-white">
+          <a
+            href={`tel:${supportContact.phone}`}
+            className="flex items-center gap-3 rounded-2xl border border-border-light px-3 py-3 bg-white hover:bg-slate-50 transition-colors"
+          >
             <Phone className="w-4 h-4 text-text-secondary" />
-            <span className="text-sm font-medium text-text">9981570665</span>
+            <span className="text-sm font-medium text-text">{supportContact.phone}</span>
           </a>
-          <a href="mailto:Searchmydrivers@gmail.com" className="flex items-center gap-3 rounded-2xl border border-border-light px-3 py-3 bg-white">
+          <a
+            href={`mailto:${supportContact.email}`}
+            className="flex items-center gap-3 rounded-2xl border border-border-light px-3 py-3 bg-white hover:bg-slate-50 transition-colors"
+          >
             <Mail className="w-4 h-4 text-text-secondary" />
-            <span className="text-sm font-medium text-text">Searchmydrivers@gmail.com</span>
+            <span className="text-sm font-medium text-text">{supportContact.email}</span>
           </a>
           <div className="flex items-center gap-3 rounded-2xl border border-border-light px-3 py-3 bg-white">
             <MessageSquare className="w-4 h-4 text-text-secondary" />
-            <span className="text-sm font-medium text-text">We usually reply within 24 hours.</span>
+            <span className="text-sm font-medium text-text">{supportContact.responseTime}</span>
           </div>
         </Card>
       </div>
