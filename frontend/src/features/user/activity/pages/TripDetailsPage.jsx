@@ -839,12 +839,29 @@ function FareCard({
     lines.push({ label: 'Base fare', value: baseTotal });
   }
 
+  const oneWayCharge = Number(breakdown?.oneWayCharge) || 0;
+  if (oneWayCharge > 0) {
+    const km = breakdown?.estimatedKm || booking?.hourly?.estimatedKm;
+    lines.push({
+      label: km ? `One-way charge (${km} km)` : 'One-way charge',
+      value: oneWayCharge,
+    });
+  }
+
+  const nightCharge = Number(breakdown?.nightCharge) || 0;
+  if (nightCharge > 0) {
+    lines.push({
+      label: 'Night charge',
+      value: nightCharge,
+    });
+  }
+
   // Platform fee hidden from user UI per configuration
   // const serviceCharge = Number(breakdown?.serviceCharge) || 0;
   // if (serviceCharge > 0) {
   //   lines.push({ label: 'Platform fee', value: serviceCharge, muted: true });
   // }
-  const gst = Number(breakdown?.gst) || 0;
+  const gst = Number(breakdown?.gst) || Number(breakdown?.gstAmount) || 0;
   if (gst > 0) {
     lines.push({ label: 'GST', value: gst, muted: true });
   }

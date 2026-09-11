@@ -7,16 +7,71 @@ import { SERVICE_TYPES } from '../constants/serviceTypes';
 
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
+export function minutesOfDay(date, timeZone = 'Asia/Kolkata') {
+  const at = date ? new Date(date) : new Date();
+  if (Number.isNaN(at.getTime())) return 0;
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour: 'numeric',
+      minute: 'numeric',
+      hourCycle: 'h23',
+    }).formatToParts(at);
+    let hour = 0;
+    let minute = 0;
+    for (const part of parts) {
+      if (part.type === 'hour') hour = parseInt(part.value, 10);
+      if (part.type === 'minute') minute = parseInt(part.value, 10);
+    }
+    return (hour % 24) * 60 + minute;
+  } catch {
+    return at.getHours() * 60 + at.getMinutes();
+  }
+}
+
+export function parseHHmm(s, fallback = '22:00') {
+  if (!s && !fallback) return 0;
+  const str = String(s || fallback).trim().toLowerCase();
+  const match = str.match(/(\d{1,2}):(\d{2})(?:\s*(am|pm))?/);
+  if (match) {
+    let h = parseInt(match[1], 10);
+    const m = parseInt(match[2], 10);
+    const meridian = match[3];
+    if (meridian === 'pm' && h < 12) h += 12;
+    if (meridian === 'am' && h === 12) h = 0;
+    return (h % 24) * 60 + m;
+  }
+  const [h, m] = (s || fallback).split(':').map(Number);
+  return (Number(h) || 0) * 60 + (Number(m) || 0);
+}
+
 export function isNightRideAt(date, nightConfig) {
   if (!nightConfig?.enabled) return false;
-  const [startH, startM] = (nightConfig.startTime || '22:00').split(':').map(Number);
-  const [endH, endM] = (nightConfig.endTime || '06:00').split(':').map(Number);
-  const at = new Date(date);
-  const cur = at.getHours() * 60 + at.getMinutes();
-  const start = startH * 60 + startM;
-  const end = endH * 60 + endM;
+  const start = parseHHmm(nightConfig.startTime, '22:00');
+  const end = parseHHmm(nightConfig.endTime, '06:00');
   if (start === end) return false;
+  const cur = minutesOfDay(date);
   return start < end ? cur >= start && cur < end : cur >= start || cur < end;
+}
+
+export function rideCoversNightWindow(startAt, durationHours, nightConfig) {
+  if (!nightConfig?.enabled) return false;
+  const duration = Math.max(0, Math.ceil(Number(durationHours) || 0));
+  if (!duration) return isNightRideAt(startAt, nightConfig);
+  const startMs = startAt ? new Date(startAt).getTime() : Date.now();
+  const stepMs = 15 * 60 * 1000;
+  const totalMs = duration * 60 * 60 * 1000;
+  for (let t = 0; t <= totalMs; t += stepMs) {
+    if (isNightRideAt(new Date(startMs + t), nightConfig)) return true;
+  }
+  return false;
+}
+
+export function isLongDurationNight(bookedHours, nightConfig) {
+  if (!nightConfig?.enabled) return false;
+  const threshold = Number(nightConfig.thresholdHours) || 0;
+  if (threshold <= 0) return false;
+  return Number(bookedHours) >= threshold;
 }
 
 function applySubscriptionDiscount(subtotal, subscription) {
@@ -112,6 +167,8 @@ export function calculateHourlyFare({
   waitingMinutes = 0,
   tollParking = 0,
   subscription = null,
+  tripType = 'round_trip',
+  estimatedKm = 0,
 } = {}) {
   if (!pricing) return null;
 
@@ -132,26 +189,42 @@ export function calculateHourlyFare({
   const waitingCharge = billableWait * perMin;
 
   let nightCharge = 0;
-  if (isNightRide && pricing.nightCharge?.enabled) {
-    nightCharge =
-      pricing.nightCharge.type === 'percentage'
-        ? (slabPrice * (pricing.nightCharge.amount || 0)) / 100
-        : pricing.nightCharge.amount || 0;
+  let nightChargeTriggered = false;
+  if (pricing.nightCharge?.enabled) {
+    const longRide = isLongDurationNight(bookedHours ?? slabMaxHours, pricing.nightCharge);
+    if (isNightRide || longRide) {
+      nightChargeTriggered = true;
+      nightCharge =
+        pricing.nightCharge.type === 'percentage'
+          ? (slabPrice * (pricing.nightCharge.amount || 0)) / 100
+          : pricing.nightCharge.amount || 0;
+    }
+  }
+
+  let oneWayCharge = 0;
+  if (tripType === 'one_way' && pricing.oneWayCharge?.enabled) {
+    const rate = pricing.oneWayCharge.perKmRate || 0;
+    oneWayCharge = rate * Math.max(0, estimatedKm || 0);
   }
 
   const toll = pricing.tollParkingEnabled ? Math.max(0, tollParking || 0) : 0;
 
-  const subtotal = slabPrice + extraHourCharge + waitingCharge + nightCharge + toll;
+  const subtotal = slabPrice + extraHourCharge + waitingCharge + nightCharge + oneWayCharge + toll;
   const layers = applyPlatformLayers(subtotal, pricing, subscription);
 
   return {
     serviceType: SERVICE_TYPES.HOURLY,
+    tripType,
+    estimatedKm: Math.max(0, Number(estimatedKm) || 0),
+    oneWayPerKmRate: pricing.oneWayCharge?.perKmRate || 0,
     packagePrice: round2(slabPrice),
     extraHours,
     extraHourCharge: round2(extraHourCharge),
     waitingMinutes: waitingMinutes || 0,
     waitingCharge: round2(waitingCharge),
     nightCharge: round2(nightCharge),
+    nightChargeTriggered,
+    oneWayCharge: round2(oneWayCharge),
     tollParking: round2(toll),
     subtotal: round2(subtotal),
     ...layers,

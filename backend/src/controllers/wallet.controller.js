@@ -32,6 +32,8 @@ export const getMyWalletTransactions = asyncHandler(async (req, res) => {
   const result = await listWalletTransactionsService(userEntity._id, {
     page: req.query.page,
     limit: req.query.limit,
+    sort: req.query.sort,
+    direction: req.query.direction,
     userType,
   });
   return res

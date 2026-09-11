@@ -45,6 +45,7 @@ const DEFAULT_STATE = {
     // i.e. stay allowance ON). Surfaced as a toggle on the slab page
     // only when the booked duration crosses the admin threshold.
     stayProvided: null,
+    estimatedKm: 0,
   },
   outstation: {
     tripType: null,
@@ -211,6 +212,7 @@ const useBookingDraftStore = create(
             durationHours: s.hourly.durationHours,
             slabId: s.hourly.isCustomDuration ? null : s.hourly.slabId,
             isCustomDuration: !!s.hourly.isCustomDuration,
+            estimatedKm: s.hourly.estimatedKm || 0,
             // Only forward overrides the user explicitly set. `null`
             // means "use the admin/default behaviour" — the backend
             // treats undefined as `true` (allowance on).

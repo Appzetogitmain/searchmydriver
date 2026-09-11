@@ -81,6 +81,7 @@ import {
   createRazorpayOrder,
   getRazorpayKeyId,
 } from '../utils/razorpay.js';
+import { isSameCity, getCityDisplayName } from '../utils/cityValidation.js';
 
 /**
  * Business rules:
@@ -635,6 +636,19 @@ function validateCreateInput(body) {
         'Outstation: expectedReturnAt must be after pickupAt',
       );
     }
+    if (isOneWay) {
+      const destLocation = dropoff || {
+        address: outstation.destinationAddress,
+        city: outstation.destinationCity || '',
+      };
+      if (isSameCity(pickup, destLocation)) {
+        const cityName = getCityDisplayName(pickup) || 'the pickup city';
+        throw new ApiError(
+          400,
+          `In-city trips are not allowed for Outstation One-Way. Destination must be in another city (outside ${cityName}). For local travel within ${cityName}, please choose Hourly booking.`,
+        );
+      }
+    }
   }
   if (serviceType === SERVICE_TYPES.MONTHLY) {
     if (!monthly?.startDate || !monthly?.endDate) {
@@ -940,6 +954,8 @@ export async function createBookingService(userId, body) {
     bookedHours: hourly?.durationHours,
     scheduledAt: hourly?.scheduledStartAt || outstationPickupAt,
     days: outstationDuration?.days,
+    tripType: hourly?.tripType || outstation?.tripType || 'round_trip',
+    estimatedKm: Number(hourly?.estimatedKm) || Number(outstation?.estimatedKm) || 0,
     // Outstation: `needsStay` and `needsFood` are AND'd in the engine
     // into a single "customer arranges everything" toggle. Both must
     // be `true` for the per-night allowance to be waived.
@@ -1081,6 +1097,7 @@ export async function createBookingService(userId, body) {
               slabId: estimate.selectedSlab?._id || null,
               isCustomDuration: !!hourly.isCustomDuration,
               tripType: hourly.tripType || 'round_trip',
+              estimatedKm: Number(hourly.estimatedKm) || 0,
             }
           : null,
       outstation:

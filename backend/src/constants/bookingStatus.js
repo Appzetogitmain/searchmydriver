@@ -156,13 +156,13 @@ export const PAYMENT_POLICY = Object.freeze({
 
 /** Constants for the user-facing "nearby drivers" view (home page). */
 export const NEARBY_DRIVERS = Object.freeze({
-  /** Default radius shown to the customer on the home page. */
-  DEFAULT_RADIUS_METERS: 2000,
-  /** Hard ceiling the user-facing endpoint will honour. */
-  MAX_RADIUS_METERS: 5000,
+  /** Default radius shown to the customer on the home page (20 km). */
+  DEFAULT_RADIUS_METERS: 20000,
+  /** Hard ceiling the user-facing endpoint will honour (50 km). */
+  MAX_RADIUS_METERS: 50000,
   /** Default number of driver pins shown on the map / in the bottom sheet. */
-  DEFAULT_LIMIT: 8,
-  MAX_LIMIT: 25,
+  DEFAULT_LIMIT: 15,
+  MAX_LIMIT: 50,
 });
 
 /** Driver's response to a dispatch offer. */

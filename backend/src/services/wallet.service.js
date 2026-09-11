@@ -75,19 +75,40 @@ export async function getWalletService(userId, userType = 'User') {
     availableRupees: round2(Math.max(0, balance - heldRupees)),
     totalCredited: round2(wallet.totalCredited || 0),
     totalSpent: round2(wallet.totalSpent || 0),
+    totalDebited: round2(wallet.totalSpent || 0),
     currency: wallet.currency || 'INR',
     maxUsagePercent,
   };
 }
 
-export async function listWalletTransactionsService(userId, { page = 1, limit = 20, userType = 'User' } = {}) {
+export async function listWalletTransactionsService(
+  userId,
+  { page = 1, limit = 20, userType = 'User', sort = 'chronological_asc', direction } = {}
+) {
   if (!userId) throw new ApiError(400, 'userId is required');
   const safeLimit = Math.max(1, Math.min(100, Number(limit) || 20));
   const safePage = Math.max(1, Number(page) || 1);
   const filter = { userId, userType };
+
+  if (direction && ['credit', 'debit'].includes(String(direction).toLowerCase())) {
+    filter.direction = String(direction).toLowerCase();
+  }
+
+  let sortQuery = { createdAt: 1 };
+  const sortKey = String(sort || '').toLowerCase().trim();
+  if (sortKey === 'desc' || sortKey === 'chronological_desc' || sortKey === 'newest') {
+    sortQuery = { createdAt: -1 };
+  } else if (sortKey === 'asc' || sortKey === 'chronological_asc' || sortKey === 'oldest') {
+    sortQuery = { createdAt: 1 };
+  } else if (sortKey === 'alpha_asc' || sortKey === 'a-z') {
+    sortQuery = { description: 1, source: 1, createdAt: 1 };
+  } else if (sortKey === 'alpha_desc' || sortKey === 'z-a') {
+    sortQuery = { description: -1, source: -1, createdAt: -1 };
+  }
+
   const [transactions, total] = await Promise.all([
     WalletTransaction.find(filter)
-      .sort({ createdAt: -1 })
+      .sort(sortQuery)
       .skip((safePage - 1) * safeLimit)
       .limit(safeLimit)
       .lean(),
@@ -487,6 +508,7 @@ export async function verifyTopupPaymentService(userId, { orderId, paymentId, si
       balance: round2(updated.wallet?.balance || 0),
       totalCredited: round2(updated.wallet?.totalCredited || 0),
       totalSpent: round2(updated.wallet?.totalSpent || 0),
+      totalDebited: round2(updated.wallet?.totalSpent || 0),
       currency: updated.wallet?.currency || 'INR',
     },
     transaction: pending.toObject(),

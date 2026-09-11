@@ -7,10 +7,15 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
+  Compass,
+  CreditCard,
   Loader2,
   MapPin,
+  Moon,
   Navigation,
   Star,
+  Wallet,
+  Banknote,
 } from 'lucide-react';
 import Avatar from '../../../../components/Avatar';
 import { useCachedQuery } from '../../../../hooks/useCachedQuery';
@@ -275,6 +280,154 @@ const FALLBACK_BADGE = {
   iconColor: 'text-gray-500',
 };
 
+function extractBookingFareDetails(booking) {
+  const bd = booking?.fareSnapshot?.breakdown || {};
+  const isOutstation = booking?.serviceType === SERVICE_TYPES.OUTSTATION;
+  const isHourly = booking?.serviceType === SERVICE_TYPES.HOURLY;
+
+  // 1. Estimated / Base Fare
+  let estimatedBaseFare = 0;
+  let baseFareLabel = 'Estimated Fare';
+
+  if (isOutstation) {
+    const daily = Number(bd.dailyRateTotal) || 0;
+    const days = Number(bd.days) || booking?.outstation?.days || 0;
+    estimatedBaseFare = daily || Number(booking?.fareSnapshot?.baseFare) || 0;
+    baseFareLabel = days > 0 ? `Base Fare (${days}d)` : 'Base Fare';
+  } else if (isHourly) {
+    const hours = Number(bd.hours) || booking?.hourly?.durationHours || 0;
+    const slabTotal = Number(bd.packagePrice) || Number(bd.slabTotal) || Number(bd.hourlyTotal) || 0;
+    estimatedBaseFare = slabTotal || Number(booking?.fareSnapshot?.baseFare) || 0;
+    baseFareLabel = hours > 0 ? `Estimated Fare (${hours}h)` : 'Estimated Fare';
+  } else {
+    estimatedBaseFare = Number(booking?.fareSnapshot?.baseFare) || 0;
+  }
+
+  // 2. One-Way Charge
+  const oneWayCharge = Number(bd.oneWayCharge) || 0;
+
+  // 3. Night Charge
+  const nightCharge = Number(bd.nightCharge) || 0;
+
+  // 4. Other applicable charges
+  const charges = [];
+
+  // Base / Estimated Fare
+  if (estimatedBaseFare > 0) {
+    charges.push({
+      label: baseFareLabel,
+      amount: estimatedBaseFare,
+      type: 'base',
+    });
+  }
+
+  // One-way charge (if applied / > 0)
+  if (oneWayCharge > 0) {
+    const km = bd.estimatedKm || booking?.hourly?.estimatedKm;
+    charges.push({
+      label: km ? `One-way Charge (${km} km)` : 'One-way Charge',
+      amount: oneWayCharge,
+      type: 'oneway',
+      highlight: true,
+    });
+  }
+
+  // Night charge (if applied / > 0)
+  if (nightCharge > 0) {
+    charges.push({
+      label: 'Night Charge',
+      amount: nightCharge,
+      type: 'night',
+      highlight: true,
+    });
+  }
+
+  // Extra hours
+  const extraHours = Number(bd.extraHours) || 0;
+  const extraHourCharge = Number(bd.extraHourCharge) || 0;
+  if (extraHourCharge > 0) {
+    charges.push({
+      label: `Extra Hours (+${extraHours}h)`,
+      amount: extraHourCharge,
+    });
+  }
+
+  // Waiting charges
+  const waitingCharge = Number(booking?.waiting?.chargeRupees) || Number(bd.waitingCharge) || 0;
+  if (waitingCharge > 0) {
+    const waitMins = booking?.waiting?.billableMinutes || bd.waitingMinutes || 0;
+    charges.push({
+      label: waitMins > 0 ? `Waiting Charge (${waitMins} min)` : 'Waiting Charge',
+      amount: waitingCharge,
+    });
+  }
+
+  // Outstation allowances
+  const foodAllowance = Number(bd.foodAllowanceTotal) || Number(bd.foodAllowance) || 0;
+  if (foodAllowance > 0) {
+    charges.push({ label: 'Driver Food Allowance', amount: foodAllowance });
+  }
+
+  const stayAllowance = Number(bd.stayAllowanceTotal) || Number(bd.stayAllowance) || 0;
+  if (stayAllowance > 0) {
+    charges.push({ label: 'Driver Stay Allowance', amount: stayAllowance });
+  }
+
+  // Extensions
+  const extensions = Array.isArray(booking?.extensions) ? booking.extensions : [];
+  const acceptedExtensions = extensions.filter((ext) => ext?.status === 'accepted');
+  const extensionTotal = acceptedExtensions.reduce(
+    (sum, ext) => sum + (Number(ext?.fareDelta) || 0),
+    0,
+  );
+  if (extensionTotal > 0) {
+    charges.push({ label: 'Ride Extension(s)', amount: extensionTotal });
+  }
+
+  // GST / Taxes
+  const gst = Number(bd.gst) || Number(bd.gstAmount) || Number(booking?.fareSnapshot?.gst) || 0;
+  if (gst > 0) {
+    charges.push({ label: 'GST / Taxes', amount: gst, muted: true });
+  }
+
+  // Discounts
+  const discount = Number(bd.discount) || Number(bd.subscriptionDiscount) || Number(booking?.fareSnapshot?.discount) || 0;
+  if (discount > 0) {
+    charges.push({ label: 'Discount', amount: -discount, isDiscount: true });
+  }
+
+  // If charges array is empty (legacy booking without breakdown), fallback to base fare
+  if (charges.length === 0) {
+    const fallback = Number(booking?.fareSnapshot?.total) || Number(booking?.payment?.amountPaidRupees) || 0;
+    if (fallback > 0) {
+      charges.push({ label: 'Base Fare', amount: fallback });
+    }
+  }
+
+  // 5. Total Paid calculation
+  const baseTotal = Number(booking?.fareSnapshot?.total || 0);
+  const effectiveTotal = Math.round((baseTotal + (Number(booking?.waiting?.chargeRupees) || 0) + extensionTotal) * 100) / 100;
+  const amountPaid = Number(booking?.payment?.amountPaidRupees || 0);
+  const totalPaid = amountPaid > 0 ? amountPaid : effectiveTotal;
+
+  // 6. Payment method derivation
+  const rawMethod = String(booking?.paymentMethod || (booking?.payment?.walletTxId ? 'wallet' : 'cash')).toLowerCase();
+  let paymentMethod = 'Wallet';
+  if (rawMethod === 'cash') paymentMethod = 'Cash';
+  else if (rawMethod === 'razorpay' || rawMethod === 'online') paymentMethod = 'Online / UPI';
+  else if (rawMethod === 'wallet') paymentMethod = 'Wallet';
+
+  const isPaid = booking?.paymentStatus === 'paid' || booking?.status === BOOKING_STATUS.COMPLETED || amountPaid > 0;
+
+  return {
+    charges,
+    totalPaid,
+    paymentMethod,
+    rawPaymentMethod: rawMethod,
+    isPaid,
+  };
+}
+
 function TripHistoryCard({ booking, onOpen, indexInList = 0 }) {
   const badge = STATUS_BADGES[booking.status] || FALLBACK_BADGE;
   const StatusIcon = badge.icon;
@@ -300,6 +453,8 @@ function TripHistoryCard({ booking, onOpen, indexInList = 0 }) {
     const computed = base + waiting + extensions;
     return computed || Number(booking.payment?.amountPaidRupees) || 0;
   }, [booking]);
+
+  const fareDetails = useMemo(() => extractBookingFareDetails(booking), [booking]);
 
   const dateValue =
     booking.timeline?.completedAt ||
@@ -404,6 +559,53 @@ function TripHistoryCard({ booking, onOpen, indexInList = 0 }) {
               {booking.dropoff?.address ||
                 (isHourly ? 'Around the city' : 'Multi-day trip')}
             </p>
+          </div>
+        </div>
+
+        {/* Row 2.5 — Fare breakdown & payment method */}
+        <div className="mt-3.5 pt-2.5 pb-2.5 px-3 rounded-xl bg-gray-50/90 border border-border-light text-xs space-y-2">
+          {/* Header with Payment method */}
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="font-semibold text-text-muted uppercase tracking-wider text-[10px]">
+              Fare Breakdown
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white border border-border-light text-[11px] font-medium text-text shadow-2xs">
+              {fareDetails.rawPaymentMethod === 'wallet' ? (
+                <Wallet className="w-3 h-3 text-emerald-600 shrink-0" />
+              ) : fareDetails.rawPaymentMethod === 'cash' ? (
+                <Banknote className="w-3 h-3 text-amber-600 shrink-0" />
+              ) : (
+                <CreditCard className="w-3 h-3 text-primary shrink-0" />
+              )}
+              <span className="text-text-muted">{fareDetails.isPaid ? 'Paid via' : 'Pay via'}</span>
+              <span className="font-semibold text-text">{fareDetails.paymentMethod}</span>
+            </span>
+          </div>
+
+          {/* Charges lines */}
+          <div className="pt-1.5 border-t border-border-light/60 space-y-1">
+            {fareDetails.charges.map((c, i) => (
+              <div key={i} className="flex items-center justify-between text-[11px]">
+                <span className={c.muted ? 'text-text-muted' : c.highlight ? 'text-primary font-medium flex items-center gap-1' : 'text-text-secondary'}>
+                  {c.type === 'night' && <Moon className="w-3 h-3 text-indigo-500 inline shrink-0" />}
+                  {c.type === 'oneway' && <Compass className="w-3 h-3 text-sky-500 inline shrink-0" />}
+                  {c.label}
+                </span>
+                <span className={`font-medium tabular-nums ${c.isDiscount ? 'text-emerald-600' : c.muted ? 'text-text-muted' : 'text-text'}`}>
+                  {c.isDiscount ? '- ' : ''}₹{Math.abs(Number(c.amount || 0)).toLocaleString('en-IN')}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Total Paid / Total line */}
+          <div className="pt-1.5 border-t border-border-light/70 flex items-center justify-between text-xs">
+            <span className="font-semibold text-text">
+              {fareDetails.isPaid ? 'Total Paid' : 'Total Payable'}
+            </span>
+            <span className="font-bold text-sm text-text tabular-nums">
+              ₹{Number(fareDetails.totalPaid || 0).toLocaleString('en-IN')}
+            </span>
           </div>
         </div>
 

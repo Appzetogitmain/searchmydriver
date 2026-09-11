@@ -52,6 +52,8 @@ export const estimateFare = asyncHandler(async (req, res) => {
     tollParking = 0,
     days = null,
     actualKm = 0,
+    tripType = 'round_trip',
+    estimatedKm = 0,
   } = req.body || {};
 
   const result = await pricingService.estimateFareService({
@@ -65,6 +67,8 @@ export const estimateFare = asyncHandler(async (req, res) => {
     tollParking,
     days,
     actualKm,
+    tripType,
+    estimatedKm,
     userId,
   });
 

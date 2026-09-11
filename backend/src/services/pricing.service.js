@@ -269,14 +269,44 @@ export function findSlabForDuration(slabs = [], hours = 0) {
   return sorted[sorted.length - 1];
 }
 
-function minutesOfDay(date) {
-  const at = new Date(date);
-  return at.getHours() * 60 + at.getMinutes();
+export const APP_TIMEZONE = process.env.APP_TIMEZONE || 'Asia/Kolkata';
+
+export function minutesOfDay(date, timeZone = APP_TIMEZONE) {
+  const at = date ? new Date(date) : new Date();
+  if (Number.isNaN(at.getTime())) return 0;
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour: 'numeric',
+      minute: 'numeric',
+      hourCycle: 'h23',
+    }).formatToParts(at);
+    let hour = 0;
+    let minute = 0;
+    for (const part of parts) {
+      if (part.type === 'hour') hour = parseInt(part.value, 10);
+      if (part.type === 'minute') minute = parseInt(part.value, 10);
+    }
+    return (hour % 24) * 60 + minute;
+  } catch {
+    return at.getHours() * 60 + at.getMinutes();
+  }
 }
 
-function parseHHmm(s, fallback) {
+export function parseHHmm(s, fallback = '22:00') {
+  if (!s && !fallback) return 0;
+  const str = String(s || fallback).trim().toLowerCase();
+  const match = str.match(/(\d{1,2}):(\d{2})(?:\s*(am|pm))?/);
+  if (match) {
+    let h = parseInt(match[1], 10);
+    const m = parseInt(match[2], 10);
+    const meridian = match[3];
+    if (meridian === 'pm' && h < 12) h += 12;
+    if (meridian === 'am' && h === 12) h = 0;
+    return (h % 24) * 60 + m;
+  }
   const [h, m] = (s || fallback).split(':').map(Number);
-  return h * 60 + m;
+  return (Number(h) || 0) * 60 + (Number(m) || 0);
 }
 
 /**
@@ -555,6 +585,9 @@ export function calculateHourlyFare({
     stayEligible,
     stayProvided: !!stayProvided,
     stayOptOutAvailable: !!(stayCfg?.userOptOut && stayEligible),
+    tripType,
+    estimatedKm: Math.max(0, Number(estimatedKm) || 0),
+    oneWayPerKmRate: pricing.oneWayCharge?.perKmRate || 0,
     oneWayCharge: round2(oneWayCharge),
     tollParking: round2(toll),
     subtotal: round2(subtotal),
@@ -721,19 +754,6 @@ export const estimateFareService = async ({
   }
 
   const subscription = null;
-  // Outstation only checks the start; hourly checks the whole booked
-  // window so a 6-hour ride that starts at 18:00 still triggers night.
-  let isNight = false;
-  if (serviceType !== SERVICE_TYPES.MONTHLY) {
-    isNight =
-      serviceType === SERVICE_TYPES.HOURLY
-        ? rideCoversNightWindow(
-            scheduledAt || new Date(),
-            Number(bookedHours) || 0,
-            pricing.nightCharge,
-          )
-        : isNightRideAt(scheduledAt || new Date(), pricing.nightCharge);
-  }
 
   if (serviceType === SERVICE_TYPES.HOURLY) {
     let slab = null;
@@ -769,11 +789,19 @@ export const estimateFareService = async ({
       }
     }
 
+    const effectiveBookedHours = Number(bookedHours) || slab?.maxHours || 1;
+    // Hourly checks the whole booked window so a ride that dips into 22:00-06:00 triggers night charge.
+    const isNight = rideCoversNightWindow(
+      scheduledAt || new Date(),
+      effectiveBookedHours,
+      pricing.nightCharge,
+    );
+
     const breakdown = calculateHourlyFare({
       pricing,
       slab,
       isCustomDuration: isCustom,
-      bookedHours: bookedHours ?? slab?.maxHours ?? null,
+      bookedHours: effectiveBookedHours,
       isNightRide: isNight,
       waitingMinutes,
       tollParking,
@@ -1016,11 +1044,17 @@ export async function calculateFinalTripFare({
     const isCustom = !!booking.hourly?.isCustomDuration;
     const bookedHours = booking.hourly?.durationHours || 1;
 
-    const isNight = rideCoversNightWindow(
+    // Retain night charge if already triggered at booking time, or if actual ride crossed night window
+    const wasNightTriggered = Boolean(
+      booking.fareSnapshot?.breakdown?.nightChargeTriggered ||
+        (Number(booking.fareSnapshot?.breakdown?.nightCharge) > 0),
+    );
+    const coversNight = rideCoversNightWindow(
       booking.timeline?.startedAt || booking.hourly?.scheduledStartAt || new Date(),
       Math.ceil(durationMin / 60) || bookedHours,
       pricing.nightCharge,
     );
+    const isNight = wasNightTriggered || coversNight;
 
     fareBreakdown = calculateHourlyFare({
       pricing,
@@ -1038,10 +1072,15 @@ export async function calculateFinalTripFare({
     });
   } else if (isOutstation) {
     const days = Number(booking.outstation?.days) || 1;
-    const isNight = isNightRideAt(
+    const wasNightTriggered = Boolean(
+      booking.fareSnapshot?.breakdown?.nightChargeTriggered ||
+        (Number(booking.fareSnapshot?.breakdown?.nightCharge) > 0),
+    );
+    const coversNight = isNightRideAt(
       booking.timeline?.startedAt || booking.outstation?.pickupAt || new Date(),
       pricing.nightCharge,
     );
+    const isNight = wasNightTriggered || coversNight;
 
     fareBreakdown = calculateOutstationFare({
       pricing,

@@ -31,11 +31,13 @@ import useUserWalletStore from '../../../../store/user/useUserWalletStore';
 import { SERVICE_TYPES, SERVICE_TYPE_LABELS } from '../../../../constants/serviceTypes';
 import {
   BOOKING_STATUS,
+  TRIP_TYPE,
   mergeScheduledDispatchConfig,
 } from '../../../../constants/bookingStatus';
 import { formatPickupDateTime } from '../../../../utils/datetime';
 import { computeOutstationDuration } from '../../../../utils/outstationSchedule';
 import { getCarBrandName, getCarModelName } from '../../../../utils/vehicleCatalog';
+import { isSameCity, getCityDisplayName } from '../../../../utils/cityValidation';
 import FareCard from '../components/FareCard';
 import OfflineTipSelector from '../components/OfflineTipSelector';
 import useFareEstimate from '../hooks/useFareEstimate';
@@ -156,6 +158,8 @@ const ConfirmAndPayPage = () => {
       base.slabId = draft.hourly.isCustomDuration ? null : draft.hourly.slabId;
       base.bookedHours = draft.hourly.durationHours;
       base.scheduledAt = draft.hourly.scheduledStartAt;
+      base.tripType = draft.hourly?.tripType || TRIP_TYPE.ROUND_TRIP;
+      base.estimatedKm = draft.hourly?.estimatedKm || 0;
       if (draft.hourly.foodProvided != null) base.foodProvided = !!draft.hourly.foodProvided;
       if (draft.hourly.stayProvided != null) base.stayProvided = !!draft.hourly.stayProvided;
     } else if (draft.serviceType === SERVICE_TYPES.OUTSTATION) {
@@ -222,6 +226,31 @@ const ConfirmAndPayPage = () => {
     () => new Date(nowAnchorMs + minLeadHours * 60 * 60 * 1000),
     [nowAnchorMs, minLeadHours],
   );
+
+  // Outstation one-way trips must be to another city (e.g. Indore to Ujjain, not Indore to Indore).
+  const dropPoint = useMemo(() => {
+    if (draft.dropoff?.address) return draft.dropoff;
+    if (draft.outstation?.destinationAddress) {
+      return {
+        address: draft.outstation.destinationAddress,
+        city: draft.outstation.destinationCity || '',
+        lat: draft.outstation.destinationLat,
+        lng: draft.outstation.destinationLng,
+      };
+    }
+    return null;
+  }, [draft.dropoff, draft.outstation]);
+
+  const isInCityOutstationBlocked = useMemo(() => {
+    if (!isOutstation) return false;
+    if (draft.outstation?.tripType !== TRIP_TYPE.ONE_WAY) return false;
+    if (!draft.pickup?.address || !dropPoint?.address) return false;
+    return isSameCity(draft.pickup, dropPoint);
+  }, [isOutstation, draft.outstation?.tripType, draft.pickup, dropPoint]);
+
+  const pickupCityName = useMemo(() => {
+    return getCityDisplayName(draft.pickup) || 'your pickup city';
+  }, [draft.pickup]);
 
   // Mandatory food acknowledgement gate (hourly only). The slab page
   // is meant to capture this, but a direct landing on /confirm — or a
@@ -380,6 +409,13 @@ const ConfirmAndPayPage = () => {
   // paid directly to the driver and aren't part of this fare).
   const handlePay = useCallback(() => {
     if (submitting || !total) return;
+    if (isInCityOutstationBlocked) {
+      toast.error(
+        `In-city trips are not allowed for Outstation One-Way. Destination must be outside ${pickupCityName}.`,
+        { id: 'outstation-same-city-pay' },
+      );
+      return;
+    }
     if (foodGateUnmet) {
       toast.error('Please confirm you\u2019ll arrange the driver\u2019s meal');
       return;
@@ -389,7 +425,7 @@ const ConfirmAndPayPage = () => {
       return;
     }
     submitBooking();
-  }, [submitting, total, foodGateUnmet, isOutstation, submitBooking]);
+  }, [submitting, total, isInCityOutstationBlocked, pickupCityName, foodGateUnmet, isOutstation, submitBooking]);
 
   // Outstation toll/parking ack flow → user accepted, run the create.
   const handleTollAcknowledged = useCallback(() => {
@@ -434,6 +470,44 @@ const ConfirmAndPayPage = () => {
       </div>
 
       <div className="flex-1 p-4 space-y-4">
+        {isInCityOutstationBlocked && (
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <h4 className="text-sm font-bold text-amber-900">
+                  In-City Trip Not Allowed for Outstation One-Way
+                </h4>
+                <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                  Both pickup and destination are within <span className="font-semibold">{pickupCityName}</span>. Outstation One-Way is strictly for intercity travel to another city.
+                </p>
+                <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                  For local travel within <span className="font-semibold">{pickupCityName}</span>, please book an <strong>Hourly</strong> ride instead.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-amber-200/60">
+              <button
+                type="button"
+                onClick={() => navigate('/user/book/outstation/variants')}
+                className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shadow-sm transition"
+              >
+                Change destination
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  useBookingDraftStore.getState().setServiceType(SERVICE_TYPES.HOURLY);
+                  navigate('/user/book/hourly/type');
+                }}
+                className="px-3 py-1.5 rounded-xl bg-white border border-amber-300 hover:bg-amber-100/50 text-amber-900 text-xs font-semibold transition"
+              >
+                Switch to Hourly
+              </button>
+            </div>
+          </div>
+        )}
+
         <TripSummary
           draft={draft}
           car={selectedCar}
@@ -582,14 +656,16 @@ const ConfirmAndPayPage = () => {
           fullWidth
           icon={CheckCircle2}
           loading={submitting}
-          disabled={!estimate || estimating || total <= 0 || foodGateUnmet}
+          disabled={!estimate || estimating || total <= 0 || foodGateUnmet || isInCityOutstationBlocked}
           onClick={handlePay}
         >
-          {!total
-            ? 'Calculating fare\u2026'
-            : foodGateUnmet
-              ? 'Confirm driver\u2019s meal to continue'
-              : 'Confirm Booking'}
+          {isInCityOutstationBlocked
+            ? 'Destination must be in another city'
+            : !total
+              ? 'Calculating fare\u2026'
+              : foodGateUnmet
+                ? 'Confirm driver\u2019s meal to continue'
+                : 'Confirm Booking'}
         </Button>
       </div>
 
@@ -958,7 +1034,7 @@ function TripSummary({ draft, car, onEditCar, onEditPickup }) {
         <div className="flex gap-3">
           <div className="flex flex-col items-center gap-1 pt-1">
             <CircleDot className="w-4 h-4 text-success" />
-            {!isHourly && dropAddress && (
+            {((!isHourly && dropAddress) || (isHourly && draft.hourly?.tripType === TRIP_TYPE.ONE_WAY && draft.dropoff?.address)) && (
               <>
                 <div className="w-0.5 h-8 bg-gray-200" />
                 <MapPin className="w-4 h-4 text-danger" />
@@ -972,13 +1048,26 @@ function TripSummary({ draft, car, onEditCar, onEditPickup }) {
                 {draft.pickup?.address}
               </p>
             </div>
-            {!isHourly && !isMonthly && dropAddress && (
+            {((!isHourly && !isMonthly && dropAddress) || (isHourly && draft.hourly?.tripType === TRIP_TYPE.ONE_WAY && draft.dropoff?.address)) && (
               <div className="mt-3">
-                <p className="text-xs text-text-muted">Destination</p>
-                <p className="text-sm font-medium text-text break-words">{dropAddress}</p>
-                <p className="text-[11px] text-text-muted mt-0.5">
-                  Round trip — we drop you back at the pickup.
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-text-muted">Destination</p>
+                  {isHourly && draft.hourly?.estimatedKm > 0 && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-100 text-text shrink-0">
+                      ~{draft.hourly.estimatedKm} km
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm font-medium text-text break-words">
+                  {isHourly ? draft.dropoff?.address : dropAddress}
                 </p>
+                {!isHourly && !isMonthly && (
+                  <p className="text-[11px] text-text-muted mt-0.5">
+                    {draft.outstation?.tripType === TRIP_TYPE.ONE_WAY
+                      ? 'One way trip — drop at destination.'
+                      : 'Round trip — we drop you back at the pickup.'}
+                  </p>
+                )}
               </div>
             )}
           </div>

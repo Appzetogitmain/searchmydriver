@@ -26,8 +26,13 @@ function rupees(n) {
 }
 
 function buildHourlyRows(bd) {
+  const kmLabel = bd.estimatedKm
+    ? `One-way distance (${bd.estimatedKm} km${bd.oneWayPerKmRate ? ` \u00d7 \u20B9${bd.oneWayPerKmRate}/km` : ''})`
+    : 'One-way distance charge';
+
   return [
     ['Base fare', bd.packagePrice || 0],
+    [kmLabel, bd.oneWayCharge, !(Number(bd.oneWayCharge) > 0)],
     [`Extra hours (${bd.extraHours || 0})`, bd.extraHourCharge, !(bd.extraHours > 0)],
     ['Waiting', bd.waitingCharge],
     ['Night charge', bd.nightCharge],

@@ -26,8 +26,8 @@ import AdsCarousel from '../../../../components/AdsCarousel';
 import HelpDeskModal from '../../../../components/HelpDeskModal';
 import useUserAuthStore from '../../../../store/useUserAuthStore';
 
-const NEARBY_RADIUS_METERS = 2000;
-const NEARBY_LIMIT = 8;
+const NEARBY_RADIUS_METERS = 20000;
+const NEARBY_LIMIT = 15;
 const NEARBY_REFRESH_MS = 30_000;
 
 const UserHomePage = () => {

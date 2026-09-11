@@ -36,6 +36,7 @@ import {
 } from '../../../../utils/outstationSchedule';
 import { mergeScheduledDispatchConfig, TRIP_TYPE } from '../../../../constants/bookingStatus';
 import toast from 'react-hot-toast';
+import { isSameCity, getCityDisplayName } from '../../../../utils/cityValidation';
 import { useGoogleMaps } from '../../../../hooks/useGoogleMaps';
 import { useGeolocation } from '../../../../hooks/useGeolocation';
 import { useDirectionsRoute } from '../../../../hooks/useDirectionsRoute';
@@ -353,6 +354,18 @@ function OutstationVariants({ pricing, draft, onPatch, onContinue }) {
     return new Date(ms + 30 * 60 * 1000);
   }, [pickupAt]);
 
+  // For Outstation One-Way trips, in-city bookings (e.g. Indore to Indore)
+  // are prohibited — one-way outstation must be to another city.
+  const isSameCityBlocked = useMemo(() => {
+    if (tripType !== TRIP_TYPE.ONE_WAY) return false;
+    if (!localPickup?.address || !localDestination?.address) return false;
+    return isSameCity(localPickup, localDestination);
+  }, [tripType, localPickup, localDestination]);
+
+  const pickupCityName = useMemo(() => {
+    return getCityDisplayName(localPickup) || 'your pickup city';
+  }, [localPickup]);
+
   /* ------------------------------------------------------------------ */
   /* Location picker sheet + embedded map                                 */
   /* ------------------------------------------------------------------ */
@@ -460,10 +473,25 @@ function OutstationVariants({ pricing, draft, onPatch, onContinue }) {
         rejectOutsideIndia();
         return;
       }
-      if (which === 'drop') setLocalDestination(point);
-      else setLocalPickup(point);
+      if (which === 'drop') {
+        setLocalDestination(point);
+        if (tripType === TRIP_TYPE.ONE_WAY && localPickup?.address && isSameCity(localPickup, point)) {
+          const cName = getCityDisplayName(localPickup) || 'your pickup city';
+          toast.error(`In-city trips are not allowed for Outstation One-Way. Destination must be outside ${cName}.`, {
+            id: 'outstation-same-city',
+          });
+        }
+      } else {
+        setLocalPickup(point);
+        if (tripType === TRIP_TYPE.ONE_WAY && localDestination?.address && isSameCity(point, localDestination)) {
+          const cName = getCityDisplayName(point) || 'your pickup city';
+          toast.error(`In-city trips are not allowed for Outstation One-Way. Destination must be outside ${cName}.`, {
+            id: 'outstation-same-city',
+          });
+        }
+      }
     },
-    [ensureIndia, rejectOutsideIndia],
+    [ensureIndia, rejectOutsideIndia, tripType, localPickup, localDestination],
   );
 
   // Wired to the pickup sheet's "Use my current location" CTA.
@@ -514,10 +542,25 @@ function OutstationVariants({ pricing, draft, onPatch, onContinue }) {
         }
         return;
       }
-      if (which === 'drop') setLocalDestination(point);
-      else setLocalPickup(point);
+      if (which === 'drop') {
+        setLocalDestination(point);
+        if (tripType === TRIP_TYPE.ONE_WAY && localPickup?.address && isSameCity(localPickup, point)) {
+          const cName = getCityDisplayName(localPickup) || 'your pickup city';
+          toast.error(`In-city trips are not allowed for Outstation One-Way. Destination must be outside ${cName}.`, {
+            id: 'outstation-same-city',
+          });
+        }
+      } else {
+        setLocalPickup(point);
+        if (tripType === TRIP_TYPE.ONE_WAY && localDestination?.address && isSameCity(point, localDestination)) {
+          const cName = getCityDisplayName(point) || 'your pickup city';
+          toast.error(`In-city trips are not allowed for Outstation One-Way. Destination must be outside ${cName}.`, {
+            id: 'outstation-same-city',
+          });
+        }
+      }
     },
-    [reverseGeocode, ensureIndia, rejectOutsideIndia],
+    [reverseGeocode, ensureIndia, rejectOutsideIndia, tripType, localPickup, localDestination],
   );
 
   // Centre the embedded map on whichever marker exists; fall back to
@@ -703,7 +746,7 @@ function OutstationVariants({ pricing, draft, onPatch, onContinue }) {
     !!localPickup?.lat &&
     !!localPickup?.address &&
     (tripType === TRIP_TYPE.ONE_WAY
-      ? !!localDestination?.lat && !!localDestination?.address
+      ? !!localDestination?.lat && !!localDestination?.address && !isSameCityBlocked
       : true) &&
     !!pickupAt &&
     (tripType === TRIP_TYPE.ONE_WAY ? true : !!expectedReturnAt) &&
@@ -712,6 +755,13 @@ function OutstationVariants({ pricing, draft, onPatch, onContinue }) {
 
   const handleContinue = () => {
     if (!canContinue) return;
+    if (isSameCityBlocked) {
+      toast.error(
+        `In-city trips are not allowed for Outstation One-Way. Destination must be outside ${pickupCityName}.`,
+        { id: 'outstation-same-city-block' },
+      );
+      return;
+    }
     // Defer the zone verdict to this exact moment — the inline strip
     // already nudges the user, but we still hard-block at click time
     // to cover the "first-load, hook still resolving" race. We don't
@@ -776,7 +826,11 @@ function OutstationVariants({ pricing, draft, onPatch, onContinue }) {
               ? `${days} day${days === 1 ? '' : 's'}`
               : '— day'
           }
-          primaryLabel="Continue"
+          primaryLabel={
+            tripType === TRIP_TYPE.ONE_WAY && isSameCityBlocked
+              ? 'Select another city'
+              : 'Continue'
+          }
           disabled={!canContinue}
           onClick={handleContinue}
         />
@@ -825,6 +879,14 @@ function OutstationVariants({ pricing, draft, onPatch, onContinue }) {
               value={localDestination?.address || ''}
               onClick={() => setPickerOpen('drop')}
             />
+          )}
+          {tripType === TRIP_TYPE.ONE_WAY && isSameCityBlocked && (
+            <div className="rounded-xl bg-amber-50 border border-amber-200/80 p-2.5 flex items-start gap-2.5 mt-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+              <div className="flex-1 text-[12px] leading-snug text-amber-900">
+                <span className="font-semibold">In-city trips not allowed:</span> Outstation One-Way is for intercity travel only. Destination must be outside {pickupCityName}. For local travel within {pickupCityName}, please book an Hourly ride.
+              </div>
+            </div>
           )}
         </div>
 

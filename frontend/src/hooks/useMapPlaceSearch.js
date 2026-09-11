@@ -1,14 +1,25 @@
 import { useEffect, useRef } from 'react';
 import { PLACES_COUNTRY } from '../constants/mapDefaults';
 
+function extractCityFromComponents(components) {
+  if (!Array.isArray(components)) return '';
+  const locality = components.find((c) => c.types?.includes('locality'));
+  if (locality?.long_name) return locality.long_name;
+  const admin2 = components.find((c) => c.types?.includes('administrative_area_level_2'));
+  if (admin2?.long_name) return admin2.long_name;
+  return '';
+}
+
 function parsePlace(place) {
   const loc = place?.geometry?.location;
   if (!loc) return null;
+  const city = extractCityFromComponents(place.address_components);
   return {
     lat: typeof loc.lat === 'function' ? loc.lat() : loc.lat,
     lng: typeof loc.lng === 'function' ? loc.lng() : loc.lng,
     name: place.name || '',
     address: place.formatted_address || '',
+    city: city || '',
   };
 }
 
@@ -39,11 +50,13 @@ export function useMapPlaceSearch(inputRef, { maps, map, enabled, onSelect }) {
         (results, status) => {
           if (cancelled || status !== 'OK' || !results?.[0]) return;
           const loc = results[0].geometry.location;
+          const city = extractCityFromComponents(results[0].address_components);
           selectPlace({
             lat: loc.lat(),
             lng: loc.lng(),
             name: results[0].address_components?.[0]?.long_name || query,
             address: results[0].formatted_address || query,
+            city: city || '',
           });
         },
       );
@@ -56,7 +69,7 @@ export function useMapPlaceSearch(inputRef, { maps, map, enabled, onSelect }) {
       geocoder = new maps.Geocoder();
       autocomplete = new Autocomplete(inputRef.current, {
         componentRestrictions: { country: PLACES_COUNTRY },
-        fields: ['geometry', 'name', 'formatted_address'],
+        fields: ['geometry', 'name', 'formatted_address', 'address_components'],
       });
 
       if (map) autocomplete.bindTo('bounds', map);

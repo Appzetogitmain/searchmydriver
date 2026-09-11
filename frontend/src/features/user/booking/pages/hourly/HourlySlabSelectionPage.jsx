@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Check, Loader2, AlertTriangle, X, Utensils, BedDouble, Info, Plus } from 'lucide-react';
+import { Check, Loader2, AlertTriangle, X, Utensils, BedDouble, Info, Plus, Moon } from 'lucide-react';
 import Button from '../../../../../components/Button';
 import PageShell from '../../components/PageShell';
 import FareCard from '../../components/FareCard';
@@ -13,6 +13,8 @@ import {
 import { useCachedQuery } from '../../../../../hooks/useCachedQuery';
 import { buildCacheKey } from '../../../../../store/lib/buildCacheKey';
 import { SERVICE_TYPES } from '../../../../../constants/serviceTypes';
+import { TRIP_TYPE } from '../../../../../constants/bookingStatus';
+import { haversineMeters } from '../../../../../utils/geo';
 
 const CUSTOM_KEY = '__custom__';
 
@@ -115,15 +117,40 @@ const HourlySlabSelectionPage = () => {
     };
   }, [selectedKey, slabs, customHours]);
 
+  const isOneWay = draft.hourly?.tripType === TRIP_TYPE.ONE_WAY;
+
+  const effectiveKm = useMemo(() => {
+    if (!isOneWay) return 0;
+    if (draft.hourly?.estimatedKm && Number(draft.hourly.estimatedKm) > 0) {
+      return Number(draft.hourly.estimatedKm);
+    }
+    if (draft.pickup?.lat && draft.dropoff?.lat) {
+      const dist = haversineMeters(draft.pickup, draft.dropoff);
+      if (Number.isFinite(dist) && dist > 0) {
+        return Math.max(1, Math.round((dist / 1000) * 1.3));
+      }
+    }
+    return 0;
+  }, [isOneWay, draft.hourly?.estimatedKm, draft.pickup, draft.dropoff]);
+
+  useEffect(() => {
+    if (isOneWay && effectiveKm > 0 && draft.hourly?.estimatedKm !== effectiveKm) {
+      setHourly({ estimatedKm: effectiveKm });
+    }
+  }, [isOneWay, effectiveKm, draft.hourly?.estimatedKm, setHourly]);
+
   // Fare estimation payload — debounced inside the hook. We forward the
   // user's food/stay overrides here so the live total reflects them.
   const estimatePayload = useMemo(() => {
-    if (!currentSelection || !draft.hourly.scheduledStartAt) return null;
+    if (!currentSelection) return null;
+    const scheduledAt = draft.hourly?.scheduledStartAt || new Date().toISOString();
     const base = {
       serviceType: SERVICE_TYPES.HOURLY,
       slabId: currentSelection.isCustom ? null : currentSelection.slabId,
       bookedHours: currentSelection.durationHours,
-      scheduledAt: draft.hourly.scheduledStartAt,
+      scheduledAt,
+      tripType: draft.hourly?.tripType || TRIP_TYPE.ROUND_TRIP,
+      estimatedKm: effectiveKm || 0,
     };
     if (draft.hourly.foodProvided != null) base.foodProvided = !!draft.hourly.foodProvided;
     if (draft.hourly.stayProvided != null) base.stayProvided = !!draft.hourly.stayProvided;
@@ -133,6 +160,8 @@ const HourlySlabSelectionPage = () => {
     draft.hourly.scheduledStartAt,
     draft.hourly.foodProvided,
     draft.hourly.stayProvided,
+    draft.hourly?.tripType,
+    effectiveKm,
   ]);
 
   const { estimate, loading: estimating, error: estimateError } = useFareEstimate(estimatePayload, {
@@ -244,6 +273,55 @@ const HourlySlabSelectionPage = () => {
             </div>
           )}
 
+          {/* Trip Summary: Route & Distance */}
+          <div className="rounded-2xl border border-border bg-white p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                {isOneWay ? 'One-way trip' : 'Round trip'}
+              </span>
+              {isOneWay && effectiveKm > 0 ? (
+                <span className="text-xs font-bold text-text bg-gray-100 px-2.5 py-0.5 rounded-lg">
+                  ~{effectiveKm} km
+                </span>
+              ) : (
+                <span className="text-[11px] text-text-muted font-medium">
+                  Unlimited km
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-start gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                <p className="text-xs text-text-secondary truncate">
+                  <span className="font-semibold text-text">Pickup: </span>
+                  {draft.pickup?.address || 'Pickup location'}
+                </p>
+              </div>
+              {isOneWay && draft.dropoff?.address && (
+                <div className="flex items-start gap-2">
+                  <div className="w-2 h-2 rounded-full bg-red-500 mt-1.5 shrink-0" />
+                  <p className="text-xs text-text-secondary truncate">
+                    <span className="font-semibold text-text">Dropoff: </span>
+                    {draft.dropoff?.address || 'Dropoff location'}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {isOneWay && pricing?.oneWayCharge?.enabled && (
+              <div className="pt-2 border-t border-border-light flex items-center justify-between text-[11px] text-text-muted">
+                <span>Distance rate:</span>
+                <span className="font-semibold text-text">₹{pricing.oneWayCharge.perKmRate || 0}/km</span>
+              </div>
+            )}
+            {!isOneWay && (
+              <p className="pt-1.5 border-t border-border-light text-[11px] text-text-muted">
+                Driver stays with you for the duration · no extra distance charge.
+              </p>
+            )}
+          </div>
+
           <div>
             <p className="text-[11px] uppercase tracking-wide text-text-muted font-semibold mb-2">
               Duration
@@ -256,8 +334,13 @@ const HourlySlabSelectionPage = () => {
                     key={id}
                     active={selectedKey === id}
                     title={slab.label || `Up to ${slab.maxHours} hours`}
-                    subtitle={`Up to ${slab.maxHours} h${pricing.extraHourCharge ? ` · extra ₹${pricing.extraHourCharge}/hr` : ''
-                      }`}
+                    subtitle={`Up to ${slab.maxHours} h${
+                      pricing.extraHourCharge ? ` · extra ₹${pricing.extraHourCharge}/hr` : ''
+                    }${
+                      isOneWay && pricing.oneWayCharge?.enabled && pricing.oneWayCharge?.perKmRate
+                        ? ` · + ₹${pricing.oneWayCharge.perKmRate}/km`
+                        : ''
+                    }`}
                     price={`₹${slab.price}`}
                     onClick={() => setSelectedKey(id)}
                   />
@@ -271,6 +354,8 @@ const HourlySlabSelectionPage = () => {
                   rate={customRate}
                   maxHours={customMaxHours}
                   hours={customHours}
+                  isOneWay={isOneWay}
+                  perKmRate={pricing.oneWayCharge?.enabled ? pricing.oneWayCharge?.perKmRate : 0}
                   onSelect={() => setSelectedKey(CUSTOM_KEY)}
                   onHoursChange={setCustomHours}
                 />
@@ -304,6 +389,22 @@ const HourlySlabSelectionPage = () => {
 
           {selectedKey && (
             <OfflineTipSelector value={offlineTip} onChange={setOfflineTip} />
+          )}
+
+          {selectedKey && Number(estimate?.fareBreakdown?.nightCharge) > 0 && (
+            <div className="rounded-2xl border border-indigo-200 bg-indigo-50/80 p-3 flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
+                <Moon className="w-4 h-4 text-indigo-700" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-indigo-900">
+                  Night charge applied (₹{estimate.fareBreakdown.nightCharge})
+                </p>
+                <p className="text-[12px] text-indigo-800 leading-snug mt-0.5">
+                  Automatically applied for bookings active between 10:00 PM and 6:00 AM.
+                </p>
+              </div>
+            </div>
           )}
 
           {selectedKey && (
@@ -432,7 +533,7 @@ function SlabRow({ active, title, subtitle, price, onClick }) {
   );
 }
 
-function CustomRow({ active, label, rate, maxHours, hours, onSelect, onHoursChange }) {
+function CustomRow({ active, label, rate, maxHours, hours, onSelect, onHoursChange, isOneWay = false, perKmRate = 0 }) {
   return (
     <div
       className={`rounded-2xl border p-3 transition ${active ? 'border-primary bg-primary/5' : 'border-border bg-white'
@@ -454,6 +555,7 @@ function CustomRow({ active, label, rate, maxHours, hours, onSelect, onHoursChan
           <p className="text-[11px] text-text-muted">
             ₹{rate}/hour
             {maxHours > 0 ? ` · up to ${maxHours} hours` : ''}
+            {isOneWay && perKmRate > 0 ? ` · + ₹${perKmRate}/km` : ''}
           </p>
         </div>
         {!active && <p className="text-xs font-semibold text-primary">Choose</p>}

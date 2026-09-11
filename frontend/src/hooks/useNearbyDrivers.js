@@ -25,15 +25,15 @@ import { haversineMeters } from '../utils/geo';
  *
  * @param {object} params
  * @param {{ lat:number, lng:number } | null} params.center
- * @param {number} [params.radiusMeters=2000]
- * @param {number} [params.limit=8]
+ * @param {number} [params.radiusMeters=20000]
+ * @param {number} [params.limit=15]
  * @param {boolean} [params.enabled=true]
  * @param {number} [params.refetchMs]   Optional polling interval for the seed.
  */
 export function useNearbyDrivers({
   center,
-  radiusMeters = 2000,
-  limit = 8,
+  radiusMeters = 20000,
+  limit = 15,
   enabled = true,
   refetchMs,
 } = {}) {

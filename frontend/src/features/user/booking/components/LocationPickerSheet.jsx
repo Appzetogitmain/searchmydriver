@@ -13,6 +13,7 @@ import BottomSheet from '../../../../components/BottomSheet';
 import { useGoogleMaps } from '../../../../hooks/useGoogleMaps';
 import { useMapPlaceSearch } from '../../../../hooks/useMapPlaceSearch';
 import useUserSavedLocationsStore from '../../../../store/user/useUserSavedLocationsStore';
+import { extractCityFromAddress } from '../../../../utils/cityValidation';
 
 /**
  * Rapido-style location picker sheet. Used to pick a pickup point with three
@@ -74,10 +75,11 @@ const LocationPickerSheet = ({
   useMapPlaceSearch(inputRef, {
     maps,
     enabled: ready && open,
-    onSelect: ({ lat, lng, address, name }) => {
+    onSelect: ({ lat, lng, address, name, city }) => {
+      const fullAddress = address || name || '';
       onSelect?.({
-        address: address || name || '',
-        city: '',
+        address: fullAddress,
+        city: city || extractCityFromAddress(fullAddress) || '',
         lat,
         lng,
       });
@@ -97,7 +99,7 @@ const LocationPickerSheet = ({
   const handleSavedTap = (saved) => {
     onSelect?.({
       address: saved.address,
-      city: saved.city || '',
+      city: saved.city || extractCityFromAddress(saved.address) || '',
       lat: saved.lat,
       lng: saved.lng,
     });

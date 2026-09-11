@@ -26,6 +26,7 @@ const EMPTY_WALLET = {
   availableRupees: 0,
   totalCredited: 0,
   totalSpent: 0,
+  totalDebited: 0,
   currency: 'INR',
 };
 
@@ -40,12 +41,17 @@ const normaliseWallet = (wallet, prev = EMPTY_WALLET) => {
     w.availableRupees != null
       ? Number(w.availableRupees) || 0
       : Math.max(0, Math.round((balance - heldRupees) * 100) / 100);
+  const totalDebited =
+    w.totalDebited != null
+      ? Number(w.totalDebited) || 0
+      : Number(w.totalSpent) || 0;
   return {
     balance,
     heldRupees,
     availableRupees: available,
     totalCredited: Number(w.totalCredited) || 0,
     totalSpent: Number(w.totalSpent) || 0,
+    totalDebited,
     currency: w.currency || prev.currency || 'INR',
   };
 };
@@ -60,6 +66,8 @@ const useUserWalletStore = create((set, get) => ({
   fetched: false,
   topupLoading: false,
   error: null,
+  sort: 'chronological_asc',
+  direction: 'all',
 
   /** Replace the wallet snapshot wholesale (used after a verified top-up). */
   applyWallet(wallet) {
@@ -88,17 +96,29 @@ const useUserWalletStore = create((set, get) => ({
     }
   },
 
-  async fetchTransactions({ page = 1, limit = 20, append = false } = {}) {
+  async fetchTransactions({
+    page = 1,
+    limit = 20,
+    append = false,
+    sort,
+    direction,
+  } = {}) {
     set({ loading: true, error: null });
     try {
-      const res = await api.get('/auth/wallet/transactions', {
-        params: { page, limit },
-      });
+      const currentSort = sort !== undefined ? sort : get().sort;
+      const currentDirection = direction !== undefined ? direction : get().direction;
+      const params = { page, limit };
+      if (currentSort) params.sort = currentSort;
+      if (currentDirection && currentDirection !== 'all') params.direction = currentDirection;
+
+      const res = await api.get('/auth/wallet/transactions', { params });
       const data = res?.data?.data || {};
       const next = Array.isArray(data.transactions) ? data.transactions : [];
       set((state) => ({
         transactions: append ? [...state.transactions, ...next] : next,
         page,
+        sort: currentSort,
+        direction: currentDirection,
         hasMore: next.length === limit && page * limit < (data.total || 0),
         loading: false,
       }));
@@ -172,6 +192,8 @@ const useUserWalletStore = create((set, get) => ({
       fetched: false,
       topupLoading: false,
       error: null,
+      sort: 'chronological_asc',
+      direction: 'all',
     });
   },
 }));

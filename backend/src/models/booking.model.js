@@ -44,6 +44,7 @@ const hourlyDetailsSchema = new mongoose.Schema(
       enum: TRIP_TYPE_LIST,
       default: TRIP_TYPE.ROUND_TRIP,
     },
+    estimatedKm: { type: Number, default: 0, min: 0 },
   },
   { _id: false },
 );

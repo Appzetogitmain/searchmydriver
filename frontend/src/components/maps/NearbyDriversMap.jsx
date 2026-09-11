@@ -31,7 +31,7 @@ import {
 const NearbyDriversMap = ({
   center,
   drivers = [],
-  radiusMeters = 2000,
+  radiusMeters = 20000,
   selectedDriverId = null,
   onDriverClick,
   height = '100%',
@@ -55,10 +55,16 @@ const NearbyDriversMap = ({
     // recenter effect below. Intentionally not in deps to keep map init
     // a one-shot.
     const initialCenter = center || { lat: 0, lng: 0 };
+    const initialZoom =
+      radiusMeters && radiusMeters >= 15000
+        ? 11
+        : radiusMeters && radiusMeters >= 8000
+          ? 12
+          : 14;
     const mapOptions = {
       ...RAPIDO_MAP_OPTIONS,
       center: initialCenter,
-      zoom: 15,
+      zoom: initialZoom,
       mapId: GOOGLE_MAP_ID,
     };
     if (mapOptions.mapId) {

@@ -15,6 +15,8 @@ import { useGeolocation } from '../../../../../hooks/useGeolocation';
 import { useNearbyDrivers } from '../../../../../hooks/useNearbyDrivers';
 import { useDriverMarkers } from '../../../../../hooks/useDriverMarkers';
 import { useZoneCheck } from '../../../../../hooks/useZoneCheck';
+import { useDirectionsRoute } from '../../../../../hooks/useDirectionsRoute';
+import { haversineMeters } from '../../../../../utils/geo';
 import { reverseGeocode } from '../../../../../utils/geocoding';
 import {
   DEFAULT_MAP_CENTER,
@@ -31,8 +33,8 @@ import useBookingDraftStore from '../../../../../store/user/useBookingDraftStore
 import CarPickerSheet from '../../components/CarPickerSheet';
 import LocationPickerSheet from '../../components/LocationPickerSheet';
 
-const NEARBY_RADIUS_METERS = 2000;
-const NEARBY_LIMIT = 6;
+const NEARBY_RADIUS_METERS = 20000;
+const NEARBY_LIMIT = 10;
 
 /**
  * Hourly booking — Step 2.
@@ -53,6 +55,7 @@ const HourlyTripDetailsPage = () => {
   const setPickup = useBookingDraftStore((s) => s.setPickup);
   const setDropoff = useBookingDraftStore((s) => s.setDropoff);
   const setCarId = useBookingDraftStore((s) => s.setCarId);
+  const setHourly = useBookingDraftStore((s) => s.setHourly);
   const draftTripType = useBookingDraftStore((s) => s.hourly?.tripType);
   const draftDropoff = useBookingDraftStore((s) => s.dropoff);
   const isOneWay = draftTripType === TRIP_TYPE.ONE_WAY;
@@ -125,6 +128,36 @@ const HourlyTripDetailsPage = () => {
   });
 
   useDriverMarkers(mapInstance, nearbyDrivers);
+
+  /* ---- Route & Distance (One-Way) -------------------------------- */
+
+  const routeOrigin = useMemo(
+    () => (pickup?.lat && pickup?.lng ? { lat: pickup.lat, lng: pickup.lng } : null),
+    [pickup?.lat, pickup?.lng],
+  );
+  const routeDest = useMemo(
+    () => (isOneWay && dropoff?.lat && dropoff?.lng ? { lat: dropoff.lat, lng: dropoff.lng } : null),
+    [isOneWay, dropoff?.lat, dropoff?.lng],
+  );
+
+  const route = useDirectionsRoute({
+    maps,
+    origin: routeOrigin,
+    destination: routeDest,
+    enabled: Boolean(maps && routeOrigin && routeDest && isOneWay),
+  });
+
+  const estimatedKm = useMemo(() => {
+    if (!isOneWay || !pickup?.lat || !dropoff?.lat) return 0;
+    if (Number.isFinite(route?.distanceMeters) && route.distanceMeters > 0) {
+      return Math.max(1, Math.round(route.distanceMeters / 1000));
+    }
+    const dist = haversineMeters(pickup, dropoff);
+    if (Number.isFinite(dist) && dist > 0) {
+      return Math.max(1, Math.round((dist / 1000) * 1.3));
+    }
+    return 0;
+  }, [isOneWay, pickup, dropoff, route?.distanceMeters]);
 
   /* ---- Service-area zone check ------------------------------------ */
 
@@ -301,10 +334,12 @@ const HourlyTripDetailsPage = () => {
     
     if (isOneWay) {
       setDropoff(dropoff);
+      setHourly({ estimatedKm });
     } else {
       // Hourly trips end where they start; mirror dropoff to keep the backend
       // payload consistent without exposing it to the user.
       setDropoff(pickup);
+      setHourly({ estimatedKm: 0 });
     }
     navigate('/user/book/hourly/slab');
   };
@@ -393,6 +428,11 @@ const HourlyTripDetailsPage = () => {
                     )}
                   </span>
                 </span>
+                {estimatedKm > 0 && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-900 text-white shrink-0">
+                    ~{estimatedKm} km
+                  </span>
+                )}
                 <ChevronRight className="w-5 h-5 text-text-muted shrink-0" />
               </button>
             </div>
@@ -435,7 +475,7 @@ const HourlyTripDetailsPage = () => {
         <CarPickerSheet selectedId={carId} onSelect={setCarId} />
 
         <Button fullWidth disabled={!canContinue} onClick={handleConfirm}>
-          Continue
+          {isOneWay && estimatedKm > 0 ? `Continue · ~${estimatedKm} km` : 'Continue'}
         </Button>
       </div>
 
