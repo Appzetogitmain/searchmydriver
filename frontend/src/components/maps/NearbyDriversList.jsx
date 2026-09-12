@@ -68,10 +68,15 @@ const NearbyDriversList = ({
                 online={!driver.isOnTrip}
               />
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center gap-2 min-w-0 flex-wrap">
                   <h3 className="font-semibold text-text text-sm truncate">
                     {driver.name || `Driver ${String(driver._id).slice(-4)}`}
                   </h3>
+                  {driver.driverId && (
+                    <span className="text-[10px] font-mono font-bold text-slate-700 bg-slate-100 rounded px-1.5 py-0.5 border border-slate-200 shrink-0">
+                      {driver.driverId}
+                    </span>
+                  )}
                   {driver.live && (
                     <span className="text-[9px] uppercase tracking-wide font-semibold text-emerald-600 bg-emerald-50 rounded-full px-1.5 py-0.5">
                       live

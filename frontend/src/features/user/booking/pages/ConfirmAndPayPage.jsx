@@ -386,6 +386,17 @@ const ConfirmAndPayPage = () => {
         });
         return;
       }
+      // Location outside service zone: show a modal with clear action.
+      if (data.code === 'OUT_OF_SERVICE_ZONE') {
+        setConflictError({
+          title: 'Location outside service area',
+          message:
+            err?.response?.data?.message ||
+            'We currently only operate within active service zones (e.g., Indore). Please update your pickup location.',
+          type: 'location',
+        });
+        return;
+      }
       // Scheduled rides require enough lead time — show in a modal.
       if (err?.response?.status === 422) {
         setConflictError({

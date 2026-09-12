@@ -51,6 +51,7 @@ import {
   clearPendingExtensionsOnTerminate,
   buildCommissionRevenueMeta,
   settleDriverEarning,
+  amountDueForBooking,
 } from './bookingExtension.service.js';
 import {
   debitWalletService,
@@ -684,22 +685,91 @@ async function applyWaitingChargeOnStart(booking, startedAt, flags = {}) {
 }
 
 /**
+ * started → payment requested (calculates final fare and sets paymentStatus to pending if unpaid)
+ *
+ * Driver reaches destination and requests final fare calculation and payment settlement.
+ * Real-time updates are emitted to user and driver so customer can pay online/wallet or driver can collect cash.
+ */
+export async function calculateAndRequestPaymentService(driverId, bookingId, { actualKm = 0 } = {}) {
+  const booking = await loadDriverBooking(driverId, bookingId);
+  assertStatus(booking, [BOOKING_STATUS.STARTED], 'request payment for the ride');
+
+  const now = new Date();
+  const startedAt = booking.timeline?.startedAt ? new Date(booking.timeline.startedAt) : null;
+  const actualDurationMin = startedAt ? Math.ceil((now.getTime() - startedAt.getTime()) / (1000 * 60)) : 0;
+
+  // Dynamically recalculate final trip fare (Time + KM for One-Way, Hours base for Round Trip)
+  try {
+    const finalTripFare = await calculateFinalTripFare({
+      booking,
+      actualDurationMin,
+      actualKm,
+    });
+    if (finalTripFare?.fareBreakdown) {
+      const bd = finalTripFare.fareBreakdown;
+      const baseFare = bd.packagePrice ?? bd.dailyRateTotal ?? 0;
+      const subtotal = bd.subtotal ?? 0;
+      const extras = Math.max(0, Number(subtotal) - Number(baseFare));
+      booking.fareSnapshot = {
+        pricingId: finalTripFare.pricingId || booking.fareSnapshot?.pricingId || null,
+        baseFare: Math.round((Number(baseFare) + Number.EPSILON) * 100) / 100,
+        extras: Math.round((Number(extras) + Number.EPSILON) * 100) / 100,
+        serviceCharge: Math.round((Number(bd.serviceCharge || 0) + Number.EPSILON) * 100) / 100,
+        gst: Math.round((Number(bd.gstAmount || 0) + Number.EPSILON) * 100) / 100,
+        discount: Math.round((Number(bd.subscriptionDiscount || 0) + Number.EPSILON) * 100) / 100,
+        total: Math.round((Number(bd.totalPayable || 0) + Number.EPSILON) * 100) / 100,
+        breakdown: bd,
+      };
+    }
+  } catch (err) {
+    console.warn('[bookingTrip] recalculate final trip fare failed in calculateAndRequestPaymentService:', err?.message);
+  }
+
+  // Stamp invoice number if not already stamped
+  if (!booking.invoiceNumber) {
+    const yyyymmdd = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const suffix = booking.bookingNumber ? booking.bookingNumber.slice(-4).toUpperCase() : Math.random().toString(36).substring(2, 6).toUpperCase();
+    booking.invoiceNumber = `INV-${yyyymmdd}-${suffix}`;
+  }
+
+  const due = amountDueForBooking(booking);
+  if (due > 0 && booking.paymentStatus !== BOOKING_PAYMENT_STATUS.PAID) {
+    booking.paymentStatus = BOOKING_PAYMENT_STATUS.PENDING;
+  } else {
+    booking.paymentStatus = BOOKING_PAYMENT_STATUS.PAID;
+  }
+
+  await booking.save();
+
+  const userPayload = {
+    bookingId: String(booking._id),
+    status: booking.status,
+    paymentStatus: booking.paymentStatus,
+    paymentMode: booking.paymentMode,
+    fareSnapshot: booking.fareSnapshot,
+    invoiceNumber: booking.invoiceNumber,
+  };
+  emitToUser(booking.userId, S2C_EVENTS.BOOKING_UPDATED, userPayload);
+  emitToBooking(booking._id, S2C_EVENTS.BOOKING_UPDATED, userPayload);
+  if (booking.driverId) {
+    emitToDriver(booking.driverId, S2C_EVENTS.BOOKING_UPDATED, userPayload);
+  }
+  emitToAdmins(S2C_EVENTS.BOOKING_UPDATED, userPayload);
+
+  return booking;
+}
+
+/**
  * started → completed
  *
- * Ride is done. Also flips the driver's `isOnTrip` flag so the next
- * dispatch wave can offer them new work, and bumps a `pay-after-ride`
- * booking's payment status to `pending` so the user app knows to surface
- * the post-ride payment flow.
+ * Ride is done. Confirms trip completion once payment is verified or cash is collected.
+ * Also flips the driver's `isOnTrip` flag so the next dispatch wave can offer them new work.
  */
-export async function completeTripService(driverId, bookingId, { actualKm = 0 } = {}) {
+export async function completeTripService(driverId, bookingId, { actualKm = 0, paymentMethod } = {}) {
   const booking = await loadDriverBooking(driverId, bookingId);
   assertStatus(booking, [BOOKING_STATUS.STARTED], 'complete the ride');
 
-  booking.status = BOOKING_STATUS.COMPLETED;
   const completedAt = new Date();
-  booking.timeline.completedAt = completedAt;
-
-  // Compute actual elapsed trip duration
   const startedAt = booking.timeline?.startedAt ? new Date(booking.timeline.startedAt) : null;
   const actualDurationMin = startedAt ? Math.ceil((completedAt.getTime() - startedAt.getTime()) / (1000 * 60)) : 0;
 
@@ -731,9 +801,30 @@ export async function completeTripService(driverId, bookingId, { actualKm = 0 } 
   }
 
   // Stamp invoice number (INV-YYYYMMDD-XXXX)
-  const yyyymmdd = completedAt.toISOString().slice(0, 10).replace(/-/g, '');
-  const suffix = booking.bookingNumber ? booking.bookingNumber.slice(-4).toUpperCase() : Math.random().toString(36).substring(2, 6).toUpperCase();
-  booking.invoiceNumber = `INV-${yyyymmdd}-${suffix}`;
+  if (!booking.invoiceNumber) {
+    const yyyymmdd = completedAt.toISOString().slice(0, 10).replace(/-/g, '');
+    const suffix = booking.bookingNumber ? booking.bookingNumber.slice(-4).toUpperCase() : Math.random().toString(36).substring(2, 6).toUpperCase();
+    booking.invoiceNumber = `INV-${yyyymmdd}-${suffix}`;
+  }
+
+  // Payment Verification / Settlement:
+  const due = amountDueForBooking(booking);
+  if (paymentMethod === 'cash') {
+    // Driver explicitly confirmed collecting cash
+    booking.paymentMethod = 'cash';
+    booking.paymentStatus = BOOKING_PAYMENT_STATUS.PAID;
+    const ledger = booking.payment?.toObject?.() || booking.payment || {};
+    booking.payment = {
+      ...ledger,
+      amountPaidRupees: Number(((ledger.amountPaidRupees || 0) + due).toFixed(2)),
+    };
+    booking.timeline.paymentReceivedAt = new Date();
+  } else if (due > 0 && booking.paymentStatus !== BOOKING_PAYMENT_STATUS.PAID) {
+    throw new ApiError(400, 'Customer has not completed payment yet. Please wait for online payment or collect cash.');
+  }
+
+  booking.status = BOOKING_STATUS.COMPLETED;
+  booking.timeline.completedAt = completedAt;
 
   // Async trigger referral logic
   import('../services/referral.service.js').then(({ handleUserTripCompleted, handleDriverTripCompleted }) => {
@@ -742,9 +833,6 @@ export async function completeTripService(driverId, bookingId, { actualKm = 0 } 
       handleDriverTripCompleted(booking.driverId).catch((err) => console.error('[referral] handleDriverTripCompleted error:', err));
     }
   });
-
-  // Post-pay bookings move to `pending` so user can settle payment
-  booking.paymentStatus = BOOKING_PAYMENT_STATUS.PENDING;
 
   // Settle the pre-collected waiting buffer: caps `waiting.chargeRupees`
   // at the buffer and credits the unused portion back to the user's

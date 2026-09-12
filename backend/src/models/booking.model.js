@@ -400,17 +400,27 @@ const bookingSchema = new mongoose.Schema(
     status: { type: String, enum: BOOKING_STATUS_LIST, default: BOOKING_STATUS.SEARCHING, index: true },
 
     /**
-     * Zones the pickup point falls inside at booking-creation time.
-     * Persisted (rather than recomputed) so the admin emergency-pool
-     * list can filter for team_member staff by `assignedZones` without
-     * a per-row geo lookup. Empty when no zone matched (or when the
-     * geo lookup failed — best-effort, never blocks creation).
+     * City and Zones the pickup point falls inside at booking-creation time.
+     * `city` (e.g. "Indore") drives city-isolated dispatch and driver notifications.
      */
+    city: {
+      type: String,
+      default: '',
+      trim: true,
+      index: true,
+    },
+    primaryZoneId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Zone',
+      default: null,
+      index: true,
+    },
     zoneIds: {
       type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Zone' }],
       default: [],
       index: true,
     },
+
 
     /**
      * Lifecycle metadata for the scheduled-ride dispatcher. Populated

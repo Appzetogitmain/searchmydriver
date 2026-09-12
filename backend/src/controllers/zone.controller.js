@@ -64,3 +64,10 @@ export const checkZoneForPoint = asyncHandler(async (req, res) => {
     ),
   );
 });
+
+export const getActiveServiceCities = asyncHandler(async (req, res) => {
+  const result = await zoneService.getActiveServiceCitiesService();
+  return res.status(200).json(new ApiResponse(200, result, 'Active service cities fetched'));
+});
+
+

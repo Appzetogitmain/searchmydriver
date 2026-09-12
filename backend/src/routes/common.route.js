@@ -6,7 +6,7 @@ import {
   getCarBrands,
   getCarModels,
 } from '../controllers/vehicleCatalog.controller.js';
-import { listActiveZones, checkZoneForPoint } from '../controllers/zone.controller.js';
+import { listActiveZones, checkZoneForPoint, getActiveServiceCities } from '../controllers/zone.controller.js';
 import { listActiveAds } from '../controllers/ad.controller.js';
 import { listActiveBanners } from '../controllers/banner.controller.js';
 import { listActiveHelplines } from '../controllers/helpline.controller.js';
@@ -25,6 +25,7 @@ router.get('/car-models', getCarModels);
 router.get('/conditions', getConditions);
 router.get('/training-videos', getTrainingVideos);
 router.get('/zones', listActiveZones);
+router.get('/service-cities', getActiveServiceCities);
 router.get('/settings', getPublicPlatformSettings);
 router.get('/user-support', getUserSupportSettings);
 router.get('/zones/check', checkZoneForPoint);

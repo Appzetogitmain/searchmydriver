@@ -6,6 +6,7 @@ import Card from './Card';
 const DriverIdCard = ({
   src,
   name,
+  driverId,
   rating,
   experienceYears,
   licenseNumber,
@@ -32,8 +33,8 @@ const DriverIdCard = ({
           <ShieldCheck className="w-4 h-4 text-emerald-200" />
           <span className="text-xs font-bold uppercase tracking-widest text-emerald-50">Verified Driver</span>
         </div>
-        <div className="text-[10px] font-mono tracking-widest text-emerald-200/80">
-          ID: {formatLicense(licenseNumber)}
+        <div className="text-[11px] font-mono font-bold tracking-wider text-emerald-100 bg-emerald-800/40 px-2 py-0.5 rounded border border-emerald-500/30">
+          ID: {driverId || (licenseNumber ? formatLicense(licenseNumber) : 'VERIFIED')}
         </div>
       </div>
 

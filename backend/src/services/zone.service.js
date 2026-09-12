@@ -299,3 +299,33 @@ export const findActiveZoneIdsForPointService = async ({ lat, lng } = {}) => {
   for (const hit of circleHits) ids.add(String(hit._id));
   return [...ids];
 };
+
+/**
+ * Returns a list of distinct active cities where services are offered,
+ * along with their active zones.
+ */
+export const getActiveServiceCitiesService = async () => {
+  const zones = await Zone.find({ isActive: true }).sort({ city: 1, sortOrder: 1, name: 1 });
+  const citiesMap = new Map();
+
+  for (const z of zones) {
+    const cityName = (z.city || '').trim();
+    if (!cityName) continue;
+    if (!citiesMap.has(cityName)) {
+      citiesMap.set(cityName, {
+        city: cityName,
+        zones: [],
+      });
+    }
+    citiesMap.get(cityName).zones.push({
+      _id: z._id,
+      name: z.name,
+      code: z.code,
+      shapeType: z.shapeType,
+      radiusKm: z.radiusKm,
+    });
+  }
+
+  return Array.from(citiesMap.values());
+};
+

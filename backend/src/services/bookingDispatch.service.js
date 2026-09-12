@@ -330,6 +330,8 @@ async function reportEmptyWave(
       lng,
       carTypeIds,
       excludeDriverIds,
+      city: booking.city || booking.pickup?.city || '',
+      zoneIds: booking.zoneIds || [],
       requirePositiveWalletBalance: false,
       minWalletBalance: null,
       includeOnTrip: booking.serviceType === SERVICE_TYPES.MONTHLY,
@@ -494,13 +496,16 @@ export async function dispatchNextDriverService(bookingId) {
       ? await resolveOutstationWalletFloorService()
       : null;
 
-  // Broadcast to every online driver at once — no radius cap, no wave size.
+  // Broadcast to every online driver in the matching city/zone at once.
   // The first to accept wins; everyone else gets BOOKING_OFFER_WITHDRAWN.
+  const bookingCity = (booking.city || booking.pickup?.city || '').trim();
   const drivers = await findAllEligibleOnlineDrivers({
     lat,
     lng,
     carTypeIds,
     excludeDriverIds,
+    city: bookingCity,
+    zoneIds: booking.zoneIds || [],
     requireAvailableForMonthlyRide: false,
     requirePositiveWalletBalance: booking.paymentMethod === 'cash',
     minWalletBalance,
@@ -730,6 +735,20 @@ export async function acceptBookingService(bookingId, driverId) {
   const pending = (booking.dispatch?.pendingOfferIds || []).map(String);
   if (!pending.includes(String(driverId))) {
     return { ok: false, reason: 'not_in_active_wave' };
+  }
+
+  const driver = await Driver.findById(driverId).select('city homeZone approvalStatus').lean();
+  if (!driver) return { ok: false, reason: 'driver_not_found' };
+  if (driver.approvalStatus === 'suspended') {
+    return { ok: false, reason: 'driver_suspended' };
+  }
+  const bookingCity = (booking.city || booking.pickup?.city || '').trim().toLowerCase();
+  if (bookingCity && driver.city) {
+    const isCityMatch = driver.city.trim().toLowerCase() === bookingCity;
+    const isZoneMatch = (booking.zoneIds || []).map(String).includes(String(driver.homeZone));
+    if (!isCityMatch && !isZoneMatch) {
+      return { ok: false, reason: 'city_mismatch' };
+    }
   }
 
   clearWaveTimer(bookingId);

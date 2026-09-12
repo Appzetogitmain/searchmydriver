@@ -431,6 +431,7 @@ const TripDetailsPage = () => {
         {driver && (
           <DriverCard
             name={driver.name}
+            driverId={driver.driverId}
             photo={driverPhotoUrl}
             phone={driver.phone_no}
             callHref={driverCallHref}
@@ -723,12 +724,19 @@ function DetailTile({ icon: Icon, label, value }) {
   );
 }
 
-function DriverCard({ name, photo, phone, callHref, rating, experienceYears }) {
+function DriverCard({ name, driverId, photo, phone, callHref, rating, experienceYears }) {
   return (
     <Card>
-      <p className="text-[11px] uppercase tracking-wide text-text-muted font-semibold mb-3">
-        Driver
-      </p>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[11px] uppercase tracking-wide text-text-muted font-semibold">
+          Driver
+        </p>
+        {driverId && (
+          <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
+            {driverId}
+          </span>
+        )}
+      </div>
       <div className="flex items-center gap-3">
         <Avatar src={photo} name={name || 'Driver'} size="lg" />
         <div className="flex-1 min-w-0">

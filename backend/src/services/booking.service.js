@@ -71,7 +71,10 @@ import {
   emitToDriver,
   emitNotification,
 } from '../utils/socketEmitters.js';
-import { findActiveZoneIdsForPointService } from './zone.service.js';
+import {
+  findActiveZoneForPointService,
+  findActiveZoneIdsForPointService,
+} from './zone.service.js';
 import {
   setupScheduledBooking,
   cancelScheduledBookingJobs,
@@ -369,6 +372,7 @@ async function attachCancellationPreview(booking, side, { driverId } = {}) {
  * + vehicle expertise). Centralised so every populate call agrees.
  */
 const DRIVER_USER_FIELDS = [
+  'driverId',
   'name',
   'phone_no',
   'rating',
@@ -1063,19 +1067,31 @@ export async function createBookingService(userId, body) {
     }
   }
 
-  // Best-effort lookup of every zone the pickup falls inside. Stamped
-  // on the booking so the admin emergency-pool filter (team_member only
-  // sees their `assignedZones`) doesn't pay a geo lookup per row. Skip
-  // failures — the booking flow must not block on zone resolution.
-  let zoneIds = [];
-  try {
-    zoneIds = await findActiveZoneIdsForPointService({
-      lat: pickup.location.coordinates[1],
-      lng: pickup.location.coordinates[0],
-    });
-  } catch (zoneErr) {
-    console.warn('[booking] zone resolution failed:', zoneErr?.message);
+  // Strict service-area verification: The pickup coordinates must fall
+  // inside an active service zone. This restricts bookings strictly to
+  // operational cities (e.g., Indore).
+  const pickupLat = pickup?.location?.coordinates?.[1];
+  const pickupLng = pickup?.location?.coordinates?.[0];
+
+  const activeZone = await findActiveZoneForPointService({
+    lat: pickupLat,
+    lng: pickupLng,
+  });
+
+  if (!activeZone) {
+    throw new ApiError(
+      400,
+      'We currently do not operate in this location. Bookings are only allowed within active service zones (e.g., Indore).',
+      { code: 'OUT_OF_SERVICE_ZONE' },
+    );
   }
+
+  const matchingZoneIds = await findActiveZoneIdsForPointService({
+    lat: pickupLat,
+    lng: pickupLng,
+  });
+  const zoneIds = matchingZoneIds.length > 0 ? matchingZoneIds : [String(activeZone._id)];
+  const resolvedCity = (activeZone.city || '').trim();
 
   let booking;
   try {
@@ -1085,7 +1101,12 @@ export async function createBookingService(userId, body) {
       carId,
       serviceType,
       bookingType,
-      pickup: shapePlace(pickup),
+      city: resolvedCity,
+      primaryZoneId: activeZone._id,
+      pickup: shapePlace({
+        ...pickup,
+        city: resolvedCity || pickup?.city || '',
+      }),
       dropoff: dropoff ? shapePlace(dropoff) : null,
       zoneIds,
       offlineTip: Number(offlineTip) > 0 ? Number(offlineTip) : 0,

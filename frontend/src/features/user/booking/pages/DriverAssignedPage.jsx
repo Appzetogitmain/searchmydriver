@@ -38,6 +38,7 @@ import { SERVICE_TYPES, SERVICE_TYPE_LABELS } from '../../../../constants/servic
 import { haversineMeters, formatDistance } from '../../../../utils/geo';
 import useBookingDraftStore from '../../../../store/user/useBookingDraftStore';
 import PaymentChoiceSheet from '../components/PaymentChoiceSheet';
+import PostRidePaymentModal from '../components/PostRidePaymentModal';
 import RideStartOtpCard from '../components/RideStartOtpCard';
 import ExtendRideModal from '../components/ExtendRideModal';
 import useCallStore from '../../../../store/useCallStore';
@@ -820,9 +821,16 @@ const DriverAssignedPage = () => {
                   online={!!liveDriver}
                 />
                 <div className="min-w-0">
-                  <p className="text-sm font-bold text-gray-900 truncate">
-                    {driver?.name || 'Assigning driver…'}
-                  </p>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-sm font-bold text-gray-900 truncate">
+                      {driver?.name || 'Assigning driver…'}
+                    </p>
+                    {driver?.driverId && (
+                      <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
+                        {driver.driverId}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-gray-500 truncate">
                     {liveDriver
                       ? `${formatDistance(distanceMeters)} away`
@@ -868,20 +876,20 @@ const DriverAssignedPage = () => {
                 inside the expanded sheet body, so users had to discover
                 they could expand the sheet before they could cancel.
                 Keeping it in the peek row means it's reachable in one tap
-                no matter the sheet state. */}
-            {cancellable && (
-              <button
-                type="button"
-                disabled={cancelling}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCancel();
-                }}
-                className="self-end inline-flex items-center gap-1 text-xs font-semibold text-red-600 px-2 py-1 rounded-lg hover:bg-red-50 disabled:opacity-60 transition"
-              >
-                <X className="w-3.5 h-3.5" />
-                {cancelling ? 'Cancelling…' : 'Cancel booking'}
-              </button>
+                even when the bottom sheet is collapsed. Once the driver
+                has ARRIVED, the cancel button flips to the late-cancellation
+                flow with the standard fee disclaimer. */}
+            {booking.status !== BOOKING_STATUS.STARTED && (
+              <div className="w-full pt-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCancelClick}
+                  className="w-full text-xs font-semibold text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-300 py-2 rounded-xl"
+                >
+                  Cancel ride
+                </Button>
+              </div>
             )}
           </div>
 
@@ -892,7 +900,6 @@ const DriverAssignedPage = () => {
               style={{ maxHeight: '60dvh' }}
             >
               <div className="px-4 pb-4 space-y-4">
-
                 {/* Booking number & status badge */}
                 <div className="bg-gray-50 rounded-2xl px-4 py-3 flex items-center justify-between">
                   <div>
@@ -904,14 +911,12 @@ const DriverAssignedPage = () => {
                   </div>
                 </div>
 
-                {/* OTP card now lives in the always-visible peek row above,
-                    so it is deliberately not repeated here. */}
-
                 {/* Driver profile — large photo + rating + call/message */}
                 {booking.status !== BOOKING_STATUS.PENDING_ASSIGNMENT && driver && (
                   <DriverIdCard 
                     src={driverPhotoUrl}
                     name={driver?.name}
+                    driverId={driver?.driverId}
                     rating={driver?.rating}
                     experienceYears={driver?.experienceYears}
                     licenseNumber={driver?.drivingLicense?.number}
@@ -1085,6 +1090,11 @@ const DriverAssignedPage = () => {
         isFinal={noShowPrompt?.isFinal}
         onYes={() => handleNoShowAnswer('on_my_way')}
         onNo={() => handleNoShowAnswer('not_coming')}
+      />
+
+      <PostRidePaymentModal
+        open={isTripStarted && booking?.paymentStatus === 'pending' && Boolean(booking?.fareSnapshot?.total > 0)}
+        booking={booking}
       />
 
       <TripChatModal

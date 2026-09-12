@@ -62,6 +62,7 @@ import {
   driverMarkEnRoute,
   driverMarkArrived,
   driverStartTrip,
+  driverRequestPayment,
   driverCompleteTrip,
   driverCancelBooking,
   driverDismissBookingExtension,
@@ -160,6 +161,7 @@ router.post('/bookings/:id/reject', protectDriver, driverRejectBooking);
 router.post('/bookings/:id/en-route', protectDriver, driverMarkEnRoute);
 router.post('/bookings/:id/arrived', protectDriver, driverMarkArrived);
 router.post('/bookings/:id/start', protectDriver, driverStartTrip);
+router.post('/bookings/:id/request-payment', protectDriver, driverRequestPayment);
 router.post('/bookings/:id/complete', protectDriver, driverCompleteTrip);
 router.post('/bookings/:id/cancel', protectDriver, driverCancelBooking);
 router.post(

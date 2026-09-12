@@ -95,6 +95,15 @@ const useDriverActiveTripStore = create((set, get) => ({
     // the driver app can show "Customer rated you ⭐ 5" badges without
     // a refetch. Merged shallow so a customer-only patch doesn't drop
     // any driver-side rating already on the booking.
+    if (patch.paymentStatus) {
+      merged.paymentStatus = patch.paymentStatus;
+    }
+    if (patch.paymentMethod) {
+      merged.paymentMethod = patch.paymentMethod;
+    }
+    if (patch.fareSnapshot) {
+      merged.fareSnapshot = patch.fareSnapshot;
+    }
     if (patch.rating) {
       merged.rating = {
         ...(current.rating || {}),
@@ -180,8 +189,11 @@ const useDriverActiveTripStore = create((set, get) => ({
   startTrip(otp) {
     return get()._runTransition('start', 'start', { otp });
   },
-  async completeTrip() {
-    const booking = await get()._runTransition('complete', 'complete');
+  requestPayment({ actualKm = 0 } = {}) {
+    return get()._runTransition('request-payment', 'request-payment', { actualKm });
+  },
+  async completeTrip({ actualKm = 0, paymentMethod } = {}) {
+    const booking = await get()._runTransition('complete', 'complete', { actualKm, paymentMethod });
     invalidateDashboardCaches();
     return booking;
   },
