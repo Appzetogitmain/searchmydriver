@@ -77,7 +77,10 @@ export async function createBookingPaymentOrderService(userId, bookingId) {
     isOnlineUpfront ||
     (booking.paymentMode === PAYMENT_MODE.PRE_RIDE &&
       booking.status === BOOKING_STATUS.AWAITING_PAYMENT);
-  const isPostPayWindow = booking.status === BOOKING_STATUS.COMPLETED;
+  const isPostPayWindow =
+    booking.status === BOOKING_STATUS.COMPLETED ||
+    (booking.status === BOOKING_STATUS.STARTED &&
+      booking.paymentStatus === BOOKING_PAYMENT_STATUS.PENDING);
   if (!isPrePayWindow && !isPostPayWindow) {
     throw new ApiError(400, 'Payment is not due at this stage');
   }
@@ -203,6 +206,7 @@ export async function verifyBookingPaymentService(userId, bookingId, { orderId, 
 
   booking.razorpay.paymentId = paymentId;
   booking.razorpay.signature = signature;
+  booking.paymentMethod = 'online';
   booking.timeline.paymentReceivedAt = new Date();
 
   // Credit the ledger before recomputing dueness.
@@ -263,10 +267,16 @@ export async function verifyBookingPaymentService(userId, bookingId, { orderId, 
     status: booking.status,
     paymentStatus: booking.paymentStatus,
     paymentMode: booking.paymentMode,
+    paymentMethod: booking.paymentMethod,
+    fareSnapshot: booking.fareSnapshot,
   };
   const roomPayload = {
     bookingId: String(booking._id),
     status: booking.status,
+    paymentStatus: booking.paymentStatus,
+    paymentMode: booking.paymentMode,
+    paymentMethod: booking.paymentMethod,
+    fareSnapshot: booking.fareSnapshot,
   };
   emitToUser(booking.userId, S2C_EVENTS.BOOKING_UPDATED, userPayload);
   emitToBooking(booking._id, S2C_EVENTS.BOOKING_UPDATED, roomPayload);
@@ -285,7 +295,11 @@ export async function payBookingWithWalletService(userId, bookingId) {
   const booking = await Booking.findOne({ _id: bookingId, userId, isDeleted: false });
   if (!booking) throw new ApiError(404, 'Booking not found');
 
-  if (booking.status !== BOOKING_STATUS.COMPLETED && booking.paymentStatus !== BOOKING_PAYMENT_STATUS.PENDING) {
+  const isPayable =
+    booking.status === BOOKING_STATUS.COMPLETED ||
+    (booking.status === BOOKING_STATUS.STARTED &&
+      booking.paymentStatus === BOOKING_PAYMENT_STATUS.PENDING);
+  if (!isPayable) {
     throw new ApiError(400, 'Payment is not due for this booking');
   }
 
@@ -322,12 +336,15 @@ export async function payBookingWithWalletService(userId, bookingId) {
     status: booking.status,
     paymentStatus: booking.paymentStatus,
     paymentMode: booking.paymentMode,
+    paymentMethod: booking.paymentMethod,
+    fareSnapshot: booking.fareSnapshot,
   };
   emitToUser(booking.userId, S2C_EVENTS.BOOKING_UPDATED, userPayload);
   emitToBooking(booking._id, S2C_EVENTS.BOOKING_UPDATED, userPayload);
   if (booking.driverId) {
     emitToDriver(booking.driverId, S2C_EVENTS.BOOKING_UPDATED, userPayload);
   }
+  emitToAdmins(S2C_EVENTS.BOOKING_UPDATED, userPayload);
 
   return booking.toObject();
 }

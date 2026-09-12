@@ -50,11 +50,35 @@ function normalizeRadius(meters, fallback) {
   return Math.min(Math.max(Math.round(n), 100), 100_000); // 100m..100km hard cap
 }
 
+function escapeRegex(string) {
+  return String(string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function applyCityZoneMatch(match, { city, zoneIds } = {}) {
+  const conditions = [];
+  if (city && typeof city === 'string' && city.trim()) {
+    const cityRegex = new RegExp(`^${escapeRegex(city.trim())}$`, 'i');
+    conditions.push({ city: cityRegex });
+  }
+  if (Array.isArray(zoneIds) && zoneIds.length > 0) {
+    const zoneOids = zoneIds.map(toObjectId).filter(Boolean);
+    if (zoneOids.length > 0) {
+      conditions.push({ homeZone: { $in: zoneOids } });
+    }
+  }
+  if (conditions.length === 1) {
+    Object.assign(match, conditions[0]);
+  } else if (conditions.length > 1) {
+    match.$or = conditions;
+  }
+}
+
 function shapeDriverHit(raw) {
   const [lng = 0, lat = 0] = raw.location?.coordinates || [];
   const primaryCarType = Array.isArray(raw.carTypes) && raw.carTypes[0];
   return {
     _id: String(raw._id),
+    driverId: raw.driverId || String(raw._id),
     name: raw.name,
     profilePicture: raw.profilePicture || '',
     rating: raw.rating || 0,
@@ -84,6 +108,8 @@ function shapeDriverHit(raw) {
  * @param {string[]} [params.excludeDriverIds] Driver IDs to skip (e.g. already offered)
  * @param {boolean} [params.includeOnTrip=false] Include drivers who are mid-trip.
  * @param {boolean} [params.requirePositiveWalletBalance=false] Exclude drivers with negative wallet balance (for cash trips)
+ * @param {string} [params.city]              Optional — restrict to drivers of this city (e.g. Indore)
+ * @param {string[]} [params.zoneIds]         Optional — restrict to drivers with homeZone in these zones
  * @returns {Promise<Array<{
  *   _id:string, name:string, profilePicture:string, rating:number,
  *   isOnTrip:boolean, isOnline:boolean, vehicleType:string,
@@ -102,6 +128,8 @@ export async function findDriversWithinRadius({
   requireAvailableForMonthlyRide = false,
   requirePositiveWalletBalance = false,
   minWalletBalance = null,
+  city,
+  zoneIds,
 } = {}) {
   if (!validateCoords({ lat, lng })) return [];
 
@@ -126,6 +154,7 @@ export async function findDriversWithinRadius({
     const carTypeOids = carTypeIds.map(toObjectId).filter(Boolean);
     if (carTypeOids.length) match.carTypeExperience = { $in: carTypeOids };
   }
+  applyCityZoneMatch(match, { city, zoneIds });
 
   // We sort by experienceYears DESC then distance ASC. `$geoNear`'s
   // default ordering is distance ASC, so we over-fetch (3x the limit,
@@ -159,6 +188,7 @@ export async function findDriversWithinRadius({
     {
       $project: {
         _id: 1,
+        driverId: 1,
         name: 1,
         profilePicture: 1,
         rating: 1,
@@ -200,6 +230,8 @@ export async function findDriversWithinRadius({
  * @param {boolean} [params.requireAvailableForMonthlyRide=false]
  * @param {boolean} [params.requirePositiveWalletBalance=false]
  * @param {number} [params.minWalletBalance=null]
+ * @param {string} [params.city]                Optional — restrict to drivers of this city (e.g. Indore)
+ * @param {string[]} [params.zoneIds]           Optional — restrict to drivers with homeZone in these zones
  * @param {number} [params.maxDrivers=500]      safety cap on fan-out
  */
 export async function findAllEligibleOnlineDrivers({
@@ -211,6 +243,8 @@ export async function findAllEligibleOnlineDrivers({
   requireAvailableForMonthlyRide = false,
   requirePositiveWalletBalance = false,
   minWalletBalance = null,
+  city,
+  zoneIds,
   maxDrivers = 500,
 } = {}) {
   const excludeIds = (excludeDriverIds || []).map(toObjectId).filter(Boolean);
@@ -233,10 +267,12 @@ export async function findAllEligibleOnlineDrivers({
     const carTypeOids = carTypeIds.map(toObjectId).filter(Boolean);
     if (carTypeOids.length) match.carTypeExperience = { $in: carTypeOids };
   }
+  applyCityZoneMatch(match, { city, zoneIds });
 
   const safeCap = Math.min(Math.max(Number(maxDrivers) || 500, 1), 2000);
   const projection = {
     _id: 1,
+    driverId: 1,
     name: 1,
     profilePicture: 1,
     rating: 1,
@@ -332,6 +368,8 @@ export async function findAllEligibleOnlineDrivers({
  * @param {boolean} [params.requireAvailableForMonthlyRide=false]
  * @param {boolean} [params.requirePositiveWalletBalance=false]
  * @param {number} [params.minWalletBalance=null]
+ * @param {string} [params.city]
+ * @param {string[]} [params.zoneIds]
  */
 export async function findDriversInExpandingRadius({
   lat,
@@ -346,6 +384,8 @@ export async function findDriversInExpandingRadius({
   requireAvailableForMonthlyRide = false,
   requirePositiveWalletBalance = false,
   minWalletBalance = null,
+  city,
+  zoneIds,
   includeOnTrip = false,
 } = {}) {
   if (!validateCoords({ lat, lng })) {
@@ -372,6 +412,8 @@ export async function findDriversInExpandingRadius({
       requireAvailableForMonthlyRide,
       requirePositiveWalletBalance,
       minWalletBalance,
+      city,
+      zoneIds,
       includeOnTrip,
     });
 
@@ -384,3 +426,4 @@ export async function findDriversInExpandingRadius({
 
   return { drivers, radiusMeters: radius };
 }
+

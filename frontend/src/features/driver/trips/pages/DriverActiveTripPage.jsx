@@ -17,6 +17,7 @@ import {
   XCircle,
   Zap,
   CreditCard,
+  Banknote,
   Wallet as WalletIcon,
   Phone,
   Mail,
@@ -323,11 +324,10 @@ const DriverActiveTripPage = () => {
     }
   }, [status, lastStatus, cancellationReason, clear, clearOfferStoreActive, navigate]);
 
-  // PIN-entry sheet: opened from the Start CTA when the booking is at
-  // ARRIVED. We keep it page-local rather than baking it into the store
-  // because it's purely a UI concern.
   const [otpOpen, setOtpOpen] = useState(false);
   const [fullscreenMapOpen, setFullscreenMapOpen] = useState(false);
+  const [settlementModalOpen, setSettlementModalOpen] = useState(false);
+  const [collectCashConfirmOpen, setCollectCashConfirmOpen] = useState(false);
   const [completeConfirmOpen, setCompleteConfirmOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -457,11 +457,11 @@ const DriverActiveTripPage = () => {
       return;
     }
 
-    const offlineTipToCollect = booking?.fareSnapshot?.offlineTip || 0;
-    const totalCashToCollect = (isCashBooking ? cashDueRupees : 0) + offlineTipToCollect;
-
-    if (action === 'completeTrip' && totalCashToCollect > 0) {
-      setCompleteConfirmOpen(true);
+    if (action === 'completeTrip') {
+      setSettlementModalOpen(true);
+      useDriverActiveTripStore.getState().requestPayment().catch((err) => {
+        console.warn('requestPayment err:', err?.message || err);
+      });
       return;
     }
     if (action === 'markArrived') {
@@ -1108,14 +1108,161 @@ const DriverActiveTripPage = () => {
         )}
       </div>
 
+      {/* Settlement & Post-Ride Payment Modal */}
+      {settlementModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-teal-700 px-6 py-4 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <CheckCircle2 className="w-6 h-6 text-emerald-200" />
+                <div>
+                  <h2 className="text-base font-bold">Trip Settlement</h2>
+                  <p className="text-[11px] text-emerald-100 font-mono">ID: {booking?.bookingNumber}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSettlementModalOpen(false)}
+                className="p-1 rounded-full hover:bg-white/10 text-white/80 hover:text-white"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-5 overflow-y-auto">
+              {/* Fare Summary Box */}
+              <div className="bg-gray-50 border border-gray-100 rounded-2xl p-4 space-y-2">
+                <div className="flex items-center justify-between text-xs text-gray-500 font-medium">
+                  <span>Base Fare</span>
+                  <span className="text-gray-700">₹{(booking?.fareSnapshot?.baseFare || 0).toLocaleString('en-IN')}</span>
+                </div>
+                {booking?.fareSnapshot?.extras > 0 && (
+                  <div className="flex items-center justify-between text-xs text-gray-500 font-medium">
+                    <span>Extra Time / Distance</span>
+                    <span className="text-gray-700">₹{(booking?.fareSnapshot?.extras || 0).toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {((booking?.fareSnapshot?.serviceCharge || 0) + (booking?.fareSnapshot?.gst || 0) > 0) && (
+                  <div className="flex items-center justify-between text-xs text-gray-500 font-medium">
+                    <span>Taxes & Service Fees</span>
+                    <span className="text-gray-700">₹{((booking?.fareSnapshot?.serviceCharge || 0) + (booking?.fareSnapshot?.gst || 0)).toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {booking?.fareSnapshot?.discount > 0 && (
+                  <div className="flex items-center justify-between text-xs text-emerald-600 font-medium">
+                    <span>Discount Applied</span>
+                    <span>-₹{(booking?.fareSnapshot?.discount || 0).toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                <div className="pt-2 border-t border-gray-200 flex items-center justify-between">
+                  <span className="text-sm font-bold text-gray-900">Total Trip Fare</span>
+                  <span className="text-2xl font-black text-gray-900 font-mono">
+                    ₹{(booking?.fareSnapshot?.total || 0).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Payment Status Live Card */}
+              {booking?.paymentStatus === 'paid' ? (
+                <div className="bg-emerald-50 border-2 border-emerald-500 rounded-2xl p-4 flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center shrink-0 shadow-md">
+                    <CheckCircle2 className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-base font-bold text-emerald-950">Payment Received!</h4>
+                      <span className="text-[10px] font-bold bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-full uppercase">
+                        {booking?.paymentMethod || 'Online'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-emerald-700 mt-0.5">
+                      ₹{(booking?.fareSnapshot?.total || 0).toLocaleString('en-IN')} has been settled successfully. You can now complete the trip.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                      <Loader2 className="w-4 h-4 text-amber-600 animate-spin" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-amber-900">Waiting for customer online payment...</h4>
+                      <p className="text-xs text-amber-700">Customer has received the payment screen.</p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-amber-700/90 bg-white/70 rounded-xl p-2.5 border border-amber-200/60">
+                    This screen updates in real-time the moment the customer pays online via UPI / Cards / Wallet.
+                  </p>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="space-y-3 pt-2">
+                {booking?.paymentStatus === 'paid' ? (
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="lg"
+                    disabled={busy === 'complete'}
+                    onClick={async () => {
+                      try {
+                        await useDriverActiveTripStore.getState().completeTrip();
+                        setSettlementModalOpen(false);
+                      } catch (err) {
+                        toast.error(err?.response?.data?.message || err?.message || 'Could not complete trip');
+                      }
+                    }}
+                    className="w-full py-4 text-base font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl shadow-lg shadow-emerald-600/20"
+                  >
+                    {busy === 'complete' ? (
+                      <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+                    ) : (
+                      'Confirm & Complete Trip'
+                    )}
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="lg"
+                      disabled={busy === 'complete'}
+                      onClick={() => setCollectCashConfirmOpen(true)}
+                      className="w-full py-3.5 text-sm font-bold text-amber-900 border-2 border-amber-300 bg-amber-50 hover:bg-amber-100 rounded-2xl flex items-center justify-center gap-2"
+                    >
+                      <Banknote className="w-4 h-4 text-amber-700" />
+                      Collect Cash (₹{(booking?.fareSnapshot?.total || 0).toLocaleString('en-IN')})
+                    </Button>
+                    <p className="text-center text-[11px] text-gray-400">
+                      Tap above if the customer paid you in cash.
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ConfirmDialog
-        open={completeConfirmOpen}
-        onClose={() => setCompleteConfirmOpen(false)}
-        onConfirm={handleCompleteConfirm}
-        title="Collect cash before completing"
-        description={`Please collect ₹${((isCashBooking ? cashDueRupees : 0) + (booking?.fareSnapshot?.offlineTip || 0)).toLocaleString('en-IN')} from the customer in cash before marking the trip complete.`}
-        confirmLabel="I have collected cash"
-        cancelLabel="Wait"
+        open={collectCashConfirmOpen}
+        onClose={() => setCollectCashConfirmOpen(false)}
+        onConfirm={async () => {
+          setCollectCashConfirmOpen(false);
+          try {
+            await useDriverActiveTripStore.getState().completeTrip({ paymentMethod: 'cash' });
+            setSettlementModalOpen(false);
+          } catch (err) {
+            toast.error(err?.response?.data?.message || err?.message || 'Could not record cash payment');
+          }
+        }}
+        title="Confirm Cash Collection"
+        description={`Did you receive ₹${(booking?.fareSnapshot?.total || 0).toLocaleString('en-IN')} in cash from the customer?`}
+        confirmLabel="Yes, Cash Collected"
+        cancelLabel="Wait for Online Payment"
         variant="warning"
         loading={busy === 'complete'}
       />

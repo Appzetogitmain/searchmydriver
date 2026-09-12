@@ -46,6 +46,7 @@ import {
   markDriverEnRouteService,
   markDriverArrivedService,
   startTripService,
+  calculateAndRequestPaymentService,
   completeTripService,
   cancelBookingByDriverService,
 } from '../services/bookingTrip.service.js';
@@ -235,10 +236,21 @@ export const driverStartTrip = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, { booking: sanitizeBookingForDriver(booking) }, 'Trip started'));
 });
 
-export const driverCompleteTrip = asyncHandler(async (req, res) => {
+export const driverRequestPayment = asyncHandler(async (req, res) => {
   const { actualKm } = req.body || {};
+  const booking = await calculateAndRequestPaymentService(req.driver._id, req.params.id, {
+    actualKm: Number(actualKm) || 0,
+  });
+  return res
+    .status(200)
+    .json(new ApiResponse(200, { booking: sanitizeBookingForDriver(booking) }, 'Payment requested'));
+});
+
+export const driverCompleteTrip = asyncHandler(async (req, res) => {
+  const { actualKm, paymentMethod } = req.body || {};
   const booking = await completeTripService(req.driver._id, req.params.id, {
     actualKm: Number(actualKm) || 0,
+    paymentMethod,
   });
   return res
     .status(200)

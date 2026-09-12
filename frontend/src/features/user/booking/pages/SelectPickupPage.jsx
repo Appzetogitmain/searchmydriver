@@ -26,6 +26,8 @@ import api from '../../../../utils/api';
 import { SERVICE_TYPES } from '../../../../constants/serviceTypes';
 import { getCarBrandName, getCarModelName } from '../../../../utils/vehicleCatalog';
 import useBookingDraftStore from '../../../../store/user/useBookingDraftStore';
+import { useZoneCheck } from '../../../../hooks/useZoneCheck';
+import OutOfServiceDialog from '../../../../components/dialogs/OutOfServiceDialog';
 
 /**
  * Step 3 — Rapido-style pickup screen.
@@ -303,6 +305,12 @@ const SelectPickupPage = () => {
     activeFieldRef.current = activeField;
   }, [activeField]);
 
+  const zoneCheck = useZoneCheck(localPickup, {
+    enabled: Boolean(localPickup?.lat && localPickup?.lng),
+  });
+  const isOutOfService = zoneCheck.status === 'uncovered';
+  const [outOfServiceOpen, setOutOfServiceOpen] = useState(false);
+
   /* ------------------------------------------------------------------ */
   /* Continue                                                             */
   /* ------------------------------------------------------------------ */
@@ -311,10 +319,15 @@ const SelectPickupPage = () => {
     if (!localPickup?.address) return false;
     if (isOutstation && !localDrop?.address) return false;
     if (cars.length > 0 && !carId) return false;
+    if (isOutOfService) return false;
     return true;
-  }, [localPickup, localDrop, isOutstation, cars.length, carId]);
+  }, [localPickup, localDrop, isOutstation, cars.length, carId, isOutOfService]);
 
   const handleConfirm = () => {
+    if (isOutOfService) {
+      setOutOfServiceOpen(true);
+      return;
+    }
     if (!canContinue) return;
     setPickup(localPickup);
     if (isOutstation) setDropoff(localDrop);
@@ -359,6 +372,19 @@ const SelectPickupPage = () => {
             setLocalPickup((p) => ({ ...(p || { lat: null, lng: null, city: '' }), address: v }))
           }
         />
+
+        {isOutOfService && (
+          <div className="bg-rose-50 border border-rose-200 rounded-xl px-3 py-2 text-xs text-rose-700 flex items-center justify-between">
+            <span>We currently only operate in active service zones (e.g. Indore).</span>
+            <button
+              type="button"
+              onClick={() => setOutOfServiceOpen(true)}
+              className="font-semibold underline ml-2 shrink-0"
+            >
+              Details
+            </button>
+          </div>
+        )}
 
         {isOutstation && (
           <LocationField
@@ -420,9 +446,19 @@ const SelectPickupPage = () => {
         />
 
         <Button fullWidth disabled={!canContinue} onClick={handleConfirm}>
-          Confirm and review
+          {isOutOfService ? 'Outside service area' : 'Confirm and review'}
         </Button>
       </div>
+
+      <OutOfServiceDialog
+        open={outOfServiceOpen}
+        onClose={() => setOutOfServiceOpen(false)}
+        onChangeLocation={() => {
+          if (pickupInputRef.current) pickupInputRef.current.focus();
+        }}
+        locationLabel={localPickup?.address || ''}
+        cityHint={localPickup?.city || ''}
+      />
     </div>
   );
 };
