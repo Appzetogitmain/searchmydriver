@@ -1,11 +1,10 @@
-/** Driver onboarding steps (1–6). */
+/** Driver onboarding steps (1–5). */
 export const DRIVER_ONBOARDING_STEP = {
   IDENTITY: 1,
   CREDENTIALS: 2,
   BANK: 3,
-  SAFETY: 4,
-  LIVE_VERIFICATION: 5,
-  SUBMITTED: 6,
+  TRAINING: 4,
+  SUBMITTED: 5,
 };
 
-export const DRIVER_ONBOARDING_MAX_STEP = 6;
+export const DRIVER_ONBOARDING_MAX_STEP = 5;

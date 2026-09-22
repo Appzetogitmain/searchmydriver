@@ -90,7 +90,7 @@ const BankDetailsPage = () => {
 
       await useDriverProfileStore.getState().refresh(buildCacheKey('driver-profile', {}), {});
       updateDriver({ onboardingStep: 4 });
-      navigate('/driver/register/safety');
+      navigate('/driver/register/training');
     } catch (error) {
       console.error('Failed to save step 3', error);
       alert('Failed to save bank details. Please try again.');
@@ -109,7 +109,7 @@ const BankDetailsPage = () => {
       <div className="px-6 pt-2 pb-4">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-lg font-bold">Bank Details</h1>
-          <span className="text-xs text-text-muted bg-bg px-2 py-1 rounded-full">3/5</span>
+          <span className="text-xs text-text-muted bg-bg px-2 py-1 rounded-full">3/4</span>
         </div>
         <StepIndicator steps={DRIVER_ONBOARDING_STEPS} currentStep={3} />
         <p className="text-xs text-text-muted mt-3">Payout routing setup</p>

@@ -5,7 +5,7 @@ import { useWebRTC } from '../hooks/useWebRTC';
 import Avatar from './Avatar';
 
 export default function CallOverlay() {
-  const { callState, callerName, callerPhoto, isMuted, toggleMute, answerCall, rejectCall, hangUp } = useCallStore();
+  const { callState, callerName, callerPhoto, isMuted, toggleMute, answerCall, rejectCall, hangUp, callDuration, incrementDuration, isMinimized, setMinimized } = useCallStore();
   const { remoteStream } = useWebRTC();
   const audioRef = useRef(null);
 
@@ -15,18 +15,50 @@ export default function CallOverlay() {
     }
   }, [remoteStream, callState]);
 
+  // Timer effect for call duration
+  useEffect(() => {
+    let timerId;
+    if (callState === 'connected') {
+      timerId = setInterval(() => {
+        incrementDuration();
+      }, 1000);
+    }
+    return () => {
+      if (timerId) clearInterval(timerId);
+    };
+  }, [callState, incrementDuration]);
+
   if (callState === 'idle') return null;
 
   const isIncoming = callState === 'ringing';
   const isActive = callState === 'connected';
   const isOutgoing = callState === 'calling';
 
+  // Render minimized bar if minimized
+  if (isMinimized) {
+    return (
+      <div className="fixed bottom-4 left-4 bg-slate-800 text-white rounded-md px-4 py-2 shadow-lg cursor-pointer" onClick={() => setMinimized(false)}>
+        <span>{callerName || 'Unknown'}</span>
+        <span className="ml-2">{new Date(callDuration * 1000).toISOString().substr(14, 5)}</span>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-900/95 backdrop-blur-md">
       {/* Hidden audio element for remote stream */}
       <audio ref={audioRef} autoPlay playsInline />
+      {isActive && (
+        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-3 py-1 rounded">
+          {new Date(callDuration * 1000).toISOString().substr(14,5)}
+        </div>
+      )}
 
-      <div className="flex-1 flex flex-col items-center justify-center space-y-6 w-full max-w-sm px-6">
+        <div className="flex-1 flex flex-col items-center justify-center space-y-6 w-full max-w-sm px-6">
+          {/* Minimize button */}
+          <button onClick={() => setMinimized(true)} className="self-end mb-2 text-slate-400 hover:text-white">
+            &#8212;
+          </button>
         <div className="flex flex-col items-center">
           <Avatar src={callerPhoto} name={callerName || 'Unknown'} size="2xl" className="w-32 h-32 border-4 border-slate-700 mb-4" />
           <h2 className="text-2xl font-bold text-white mb-2">{callerName || 'Unknown'}</h2>

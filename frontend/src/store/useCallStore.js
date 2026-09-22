@@ -15,6 +15,8 @@ const useCallStore = create((set, get) => ({
   callerName: null,
   callerPhoto: null,
   isMuted: false,
+  callDuration: 0,
+  isMinimized: false,
 
   // Action references injected by useWebRTC
   startCall: null,
@@ -31,6 +33,8 @@ const useCallStore = create((set, get) => ({
       callerName: name,
       callerPhoto: photo,
       isMuted: false,
+      callDuration: 0,
+      isMinimized: false,
     });
   },
 
@@ -43,6 +47,8 @@ const useCallStore = create((set, get) => ({
       callerName: name,
       callerPhoto: photo,
       isMuted: false,
+      callDuration: 0,
+      isMinimized: false,
     });
   },
 
@@ -64,6 +70,14 @@ const useCallStore = create((set, get) => ({
     set({ isMuted: !get().isMuted });
   },
 
+  incrementDuration: () => {
+    set((state) => ({ callDuration: state.callDuration + 1 }));
+  },
+
+  setMinimized: (isMinimized) => {
+    set({ isMinimized });
+  },
+
   // End or reject the call
   endCall: () => {
     set({
@@ -72,6 +86,8 @@ const useCallStore = create((set, get) => ({
       callerName: null,
       callerPhoto: null,
       isMuted: false,
+      callDuration: 0,
+      isMinimized: false,
     });
   },
 }));

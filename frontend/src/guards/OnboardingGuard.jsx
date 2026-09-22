@@ -19,7 +19,7 @@ const OnboardingGuard = () => {
   const step = driver?.onboardingStep ?? 0;
   const submitted = isApplicationSubmitted(driver);
 
-  if (driver?.approvalStatus === 'approved' && (step >= 6 || submitted)) {
+  if (driver?.approvalStatus === 'approved' && (step >= 5 || submitted)) {
     return <Navigate to="/driver/home" replace />;
   }
 
@@ -44,14 +44,14 @@ const OnboardingGuard = () => {
   if (path.includes('/register/bank') && step < 2) {
     return <Navigate to="/driver/register/credentials" replace />;
   }
-  if (path.includes('/register/safety') && step < 3) {
+  if (path.includes('/register/safety')) {
+    return <Navigate to="/driver/register/training" replace />;
+  }
+  if (path.includes('/register/verification')) {
+    return <Navigate to="/driver/register/training" replace />;
+  }
+  if (path.includes('/register/training') && step < 3) {
     return <Navigate to="/driver/register/bank" replace />;
-  }
-  if (path.includes('/register/verification') && step < 4) {
-    return <Navigate to="/driver/register/safety" replace />;
-  }
-  if (path.includes('/register/training') && step < 5) {
-    return <Navigate to="/driver/register/verification" replace />;
   }
   if (path.includes('/register/approval')) {
     if (['under_review', 'rejected'].includes(driver?.approvalStatus)) {

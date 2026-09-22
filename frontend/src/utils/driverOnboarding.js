@@ -2,7 +2,6 @@ export const DRIVER_ONBOARDING_STEPS = [
   'Identity',
   'Credentials',
   'Bank',
-  'Safety',
   'Training',
 ];
 
@@ -10,8 +9,7 @@ export const DRIVER_ONBOARDING_ROUTES = {
   0: '/driver/register/identity',
   1: '/driver/register/credentials',
   2: '/driver/register/bank',
-  3: '/driver/register/safety',
-  4: '/driver/register/training',
+  3: '/driver/register/training',
 };
 
 export const LIVE_VERIFICATION_MIN_SECONDS = 15;
@@ -31,7 +29,7 @@ export function isLegacySubmittedDriver(driver) {
 export function isApplicationSubmitted(driver) {
   if (!driver) return false;
   if (driver.approvalStatus === 'rejected') return false;
-  if (driver.onboardingStep >= 6 && driver.approvalStatus === 'under_review') return true;
+  if (driver.onboardingStep >= 5 && driver.approvalStatus === 'under_review') return true;
   return isLegacySubmittedDriver(driver);
 }
 

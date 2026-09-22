@@ -2,6 +2,7 @@ import { Driver } from '../models/driverModels/driver.model.js';
 import DriverKit from '../models/driverKit.model.js';
 import KitOrder from '../models/kitOrder.model.js';
 import { PAYMENT_STATUS, KIT_ADMIN_STATUS } from '../constants/kitStatus.js';
+import { DRIVER_ONBOARDING_STEP } from '../constants/driverOnboarding.js';
 
 export async function getActiveKits() {
   return DriverKit.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean();
@@ -18,7 +19,7 @@ export async function getDriverKitEligibility(driverId) {
   if (driver.approvalStatus !== 'approved') {
     reasons.push('Driver account is not approved yet');
   }
-  if ((driver.onboardingStep || 0) < 6) {
+  if ((driver.onboardingStep || 0) < DRIVER_ONBOARDING_STEP.SUBMITTED) {
     reasons.push('Complete onboarding before going online');
   }
   if (!driver.documents || driver.documents.length === 0) {

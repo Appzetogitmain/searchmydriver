@@ -212,7 +212,7 @@ const DrivingCredentialsPage = () => {
       <div className="px-6 pt-2 pb-4">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-lg font-bold">Driving Credentials</h1>
-          <span className="text-xs text-text-muted bg-bg px-2 py-1 rounded-full">2/5</span>
+          <span className="text-xs text-text-muted bg-bg px-2 py-1 rounded-full">2/4</span>
         </div>
         <StepIndicator steps={DRIVER_ONBOARDING_STEPS} currentStep={2} />
         <p className="text-xs text-text-muted mt-3">

@@ -117,6 +117,24 @@ const DriverAssignedPage = () => {
   const fetchWallet = useUserWalletStore((s) => s.fetchWallet);
   const wallet = useUserWalletStore((s) => s.wallet);
   const { emit, isConnected } = useSocket();
+  const { startCall } = useCallStore();
+
+  const handleCallClick = (e) => {
+    if (e?.stopPropagation) e.stopPropagation();
+    const driverObj = typeof booking?.driverId === 'object' ? booking.driverId : null;
+    const name = driverObj?.name || driverObj?.fullName || 'Driver';
+    const photo = driverObj?.profilePicture || driverObj?.avatar || null;
+    if (startCall && booking?._id) {
+      startCall(booking._id, name, photo);
+      return;
+    }
+    const phone = driverObj?.phone_no || driverObj?.phone || null;
+    if (phone) {
+      const cleanPhone = String(phone).replace(/\D/g, '');
+      const formattedPhone = cleanPhone.length === 10 ? `+91${cleanPhone}` : phone;
+      window.location.href = `tel:${formattedPhone}`;
+    }
+  };
 
   const [cancelling, setCancelling] = useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
@@ -406,13 +424,6 @@ const DriverAssignedPage = () => {
     return selfie?.fileUrl || driver.profilePicture || null;
   }, [driver]);
 
-  const { startCall } = useCallStore();
-  const handleCallClick = (e) => {
-    e.stopPropagation();
-    if (startCall && booking) {
-      startCall(booking._id, driver?.name || 'Driver', driverPhotoUrl);
-    }
-  };
 
   // Ride duration timer + extension prompt (only active once STARTED).
   const rideTimer = useRideTimer(booking);
@@ -518,6 +529,7 @@ const DriverAssignedPage = () => {
     if (cancelling) return;
     setCancelConfirmOpen(true);
   };
+  const handleCancelClick = handleCancel;
 
   const cancelPreview = useMemo(
     () => previewUserCancellation(booking),
@@ -923,6 +935,7 @@ const DriverAssignedPage = () => {
                     languages={driver?.languages}
                     phone={driver?.phone_no || driver?.phone}
                     online={!!liveDriver}
+                    onCallClick={handleCallClick}
                     onMessageClick={() => setChatOpen(true)}
                   />
                 )}

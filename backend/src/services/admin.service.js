@@ -12,6 +12,7 @@ import bcrypt from 'bcryptjs';
 import { ApiError } from '../utils/apiError.js';
 import { USER_ROLES } from '../constants/roles.js';
 import { STAFF_ROLES } from '../constants/staffPermissions.js';
+import { DRIVER_ONBOARDING_STEP } from '../constants/driverOnboarding.js';
 import { dedupeDocumentsByType } from '../utils/driverDocuments.util.js';
 import { emitNotification } from '../utils/socketEmitters.js';
 import {
@@ -727,7 +728,7 @@ export const getIncomingRegistrationsService = async (staff, query = {}) => {
   // 1. Fetch incomplete drivers
   const driverFilter = {
     isDeleted: false,
-    $or: [{ approvalStatus: 'pending' }, { onboardingStep: { $lt: 6 } }],
+    $or: [{ approvalStatus: 'pending' }, { onboardingStep: { $lt: DRIVER_ONBOARDING_STEP.SUBMITTED } }],
   };
 
   if (staffScope.isScoped) {

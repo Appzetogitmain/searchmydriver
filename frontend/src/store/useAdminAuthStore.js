@@ -18,12 +18,12 @@ const useAdminAuthStore = create(
             // ignore localStorage errors
           }
         }
-        set({
+        set((state) => ({
           admin,
-          accessToken: tokens.accessToken || null,
-          refreshToken: tokens.refreshToken || null,
+          accessToken: tokens.accessToken !== undefined ? (tokens.accessToken || null) : state.accessToken,
+          refreshToken: tokens.refreshToken !== undefined ? (tokens.refreshToken || null) : state.refreshToken,
           isAuthenticated: !!admin,
-        });
+        }));
       },
       logout: () => set({ admin: null, accessToken: null, refreshToken: null, isAuthenticated: false }),
     }),

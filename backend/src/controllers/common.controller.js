@@ -28,7 +28,7 @@ export const uploadVideo = asyncHandler(async (req, res) => {
 export const makeRefreshAccessToken = (audience) =>
   asyncHandler(async (req, res) => {
     const cookieName = cookieNamesFor(audience).refreshToken;
-    const incomingRefreshToken = req.cookies[cookieName] || req.body.refreshToken;
+    const incomingRefreshToken = req.cookies[cookieName] || req.cookies?.refreshToken || req.body.refreshToken;
     const tokens = await commonService.refreshSessionTokens(incomingRefreshToken);
     setAuthCookies(res, tokens, audience);
     return res.status(200).json(new ApiResponse(200, tokens, 'Token refreshed successfully'));

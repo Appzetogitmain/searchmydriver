@@ -95,8 +95,11 @@ const IdentityDetailsPage = () => {
         languages: form.languages.split(',').map(l => l.trim()).filter(Boolean),
       });
 
-      // Save driver to store (token is in cookies)
-      setAuth(res.data.data.driver);
+      // Save driver to store (token in store and cookies)
+      setAuth(res.data.data.driver, {
+        accessToken: res.data.data.accessToken,
+        refreshToken: res.data.data.refreshToken,
+      });
       
       setIsPhoneVerified(true);
       setShowOtpModal(false);
@@ -158,7 +161,7 @@ const IdentityDetailsPage = () => {
       <div className="px-6 pt-2 pb-4">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-lg font-bold">Identity Legal</h1>
-          <span className="text-xs text-text-muted bg-bg px-2 py-1 rounded-full">1/5</span>
+          <span className="text-xs text-text-muted bg-bg px-2 py-1 rounded-full">1/4</span>
         </div>
         <StepIndicator steps={DRIVER_ONBOARDING_STEPS} currentStep={1} />
         <p className="text-xs text-text-muted mt-3">Secure account creation</p>

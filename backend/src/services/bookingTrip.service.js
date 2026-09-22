@@ -175,6 +175,9 @@ function buildUpdatePayload(booking, audience = 'room') {
     status: booking.status,
     paymentStatus: booking.paymentStatus,
     paymentMode: booking.paymentMode,
+    paymentMethod: booking.paymentMethod || null,
+    fareSnapshot: booking.fareSnapshot || null,
+    invoiceNumber: booking.invoiceNumber || null,
     driverId: driverIdValue,
     timeline: booking.timeline ? booking.timeline.toObject?.() || booking.timeline : null,
     cancellation: booking.cancellation

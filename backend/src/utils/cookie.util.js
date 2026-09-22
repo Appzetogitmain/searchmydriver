@@ -126,7 +126,7 @@ export function clearAuthCookies(res, audience) {
 export function readAccessToken(req, audience) {
   const header = req.headers?.authorization;
   if (header?.startsWith('Bearer ')) return header.slice('Bearer '.length);
-  return req.cookies?.[cookieNamesFor(audience).accessToken] || null;
+  return req.cookies?.[cookieNamesFor(audience).accessToken] || req.cookies?.accessToken || null;
 }
 
 /**

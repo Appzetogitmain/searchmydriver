@@ -8,7 +8,7 @@ const REVIEW_STATUSES = ['under_review', 'approved', 'rejected', 'suspended'];
 export function isLegacySubmittedDriver(driver) {
   if (!driver) return false;
   return (
-    driver.onboardingStep === DRIVER_ONBOARDING_STEP.LIVE_VERIFICATION &&
+    driver.onboardingStep === DRIVER_ONBOARDING_STEP.SUBMITTED &&
     REVIEW_STATUSES.includes(driver.approvalStatus) &&
     !driver.liveVerificationVideo?.videoUrl
   );
@@ -24,11 +24,4 @@ export function isApplicationSubmitted(driver) {
     return true;
   }
   return isLegacySubmittedDriver(driver);
-}
-
-export function hasCompletedLiveVerification(driver) {
-  if (!driver) return false;
-  if (driver.liveVerificationVideo?.videoUrl) return true;
-  if (isLegacySubmittedDriver(driver)) return true;
-  return driver.onboardingStep >= DRIVER_ONBOARDING_STEP.LIVE_VERIFICATION;
 }

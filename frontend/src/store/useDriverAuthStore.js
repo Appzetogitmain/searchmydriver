@@ -18,12 +18,12 @@ const useDriverAuthStore = create(
             // ignore localStorage errors
           }
         }
-        set({
+        set((state) => ({
           driver,
-          accessToken: tokens.accessToken || null,
-          refreshToken: tokens.refreshToken || null,
+          accessToken: tokens.accessToken !== undefined ? (tokens.accessToken || null) : state.accessToken,
+          refreshToken: tokens.refreshToken !== undefined ? (tokens.refreshToken || null) : state.refreshToken,
           isAuthenticated: !!driver,
-        });
+        }));
       },
       updateDriver: (updates) => set((state) => ({ driver: { ...state.driver, ...updates } })),
       logout: () => set({ driver: null, accessToken: null, refreshToken: null, isAuthenticated: false }),

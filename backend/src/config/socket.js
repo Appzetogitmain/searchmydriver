@@ -15,6 +15,7 @@ import {
   S2C_EVENTS,
   SOCKET_ROOM_PREFIX,
 } from '../constants/socketEvents.js';
+import { sendFcmNotification } from '../config/firebase.js';
 import { attachDriverSocketHandlers } from '../controllers/driverSocket.controller.js';
 
 /**
@@ -214,8 +215,8 @@ function attachConnectionHandlers(socket) {
   });
 
   // --- WebRTC App-to-App Calling ---
-  socket.on(C2S_EVENTS.CALL_SIGNAL, (payload) => {
-    const { bookingId } = payload || {};
+  socket.on(C2S_EVENTS.CALL_SIGNAL, async (payload) => {
+    const { bookingId, type } = payload || {};
     if (!bookingId) return;
     // Broadcast signal (offer, answer, ice-candidate) to the other party in the room
     socket.to(roomForBooking(bookingId)).emit(S2C_EVENTS.CALL_SIGNAL, { 
@@ -223,6 +224,45 @@ function attachConnectionHandlers(socket) {
       from: principal.id, 
       fromType: principal.type 
     });
+
+    // If this is an outgoing offer, send a high‑urgency push notification to the recipient
+    if (type === 'offer') {
+      try {
+        let recipientId = payload?.recipientId;
+        let recipientType = payload?.recipientType;
+
+        if (!recipientId || !recipientType) {
+          const { default: Booking } = await import('../models/booking.model.js');
+          const bookingDoc = await Booking.findById(bookingId).select('userId driverId').lean();
+          if (bookingDoc) {
+            if (principal.type === 'driver') {
+              recipientId = bookingDoc.userId;
+              recipientType = 'user';
+            } else {
+              recipientId = bookingDoc.driverId;
+              recipientType = 'driver';
+            }
+          }
+        }
+
+        let fcmToken = null;
+        if (recipientId && recipientType) {
+          const modelName = recipientType === 'driver' ? 'driver' : 'user';
+          const { default: Model } = await import(`../models/${modelName}.model.js`);
+          const doc = await Model.findById(recipientId).select('fcmToken').lean();
+          fcmToken = doc?.fcmToken;
+        }
+        if (fcmToken) {
+          await sendFcmNotification(fcmToken, {
+            title: 'Incoming Call',
+            body: `${principal.type === 'driver' ? 'Driver' : 'Customer'} is calling you`,
+            data: { bookingId, type: 'INCOMING_CALL' },
+          });
+        }
+      } catch (e) {
+        console.error('[socket] failed to send call push notification', e);
+      }
+    }
   });
 
   socket.on(C2S_EVENTS.CALL_REJECT, (payload) => {

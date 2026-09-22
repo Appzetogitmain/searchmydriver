@@ -1,4 +1,5 @@
 import multer from 'multer';
+import { ApiError } from '../utils/apiError.js';
 
 const storage = multer.memoryStorage();
 
@@ -9,7 +10,7 @@ const imageFileFilter = (req, file, cb) => {
   if (IMAGE_MIME_TYPES.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only JPEG, PNG, JPG, and WEBP are allowed.'), false);
+    cb(new ApiError(400, 'Invalid file type. Only JPEG, PNG, JPG, and WEBP are allowed.'), false);
   }
 };
 
@@ -37,7 +38,7 @@ const videoFileFilter = (req, file, cb) => {
   if (isAllowedVideo(file)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only MP4, WEBM, and MOV videos are allowed.'), false);
+    cb(new ApiError(400, 'Invalid file type. Only MP4, WEBM, and MOV videos are allowed.'), false);
   }
 };
 
@@ -68,7 +69,7 @@ const adMediaFilter = (req, file, cb) => {
     cb(null, true);
     return;
   }
-  cb(new Error('Ad media must be an image (JPG/PNG/WEBP) or a short video (MP4/WEBM/MOV).'), false);
+  cb(new ApiError(400, 'Ad media must be an image (JPG/PNG/WEBP) or a short video (MP4/WEBM/MOV).'), false);
 };
 
 export const uploadAdMedia = multer({

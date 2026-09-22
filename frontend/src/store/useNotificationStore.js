@@ -101,9 +101,50 @@ const useNotificationStore = create((set, get) => ({
     }
   },
 
+  deleteNotification: async (id, prefix = '/auth') => {
+    const target = get().notifications.find((n) => (n._id || n.id) === id);
+    const wasUnread = target && !target.isRead;
+
+    // Optimistic UI update
+    set((state) => ({
+      notifications: state.notifications.filter((n) => (n._id || n.id) !== id),
+      unreadCount: wasUnread ? Math.max(0, state.unreadCount - 1) : state.unreadCount,
+      selectedNotification:
+        state.selectedNotification && (state.selectedNotification._id || state.selectedNotification.id) === id
+          ? null
+          : state.selectedNotification,
+    }));
+
+    try {
+      await api.delete(`${prefix}/notifications/${id}`);
+    } catch (err) {
+      console.error('Failed to delete notification', err);
+      toast.error('Failed to delete notification');
+      get().fetchNotifications(prefix);
+    }
+  },
+
+  clearAllNotifications: async (prefix = '/auth') => {
+    // Optimistic UI update
+    set({
+      notifications: [],
+      unreadCount: 0,
+      selectedNotification: null,
+    });
+
+    try {
+      await api.delete(`${prefix}/notifications/clear-all`);
+    } catch (err) {
+      console.error('Failed to clear notifications', err);
+      toast.error('Failed to clear notifications');
+      get().fetchNotifications(prefix);
+    }
+  },
+
   reset: () => {
     set({ notifications: [], unreadCount: 0, isInitialized: false });
   },
 }));
 
 export default useNotificationStore;
+

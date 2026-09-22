@@ -16,13 +16,12 @@ const DriverGuard = () => {
   const step = driver.onboardingStep ?? 0;
   const submitted = isApplicationSubmitted(driver);
 
-  if (!submitted && step < 6 && driver.approvalStatus !== 'approved') {
+  if (!submitted && step < 5 && driver.approvalStatus !== 'approved') {
     if (step < 1) return <Navigate to="/driver/register/identity" replace />;
     if (step === 1) return <Navigate to="/driver/register/credentials" replace />;
     if (step === 2) return <Navigate to="/driver/register/bank" replace />;
-    if (step === 3) return <Navigate to="/driver/register/safety" replace />;
-    if (step === 4) return <Navigate to="/driver/register/verification" replace />;
-    if (step === 5) return <Navigate to="/driver/register/training" replace />;
+    if (step === 3) return <Navigate to="/driver/register/training" replace />;
+    if (step === 4) return <Navigate to="/driver/register/training" replace />;
     return <Navigate to="/driver/register/credentials" replace />;
   }
 

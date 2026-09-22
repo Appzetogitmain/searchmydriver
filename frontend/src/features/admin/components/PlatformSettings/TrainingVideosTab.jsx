@@ -27,7 +27,7 @@ const emptyForm = {
   videoUrl: '',
   cloudinaryPublicId: '',
   durationSeconds: 60,
-  isRequired: true,
+  isRequired: false,
   isActive: true,
   sortOrder: 0,
 };

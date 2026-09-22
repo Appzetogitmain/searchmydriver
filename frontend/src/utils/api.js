@@ -141,8 +141,8 @@ api.interceptors.response.use(
         //
         // Only this app's store is cleared: the three sessions are independent
         // now, so a dead driver session says nothing about a live customer one.
-        if (refreshError.response?.status === 401) {
-          AUDIENCE_CONFIG[audience].store.getState().logout();
+        if (refreshError.response?.status === 401 || refreshError.response?.status === 403) {
+          AUDIENCE_CONFIG[audience]?.store?.getState()?.logout?.();
         }
         return Promise.reject(refreshError);
       }

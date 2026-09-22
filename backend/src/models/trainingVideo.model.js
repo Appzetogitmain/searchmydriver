@@ -39,7 +39,7 @@ const trainingVideoSchema = new mongoose.Schema(
     },
     isRequired: {
       type: Boolean,
-      default: true,
+      default: false,
     },
     isActive: {
       type: Boolean,

@@ -19,11 +19,7 @@ export const uploadImage = async (file, oldPublicId = null) => {
     formData.append('oldPublicId', oldPublicId);
   }
 
-  const response = await api.post('/common/upload', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
+  const response = await api.post('/common/upload', formData);
 
   return response.data.data;
 };

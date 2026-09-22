@@ -23,10 +23,7 @@ import {
 } from '../utils/driverTraining.util.js';
 import { syncDriverKitEligibility } from '../utils/kitEligibility.util.js';
 import { DRIVER_ONBOARDING_STEP } from '../constants/driverOnboarding.js';
-import {
-  hasCompletedLiveVerification,
-  isApplicationSubmitted,
-} from '../utils/driverOnboarding.util.js';
+import { isApplicationSubmitted } from '../utils/driverOnboarding.util.js';
 import { uploadToCloudinary, deleteFromCloudinary } from '../utils/cloudinary.js';
 
 export const sendOtpService = async (phone, referralCode) => {
@@ -283,14 +280,8 @@ export const updateOnboardingStepService = async (driverId, data) => {
     driver.bankDetails = stepData.bankDetails;
     if (driver.onboardingStep < 3) driver.onboardingStep = 3;
   } else if (stepNumber === 4) {
-    if (stepData.safetyDeclaration) {
-      driver.safetyDeclaration = { agreed: stepData.safetyDeclaration.agreed, agreedAt: new Date() };
-    }
-    if (stepData.documents) mergeDocumentsByType(driver.documents, stepData.documents);
-    if (driver.onboardingStep < 5) driver.onboardingStep = 5; // Jump directly to Training (Step 5)
-  } else if (stepNumber === 5) {
-    // Allows skipping the live video verification
-    if (driver.onboardingStep < 5) driver.onboardingStep = 5;
+    if (stepData?.documents) mergeDocumentsByType(driver.documents, stepData.documents);
+    if (driver.onboardingStep < 4) driver.onboardingStep = 4;
   } else {
     throw new ApiError(400, 'Invalid step number');
   }
@@ -314,8 +305,8 @@ export const uploadLiveVerificationService = async (driverId, file, durationSeco
     throw new ApiError(400, 'Application already submitted');
   }
 
-  if (driver.onboardingStep < DRIVER_ONBOARDING_STEP.SAFETY) {
-    throw new ApiError(400, 'Complete safety documents before live verification');
+  if (driver.onboardingStep < DRIVER_ONBOARDING_STEP.BANK) {
+    throw new ApiError(400, 'Complete bank details before live verification');
   }
 
   const reportedDuration = Number(durationSeconds) || 0;
@@ -347,10 +338,6 @@ export const uploadLiveVerificationService = async (driverId, file, durationSeco
     durationSeconds: cloudDuration,
   };
 
-  if (driver.onboardingStep < DRIVER_ONBOARDING_STEP.LIVE_VERIFICATION) {
-    driver.onboardingStep = DRIVER_ONBOARDING_STEP.LIVE_VERIFICATION;
-  }
-
   await driver.save();
 
   return {
@@ -369,7 +356,7 @@ export const reopenRejectedApplicationService = async (driverId) => {
 
   driver.approvalStatus = 'pending';
   driver.approvalNote = '';
-  driver.onboardingStep = DRIVER_ONBOARDING_STEP.SAFETY;
+  driver.onboardingStep = DRIVER_ONBOARDING_STEP.CREDENTIALS;
   driver.trainingProgress = [];
   await driver.save();
 
@@ -395,9 +382,7 @@ export const getDriverTrainingService = async (driverId) => {
   return {
     videos: items,
     allRequiredComplete,
-    canSubmit:
-      driver.onboardingStep >= DRIVER_ONBOARDING_STEP.LIVE_VERIFICATION &&
-      allRequiredComplete,
+    canSubmit: driver.onboardingStep >= DRIVER_ONBOARDING_STEP.BANK,
   };
 };
 
@@ -410,10 +395,6 @@ export const updateTrainingProgressService = async (driverId, data) => {
 
   const driver = await Driver.findById(driverId);
   if (!driver) throw new ApiError(404, 'Driver not found');
-
-  if (!hasCompletedLiveVerification(driver)) {
-    throw new ApiError(400, 'Complete live verification before training');
-  }
 
   if (isApplicationSubmitted(driver)) {
     throw new ApiError(400, 'Application already submitted');
@@ -463,42 +444,56 @@ export const submitApplicationService = async (driverId) => {
   const driver = await Driver.findById(driverId);
   if (!driver) throw new ApiError(404, 'Driver not found');
 
+  // Idempotent re-submit. Keyed on status only: onboardingStep 5 is not proof of
+  // submission, because drivers from the old 1–6 numbering sit at 5 while still 'pending'.
+  if (driver.approvalStatus === 'under_review') {
+    return driver;
+  }
+
+  if (driver.approvalStatus === 'approved') {
+    throw new ApiError(400, 'Application is already approved');
+  }
+
   if (driver.approvalStatus !== 'pending') {
-    throw new ApiError(400, 'Application already submitted');
+    throw new ApiError(400, 'Application cannot be submitted in its current state');
   }
 
-  if (driver.onboardingStep < DRIVER_ONBOARDING_STEP.LIVE_VERIFICATION) {
+  if (driver.onboardingStep < DRIVER_ONBOARDING_STEP.BANK) {
     throw new ApiError(400, 'Please complete all onboarding steps before submitting');
-  }
-
-  if (!driver.safetyDeclaration?.agreed) {
-    throw new ApiError(400, 'Please complete the safety declaration first');
   }
 
   driver.approvalStatus = 'under_review';
   driver.onboardingStep = DRIVER_ONBOARDING_STEP.SUBMITTED;
   await driver.save();
 
-  const { upsertDriverReviewTask } = await import('./adminTask.service.js');
-  await upsertDriverReviewTask(driver);
+  try {
+    const { upsertDriverReviewTask } = await import('./adminTask.service.js');
+    await upsertDriverReviewTask(driver);
+  } catch (err) {
+    console.error('Failed to upsert driver review task:', err);
+  }
 
-  const { emitToAdmins, emitNotification } = await import('../utils/socketEmitters.js');
-  const { S2C_EVENTS } = await import('../constants/socketEvents.js');
+  try {
+    const { emitToAdmins, emitNotification } = await import('../utils/socketEmitters.js');
+    const { S2C_EVENTS } = await import('../constants/socketEvents.js');
 
-  emitToAdmins(S2C_EVENTS.ADMIN_ALERT, {
-    type: 'driver_approval',
-    message: `New driver application submitted by ${driver.name}`,
-    driverId: driver._id,
-  });
+    emitToAdmins(S2C_EVENTS.ADMIN_ALERT, {
+      type: 'driver_approval',
+      message: `New driver application submitted by ${driver.name}`,
+      driverId: driver._id,
+    });
 
-  emitNotification({ admin: true }, {
-    title: 'New Driver Application',
-    body: `${driver.name} has submitted their application for review.`,
-    severity: 'info',
-    data: {
-      url: `/admin/drivers/${driver._id}/profile`
-    }
-  });
+    emitNotification({ admin: true }, {
+      title: 'New Driver Application',
+      body: `${driver.name} has submitted their application for review.`,
+      severity: 'info',
+      data: {
+        url: `/admin/drivers/${driver._id}/profile`
+      }
+    });
+  } catch (err) {
+    console.error('Failed to emit admin notifications:', err);
+  }
 
   return driver;
 };

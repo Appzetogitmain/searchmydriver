@@ -19,12 +19,12 @@ const useUserAuthStore = create(
             // ignore localStorage errors
           }
         }
-        set({
+        set((state) => ({
           user,
-          accessToken: tokens.accessToken || null,
-          refreshToken: tokens.refreshToken || null,
+          accessToken: tokens.accessToken !== undefined ? (tokens.accessToken || null) : state.accessToken,
+          refreshToken: tokens.refreshToken !== undefined ? (tokens.refreshToken || null) : state.refreshToken,
           isAuthenticated: !!user,
-        });
+        }));
       },
       setOnboarding: (onboarding) => set({ onboarding }),
       logout: () => set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false, onboarding: null }),

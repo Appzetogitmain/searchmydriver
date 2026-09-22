@@ -29,18 +29,8 @@ const SafetyProtocolPage = () => {
   } = useDocumentsManager(SAFETY_DOC_TYPES);
 
   useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        const res = await api.get('/driver/profile');
-        const data = res.data.data;
-        if (data?.safetyDeclaration?.agreed) setAgreed(true);
-        if (data?.documents) loadFromApiDocuments(data.documents);
-      } catch (error) {
-        console.error('Failed to fetch profile', error);
-      }
-    };
-    fetchProfile();
-  }, [loadFromApiDocuments]);
+    navigate('/driver/register/training', { replace: true });
+  }, [navigate]);
 
   const handleSubmit = async () => {
     if (!allRequiredUploaded(SAFETY_DOC_TYPES)) {

@@ -55,9 +55,7 @@ export function useLiveVerification({ onSuccess } = {}) {
       formData.append('video', file);
       formData.append('durationSeconds', String(recordedSeconds));
 
-      const res = await api.post('/driver/onboarding/live-verification', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const res = await api.post('/driver/onboarding/live-verification', formData);
 
       const video = res.data.data.liveVerificationVideo;
       setSavedVideo(video);

@@ -49,7 +49,7 @@ const ProfileUnderReviewPage = () => {
         liveVerificationVideo: data.liveVerificationVideo,
       });
       toast.success('You can update your application now');
-      navigate('/driver/register/safety', { replace: true });
+      navigate('/driver/register/credentials', { replace: true });
     } catch (err) {
       toast.error(err.response?.data?.message || 'Could not reopen application');
     } finally {

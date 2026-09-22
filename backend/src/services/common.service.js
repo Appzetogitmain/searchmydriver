@@ -61,20 +61,32 @@ export const refreshSessionTokens = async (incomingRefreshToken) => {
     throw new ApiError(401, 'Unauthorized request');
   }
 
-  const decoded = verifyRefreshToken(incomingRefreshToken);
+  let decoded;
+  try {
+    decoded = verifyRefreshToken(incomingRefreshToken);
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(401, 'Invalid refresh token');
+  }
+
   const accountType = inferAccountType(decoded);
 
   let principal;
   let jwtPayload;
 
-  if (accountType === ACCOUNT_DRIVER) {
-    principal = await Driver.findById(decoded.id);
-    if (!principal || principal.isDeleted) throw new ApiError(401, 'Invalid refresh token');
-    jwtPayload = tokenPayloadFromDriver(principal);
-  } else {
-    principal = await User.findById(decoded.id);
-    if (!principal || principal.isDeleted) throw new ApiError(401, 'Invalid refresh token');
-    jwtPayload = tokenPayloadFromUser(principal);
+  try {
+    if (accountType === ACCOUNT_DRIVER) {
+      principal = await Driver.findById(decoded.id);
+      if (!principal || principal.isDeleted) throw new ApiError(401, 'Invalid refresh token');
+      jwtPayload = tokenPayloadFromDriver(principal);
+    } else {
+      principal = await User.findById(decoded.id);
+      if (!principal || principal.isDeleted) throw new ApiError(401, 'Invalid refresh token');
+      jwtPayload = tokenPayloadFromUser(principal);
+    }
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(401, 'Invalid refresh token');
   }
 
   return {

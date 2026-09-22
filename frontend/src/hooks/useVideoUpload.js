@@ -17,9 +17,7 @@ export function useVideoUpload() {
       formData.append('video', file);
       if (oldPublicId) formData.append('oldPublicId', oldPublicId);
 
-      const res = await api.post('/common/upload/video', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const res = await api.post('/common/upload/video', formData);
       return res.data.data;
     } catch (err) {
       setError(err.response?.data?.message || 'Video upload failed');

@@ -151,15 +151,17 @@ const DriverActiveTripPage = () => {
 
   const handleCallClick = () => {
     const customer = typeof booking?.userId === 'object' ? booking.userId : null;
+    const name = customer?.name || customer?.fullName || 'Customer';
+    const photo = customer?.profilePicture || customer?.avatar || null;
+    if (startCall && booking?._id) {
+      startCall(booking._id, name, photo);
+      return;
+    }
     const phone = customer?.phone_no || customer?.phone || null;
     if (phone) {
       const cleanPhone = String(phone).replace(/\D/g, '');
       const formattedPhone = cleanPhone.length === 10 ? `+91${cleanPhone}` : phone;
       window.location.href = `tel:${formattedPhone}`;
-      return;
-    }
-    if (startCall && booking) {
-      startCall(booking._id, booking.userId?.name, booking.userId?.profilePicture);
     }
   };
 
@@ -176,6 +178,13 @@ const DriverActiveTripPage = () => {
       fetchActive().catch(() => { });
     }
   }, [routeId, fetchById, fetchActive]);
+
+  // Join booking socket room so WebRTC signaling & real-time updates reach the driver
+  useEffect(() => {
+    if (!booking?._id || !isConnected) return undefined;
+    emit(C2S_EVENTS.BOOKING_JOIN, { bookingId: booking._id });
+    return () => emit(C2S_EVENTS.BOOKING_LEAVE, { bookingId: booking._id });
+  }, [booking?._id, isConnected, emit]);
 
   // Live patches.
   useSocketEvent(S2C_EVENTS.BOOKING_UPDATED, (payload) => {

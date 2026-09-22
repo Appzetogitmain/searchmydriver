@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   MapPin,
-  Clock,
   SkipForward,
   Loader2,
   IndianRupee,
@@ -19,7 +18,7 @@ import { useSocketEvent } from '../../../../hooks/useSocket';
 import { useNotificationSound } from '../../../../hooks/useNotificationSound';
 import { S2C_EVENTS } from '../../../../constants/socketEvents';
 import { SERVICE_TYPES, SERVICE_TYPE_LABELS } from '../../../../constants/serviceTypes';
-import { BOOKING_TYPE } from '../../../../constants/bookingStatus';
+import { BOOKING_TYPE, TRIP_TYPE_LABELS } from '../../../../constants/bookingStatus';
 import { formatDistance } from '../../../../utils/geo';
 import Button from '../../../../components/Button';
 
@@ -96,6 +95,165 @@ function CountdownBar({ expiresAt, barColorClass = 'bg-primary' }) {
           style={{ width: `${pct}%` }}
         />
       </div>
+    </div>
+  );
+}
+
+const formatOfferDate = (value) =>
+  value
+    ? new Date(value).toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
+    : null;
+
+const formatOfferTime = (value) =>
+  value
+    ? new Date(value).toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      })
+    : null;
+
+const plural = (n, word) => `${n} ${word}${Number(n) === 1 ? '' : 's'}`;
+
+/**
+ * Flattens everything the customer entered at booking time into
+ * label/value tiles. Rows with no value are dropped so each service
+ * type only shows what actually applies to it.
+ */
+function buildOfferDetails(offer) {
+  const { serviceType, hourly, outstation, monthly } = offer;
+  const isInstant = offer.bookingType === BOOKING_TYPE.INSTANT;
+
+  const pickupAt =
+    serviceType === SERVICE_TYPES.OUTSTATION
+      ? outstation?.pickupAt || outstation?.startDate
+      : serviceType === SERVICE_TYPES.MONTHLY
+      ? monthly?.startDate
+      : hourly?.scheduledStartAt;
+
+  let driverRequired = null;
+  if (serviceType === SERVICE_TYPES.HOURLY && hourly?.durationHours) {
+    driverRequired = plural(hourly.durationHours, 'Hour');
+  } else if (serviceType === SERVICE_TYPES.OUTSTATION && outstation?.days) {
+    driverRequired = plural(outstation.days, 'Day');
+    if (outstation.nights > 0) driverRequired += ` / ${plural(outstation.nights, 'Night')}`;
+  } else if (serviceType === SERVICE_TYPES.MONTHLY && monthly?.workingHoursPerDay) {
+    driverRequired = `${monthly.workingHoursPerDay} Hours/day`;
+  }
+
+  const tripType = TRIP_TYPE_LABELS[(hourly || outstation)?.tripType] || null;
+  const estimatedKm = (hourly || outstation)?.estimatedKm;
+  const returnAt =
+    serviceType === SERVICE_TYPES.OUTSTATION
+      ? outstation?.expectedReturnAt || outstation?.endDate
+      : serviceType === SERVICE_TYPES.MONTHLY
+      ? monthly?.endDate
+      : null;
+
+  const bookingTypeLabel =
+    serviceType === SERVICE_TYPES.OUTSTATION
+      ? 'Outstation'
+      : SERVICE_TYPE_LABELS[serviceType] || serviceType;
+
+  return [
+    { label: 'Pickup', value: isInstant && !pickupAt ? 'Today' : formatOfferDate(pickupAt) },
+    {
+      label: 'Time',
+      value: isInstant ? 'Now' : formatOfferTime(pickupAt),
+    },
+    { label: 'Driver Required', value: driverRequired },
+    { label: 'Booking Type', value: bookingTypeLabel },
+    { label: 'Trip Type', value: tripType },
+    { label: 'Car Type', value: offer.car?.carTypeName || null },
+    {
+      label: serviceType === SERVICE_TYPES.MONTHLY ? 'End Date' : 'Return',
+      value: returnAt
+        ? serviceType === SERVICE_TYPES.MONTHLY
+          ? formatOfferDate(returnAt)
+          : `${formatOfferDate(returnAt)}, ${formatOfferTime(returnAt)}`
+        : null,
+    },
+    { label: 'Est. Distance', value: estimatedKm > 0 ? `${estimatedKm} km` : null },
+    {
+      label: 'Food & Stay',
+      value:
+        serviceType === SERVICE_TYPES.OUTSTATION
+          ? outstation?.needsFood && outstation?.needsStay
+            ? 'By customer'
+            : 'Not provided'
+          : null,
+    },
+    {
+      label: 'Lunch',
+      value:
+        serviceType === SERVICE_TYPES.MONTHLY
+          ? monthly?.includeLunch
+            ? 'Included'
+            : 'Not included'
+          : null,
+    },
+    {
+      label: 'Payment',
+      value: offer.paymentMode
+        ? offer.paymentMode.charAt(0).toUpperCase() + offer.paymentMode.slice(1).replace(/_/g, ' ')
+        : null,
+    },
+  ].filter((d) => d.value);
+}
+
+function DetailTile({ label, value, className = '' }) {
+  return (
+    <div className={`rounded-xl bg-bg/70 border border-gray-100 px-3 py-2 min-w-0 ${className}`}>
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">{label}</p>
+      <p className="text-sm font-semibold text-text mt-0.5 break-words">{value}</p>
+    </div>
+  );
+}
+
+function OfferDetailsGrid({ offer, pickupDistanceLabel }) {
+  const details = buildOfferDetails(offer);
+  const dropAddress =
+    offer.outstation?.destinationAddress ||
+    (offer.dropoff?.address && offer.dropoff.address !== offer.pickup?.address
+      ? offer.dropoff.address
+      : null);
+
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {details.slice(0, 4).map((d) => (
+        <DetailTile key={d.label} label={d.label} value={d.value} />
+      ))}
+
+      <div className="col-span-2 rounded-xl bg-bg/70 border border-gray-100 px-3 py-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted inline-flex items-center gap-1">
+          <MapPin className="w-3 h-3 text-success" /> Pickup Address
+        </p>
+        <p className="text-sm font-medium text-text mt-0.5 break-words">
+          {offer.pickup?.address || '—'}
+        </p>
+        {pickupDistanceLabel && (
+          <p className="text-[11px] text-primary-dark font-semibold mt-0.5">
+            {pickupDistanceLabel} away from you
+          </p>
+        )}
+      </div>
+
+      {dropAddress && (
+        <div className="col-span-2 rounded-xl bg-bg/70 border border-gray-100 px-3 py-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted inline-flex items-center gap-1">
+            <MapPin className="w-3 h-3 text-danger" /> Drop Address
+          </p>
+          <p className="text-sm font-medium text-text mt-0.5 break-words">{dropAddress}</p>
+        </div>
+      )}
+
+      {details.slice(4).map((d) => (
+        <DetailTile key={d.label} label={d.label} value={d.value} />
+      ))}
     </div>
   );
 }
@@ -196,7 +354,7 @@ const BookingOfferModal = () => {
   return (
     <div className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in">
       <div
-        className={`w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden animate-slide-up ${theme.headerRing}`}
+        className={`w-full sm:max-w-md max-h-[92dvh] overflow-y-auto bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl animate-slide-up ${theme.headerRing}`}
       >
         <div className={`relative ${theme.headerBg} px-5 py-4`}>
           <div className="flex items-start justify-between gap-3">
@@ -281,54 +439,7 @@ const BookingOfferModal = () => {
             </div>
           )}
 
-          <div className="flex items-start gap-3">
-            <MapPin className="w-4 h-4 text-success mt-0.5 shrink-0" />
-            <div className="min-w-0">
-              <p className="text-[11px] text-text-muted">Pickup</p>
-              <p className="text-sm font-medium text-text break-words">{offer.pickup?.address}</p>
-              {pickupDistanceLabel && (
-                <p className="text-[11px] text-primary-dark font-semibold mt-0.5">
-                  {pickupDistanceLabel} away from you
-                </p>
-              )}
-            </div>
-          </div>
-
-          {((offer.dropoff?.address && offer.dropoff.address !== offer.pickup?.address) || offer.outstation?.destinationAddress) && (
-            <div className="flex items-start gap-3">
-              <MapPin className="w-4 h-4 text-danger mt-0.5 shrink-0" />
-              <div className="min-w-0">
-                <p className="text-[11px] text-text-muted">Dropoff</p>
-                <p className="text-sm font-medium text-text break-words">
-                  {offer.dropoff?.address || offer.outstation?.destinationAddress}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {offer.serviceType === SERVICE_TYPES.HOURLY && offer.hourly?.scheduledStartAt && (
-            <div className="flex items-start gap-3">
-              <Clock className="w-4 h-4 text-text-muted mt-0.5 shrink-0" />
-              <div className="min-w-0">
-                <p className="text-[11px] text-text-muted">Scheduled start</p>
-                <p className="text-sm font-medium text-text">
-                  {new Date(offer.hourly.scheduledStartAt).toLocaleString()}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {offer.serviceType === SERVICE_TYPES.MONTHLY && offer.monthly?.startDate && (
-            <div className="flex items-start gap-3">
-              <Clock className="w-4 h-4 text-text-muted mt-0.5 shrink-0" />
-              <div className="min-w-0">
-                <p className="text-[11px] text-text-muted">Monthly Start Date</p>
-                <p className="text-sm font-medium text-text">
-                  {new Date(offer.monthly.startDate).toLocaleDateString()} to {new Date(offer.monthly.endDate).toLocaleDateString()}
-                </p>
-              </div>
-            </div>
-          )}
+          <OfferDetailsGrid offer={offer} pickupDistanceLabel={pickupDistanceLabel} />
 
           {/* The driver only ever sees their own earning — the customer's
               gross fare and the platform commission are never sent to
@@ -353,11 +464,12 @@ const BookingOfferModal = () => {
                 ) : (
                   <>
                     <p className="text-base font-bold text-text">
-                      {'\u20B9'}{offer.fare?.driverEarning ?? 0}
+                      {'\u20B9'}{Number(offer.fare?.driverEarning ?? 0).toLocaleString('en-IN')}
+                      <span className="text-sm font-semibold text-emerald-700"> + tip</span>
                     </p>
                     {offer.fare?.offlineTip > 0 && (
                       <p className="text-[11px] text-emerald-800 mt-0.5">
-                        + {'\u20B9'}{offer.fare.offlineTip} extra offline tip
+                        + {'\u20B9'}{Number(offer.fare.offlineTip).toLocaleString('en-IN')} extra offline tip
                       </p>
                     )}
                   </>

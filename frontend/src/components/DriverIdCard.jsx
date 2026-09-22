@@ -13,6 +13,7 @@ const DriverIdCard = ({
   languages = [],
   phone,
   online,
+  onCallClick,
   onMessageClick,
 }) => {
   const callHref = phone ? `tel:+91${String(phone).replace(/\D/g, '')}` : null;
@@ -76,15 +77,22 @@ const DriverIdCard = ({
 
         {/* Action Buttons */}
         <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-3">
-          {callHref && (
-            <a
-              href={callHref}
-              onClick={(e) => e.stopPropagation()}
+          {(onCallClick || callHref) && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onCallClick) {
+                  onCallClick();
+                } else if (callHref) {
+                  window.location.href = callHref;
+                }
+              }}
               className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-emerald-50 text-emerald-700 rounded-xl font-bold text-sm hover:bg-emerald-100 transition-colors"
             >
               <Phone className="w-4 h-4" />
               Call Driver
-            </a>
+            </button>
           )}
           {onMessageClick && (
             <button

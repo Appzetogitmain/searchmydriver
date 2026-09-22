@@ -77,3 +77,46 @@ export const markAllAsRead = asyncHandler(async (req, res) => {
 
   return res.status(200).json(new ApiResponse(200, null, 'All notifications marked as read'));
 });
+
+export const deleteNotification = asyncHandler(async (req, res) => {
+  const recipient = getRecipientDetails(req);
+  if (!recipient) {
+    return res.status(401).json(new ApiResponse(401, null, 'Unauthorized'));
+  }
+
+  const notification = await Notification.findById(req.params.id);
+  if (!notification) {
+    return res.status(404).json(new ApiResponse(404, null, 'Notification not found'));
+  }
+
+  // Ensure they own it (unless they are admin)
+  if (recipient.recipientModel !== 'Admin') {
+    if (String(notification.recipientId) !== String(recipient.recipientId)) {
+      return res.status(403).json(new ApiResponse(403, null, 'Forbidden'));
+    }
+  }
+
+  await Notification.findByIdAndDelete(req.params.id);
+
+  return res.status(200).json(new ApiResponse(200, null, 'Notification deleted successfully'));
+});
+
+export const clearAllNotifications = asyncHandler(async (req, res) => {
+  const recipient = getRecipientDetails(req);
+  if (!recipient) {
+    return res.status(401).json(new ApiResponse(401, null, 'Unauthorized'));
+  }
+
+  const query = {};
+  if (recipient.recipientModel === 'Admin') {
+    query.recipientModel = 'Admin';
+  } else {
+    query.recipientId = recipient.recipientId;
+    query.recipientModel = recipient.recipientModel;
+  }
+
+  await Notification.deleteMany(query);
+
+  return res.status(200).json(new ApiResponse(200, null, 'All notifications cleared successfully'));
+});
+

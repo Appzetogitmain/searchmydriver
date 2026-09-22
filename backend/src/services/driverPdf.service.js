@@ -476,7 +476,7 @@ export async function buildDriverProfilePdf(driverId, { res } = {}) {
 
   sectionHeading(doc, 'Status & ratings');
   infoGrid(doc, [
-    { label: 'Onboarding step', value: `Step ${driver.onboardingStep || 1} of 6` },
+    { label: 'Onboarding step', value: `Step ${driver.onboardingStep || 1} of 5` },
     { label: 'Currently online', value: driver.isOnline ? 'Yes' : 'No' },
     { label: 'On a trip right now', value: driver.isOnTrip ? 'Yes' : 'No' },
     { label: 'Rating', value: driver.rating ? Number(driver.rating).toFixed(2) : '0.00' },

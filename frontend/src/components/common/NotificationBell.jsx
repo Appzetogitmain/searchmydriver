@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Check, Info, AlertTriangle, XCircle, CheckCircle2 } from 'lucide-react';
+import { Bell, Check, Info, AlertTriangle, XCircle, CheckCircle2, Trash2 } from 'lucide-react';
 import useNotificationStore from '../../store/useNotificationStore';
 import { formatTimeAgo } from '../../utils/datetime';
 import Modal from '../Modal';
@@ -31,6 +31,8 @@ export default function NotificationBell({ prefix = '/auth' }) {
     fetchNotifications,
     markAsRead,
     markAllAsRead,
+    deleteNotification,
+    clearAllNotifications,
     selectedNotification,
     setSelectedNotification,
   } = useNotificationStore();
@@ -60,6 +62,7 @@ export default function NotificationBell({ prefix = '/auth' }) {
       <button
         onClick={toggleOpen}
         className="relative p-2 rounded-full hover:bg-slate-100 transition-colors focus:outline-none"
+        aria-label="Notifications"
       >
         <Bell className="w-6 h-6 text-slate-600" />
         {unreadCount > 0 && (
@@ -72,18 +75,36 @@ export default function NotificationBell({ prefix = '/auth' }) {
       {isOpen && (
         <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-50">
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/50">
-            <h3 className="font-bold text-slate-800">Notifications</h3>
-            {unreadCount > 0 && (
-              <button
-                onClick={() => {
-                  markAllAsRead(prefix);
-                }}
-                className="text-xs font-medium text-primary hover:text-primary/80 flex items-center gap-1"
-              >
-                <Check className="w-3 h-3" />
-                Mark all as read
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-slate-800 text-sm">Notifications</h3>
+              {unreadCount > 0 && (
+                <span className="text-[10px] font-semibold text-rose-600 bg-rose-100/70 px-1.5 py-0.5 rounded-full">
+                  {unreadCount}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {unreadCount > 0 && (
+                <button
+                  onClick={() => markAllAsRead(prefix)}
+                  className="text-xs font-medium text-slate-600 hover:text-primary transition-colors flex items-center gap-1"
+                  title="Mark all as read"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Mark all read</span>
+                </button>
+              )}
+              {notifications.length > 0 && (
+                <button
+                  onClick={() => clearAllNotifications(prefix)}
+                  className="text-xs font-medium text-slate-500 hover:text-rose-600 transition-colors flex items-center gap-1"
+                  title="Clear all notifications"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Clear all</span>
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="max-h-[60vh] overflow-y-auto overscroll-contain">
@@ -94,39 +115,55 @@ export default function NotificationBell({ prefix = '/auth' }) {
               </div>
             ) : (
               <div className="divide-y divide-slate-100">
-                {notifications.map((n) => (
-                  <button
-                    key={n._id}
-                    onClick={() => {
-                      if (!n.isRead) markAsRead(n._id, prefix);
-                      setIsOpen(false);
-                      setSelectedNotification(n);
-                    }}
-                    className={`w-full text-left p-4 transition-colors hover:bg-slate-50 flex items-start gap-3 ${
-                      n.isRead ? 'opacity-70' : BG_COLORS[n.severity] || BG_COLORS.info
-                    }`}
-                  >
-                    <div className="shrink-0 mt-0.5">
-                      {ICONS[n.severity] || ICONS.info}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className={`text-sm ${n.isRead ? 'text-slate-600' : 'font-semibold text-slate-900'}`}>
-                        {n.title}
-                      </p>
-                      {n.body && (
-                        <p className={`text-xs mt-1 ${n.isRead ? 'text-slate-500' : 'text-slate-600'}`}>
-                          {n.body}
+                {notifications.map((n) => {
+                  const notifId = n._id || n.id;
+                  return (
+                    <div
+                      key={notifId}
+                      onClick={() => {
+                        if (!n.isRead) markAsRead(notifId, prefix);
+                        setIsOpen(false);
+                        setSelectedNotification(n);
+                      }}
+                      className={`group relative w-full text-left p-3.5 transition-colors hover:bg-slate-50 flex items-start gap-3 cursor-pointer ${
+                        n.isRead ? 'opacity-75' : BG_COLORS[n.severity] || BG_COLORS.info
+                      }`}
+                    >
+                      <div className="shrink-0 mt-0.5">
+                        {ICONS[n.severity] || ICONS.info}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className={`text-xs sm:text-sm ${n.isRead ? 'text-slate-700' : 'font-semibold text-slate-900'}`}>
+                          {n.title}
                         </p>
-                      )}
-                      <p className="text-[10px] text-slate-400 mt-2">
-                        {formatTimeAgo(n.createdAt)}
-                      </p>
+                        {n.body && (
+                          <p className={`text-xs mt-0.5 line-clamp-2 ${n.isRead ? 'text-slate-500' : 'text-slate-600'}`}>
+                            {n.body}
+                          </p>
+                        )}
+                        <p className="text-[10px] text-slate-400 mt-1.5">
+                          {formatTimeAgo(n.createdAt)}
+                        </p>
+                      </div>
+                      <div className="shrink-0 flex items-center gap-1.5 mt-0.5">
+                        {!n.isRead && (
+                          <div className="w-2 h-2 rounded-full bg-primary" />
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteNotification(notifId, prefix);
+                          }}
+                          className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors opacity-70 group-hover:opacity-100"
+                          title="Delete notification"
+                          aria-label="Delete notification"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
-                    {!n.isRead && (
-                      <div className="shrink-0 w-2 h-2 rounded-full bg-primary mt-1.5" />
-                    )}
-                  </button>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -150,7 +187,7 @@ export default function NotificationBell({ prefix = '/auth' }) {
                   {selectedNotification.title}
                 </h3>
                 {selectedNotification.body && (
-                  <p className="text-slate-600 leading-relaxed mb-4 whitespace-pre-wrap">
+                  <p className="text-slate-600 leading-relaxed mb-4 whitespace-pre-wrap text-sm">
                     {selectedNotification.body}
                   </p>
                 )}
@@ -158,17 +195,30 @@ export default function NotificationBell({ prefix = '/auth' }) {
                   {formatTimeAgo(selectedNotification.createdAt)}
                 </p>
 
-                {selectedNotification.data?.url && (
+                <div className="flex items-center gap-3 pt-4 border-t border-slate-100">
+                  {selectedNotification.data?.url && (
+                    <button
+                      onClick={() => {
+                        navigate(selectedNotification.data.url);
+                        setSelectedNotification(null);
+                      }}
+                      className="flex-1 py-2 px-4 bg-primary text-slate-900 font-semibold rounded-xl hover:bg-primary/90 transition-colors text-center text-sm"
+                    >
+                      View Details
+                    </button>
+                  )}
                   <button
                     onClick={() => {
-                      navigate(selectedNotification.data.url);
+                      const id = selectedNotification._id || selectedNotification.id;
+                      deleteNotification(id, prefix);
                       setSelectedNotification(null);
                     }}
-                    className="px-6 py-2 bg-primary text-slate-900 font-semibold rounded-xl hover:bg-primary/90 transition-colors w-full sm:w-auto"
+                    className="py-2 px-4 border border-rose-200 text-rose-600 font-medium rounded-xl hover:bg-rose-50 transition-colors text-sm flex items-center justify-center gap-1.5 ml-auto"
                   >
-                    View Details
+                    <Trash2 className="w-4 h-4" />
+                    Delete
                   </button>
-                )}
+                </div>
               </div>
             </div>
           </div>
@@ -177,3 +227,4 @@ export default function NotificationBell({ prefix = '/auth' }) {
     </div>
   );
 }
+
