@@ -281,19 +281,26 @@ const DriverHomePage = () => {
           </div>
         </Card>
 
-        {/* Suppressed while a dispatch block is active — promising "ready to
-            receive trips" directly above the card explaining why they aren't
-            is the exact contradiction that made this hard to diagnose. */}
+        {/* Direct link to Trip Requests Hub */}
         {isOnline && !dispatchBlock && (
-          <Card className="animate-fade-in-up border-l-4 border-l-success">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-success-light rounded-full flex items-center justify-center">
-                <MapPin className="w-5 h-5 text-success" />
+          <Card
+            hoverable
+            onClick={() => navigate('/driver/trips?tab=requests')}
+            className="animate-fade-in-up border-l-4 border-l-success cursor-pointer"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-success-light rounded-full flex items-center justify-center">
+                  <Car className="w-5 h-5 text-success" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-text">Available Trip Requests</p>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    View & accept In-City, Outstation & Scheduled trips
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-medium text-text">You are online and ready to receive trips</p>
-                <p className="text-xs text-text-muted mt-0.5">Incoming requests will appear here</p>
-              </div>
+              <ChevronRight className="w-5 h-5 text-text-muted shrink-0" />
             </div>
           </Card>
         )}

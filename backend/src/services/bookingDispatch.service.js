@@ -496,6 +496,11 @@ export async function dispatchNextDriverService(bookingId) {
       ? await resolveOutstationWalletFloorService()
       : null;
 
+  const isCashBooking =
+    booking.paymentMethod === 'cash' ||
+    booking.paymentMode === PAYMENT_MODE.POST_RIDE ||
+    (booking.serviceType === SERVICE_TYPES.MONTHLY && booking.paymentMode === 'cash');
+
   // Broadcast to every online driver in the matching city/zone at once.
   // The first to accept wins; everyone else gets BOOKING_OFFER_WITHDRAWN.
   const bookingCity = (booking.city || booking.pickup?.city || '').trim();
@@ -507,7 +512,7 @@ export async function dispatchNextDriverService(bookingId) {
     city: bookingCity,
     zoneIds: booking.zoneIds || [],
     requireAvailableForMonthlyRide: false,
-    requirePositiveWalletBalance: booking.paymentMethod === 'cash',
+    requirePositiveWalletBalance: isCashBooking,
     minWalletBalance,
     includeOnTrip: booking.serviceType === SERVICE_TYPES.MONTHLY,
   });
@@ -519,7 +524,7 @@ export async function dispatchNextDriverService(bookingId) {
     ? Math.max(...drivers.map((d) => d.distanceMeters || 0))
     : maxMeters;
 
-  console.log('[dispatch] broadcasting booking', String(booking._id), 'to', drivers.length, 'online drivers', { carTypeIds, cash: booking.paymentMethod === 'cash', minWalletBalance });
+  console.log('[dispatch] broadcasting booking', String(booking._id), 'to', drivers.length, 'online drivers', { carTypeIds, cash: isCashBooking, minWalletBalance });
 
   if (!drivers.length) {
     // A zero-driver wave used to be indistinguishable from "nobody is
@@ -535,7 +540,7 @@ export async function dispatchNextDriverService(bookingId) {
       carTypeIds,
       excludeDriverIds,
       minWalletBalance,
-      requirePositiveWalletBalance: booking.paymentMethod === 'cash',
+      requirePositiveWalletBalance: isCashBooking,
     });
 
     // If we've exhausted the radius but 30 minutes haven't passed,
@@ -733,15 +738,31 @@ export async function acceptBookingService(bookingId, driverId) {
     return { ok: false, reason: 'no_longer_searching' };
   }
   const pending = (booking.dispatch?.pendingOfferIds || []).map(String);
-  if (!pending.includes(String(driverId))) {
-    return { ok: false, reason: 'not_in_active_wave' };
-  }
+  const inWave = pending.includes(String(driverId));
 
-  const driver = await Driver.findById(driverId).select('city homeZone approvalStatus').lean();
+
+  const driver = await Driver.findById(driverId)
+    .select('city homeZone approvalStatus wallet.balance')
+    .lean();
   if (!driver) return { ok: false, reason: 'driver_not_found' };
   if (driver.approvalStatus === 'suspended') {
     return { ok: false, reason: 'driver_suspended' };
   }
+
+  const isCash =
+    booking.paymentMethod === 'cash' ||
+    booking.paymentMode === PAYMENT_MODE.POST_RIDE ||
+    (booking.serviceType === SERVICE_TYPES.MONTHLY && booking.paymentMode === 'cash');
+
+  if (isCash && Number(driver.wallet?.balance || 0) < 0) {
+    return {
+      ok: false,
+      reason: 'negative_wallet_cash_blocked',
+      message:
+        'Cannot accept cash bookings while your wallet balance is negative. Please recharge your wallet.',
+    };
+  }
+
   const bookingCity = (booking.city || booking.pickup?.city || '').trim().toLowerCase();
   if (bookingCity && driver.city) {
     const isCityMatch = driver.city.trim().toLowerCase() === bookingCity;
@@ -789,7 +810,6 @@ export async function acceptBookingService(bookingId, driverId) {
   // is cleared so the UI doesn't keep showing the old popup.
   const alreadyPaid =
     booking.paymentStatus === BOOKING_PAYMENT_STATUS.PAID;
-  const isCash = booking.paymentMethod === 'cash' || booking.paymentMode === PAYMENT_MODE.POST_RIDE;
 
   if (alreadyPaid || isCash) {
     booking.status = BOOKING_STATUS.DRIVER_ASSIGNED;

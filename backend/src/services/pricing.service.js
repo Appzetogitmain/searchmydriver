@@ -881,6 +881,8 @@ export const estimateFareService = async ({
       throw new ApiError(400, 'Outstation: days must be at least 1');
     }
 
+    const isNight = isNightRideAt(scheduledAt || new Date(), pricing.nightCharge);
+
     const breakdown = calculateOutstationFare({
       pricing,
       days,

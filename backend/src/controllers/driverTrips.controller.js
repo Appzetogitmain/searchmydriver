@@ -37,3 +37,14 @@ export const getDriverPendingOffers = asyncHandler(async (req, res) => {
   const offers = await getDriverPendingOffersService(req.driver._id);
   return res.status(200).json(new ApiResponse(200, offers, 'Pending driver offers fetched'));
 });
+
+export const getDriverEligibleTripRequests = asyncHandler(async (req, res) => {
+  const { getDriverEligibleTripRequestsService } = await import(
+    '../services/driverTripRequests.service.js'
+  );
+  const requests = await getDriverEligibleTripRequestsService(req.driver._id, req.query);
+  return res
+    .status(200)
+    .json(new ApiResponse(200, requests, 'Eligible driver trip requests fetched'));
+});
+

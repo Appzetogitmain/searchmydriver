@@ -44,28 +44,25 @@ export const useDriverEarningsStore = createQueryStore(async () => {
 });
 
 const EMPTY_LEDGER_TOTALS = Object.freeze({
-  tripEarnings: 0,
-  cancellationEarnings: 0,
-  tripCount: 0,
-  cancellationCount: 0,
-  total: 0,
+  totalCredits: 0,
+  totalDebits: 0,
+  totalAutoDeductions: 0,
+  totalPenalties: 0,
+  creditCount: 0,
+  debitCount: 0,
+  autoDeductionCount: 0,
+  penaltyCount: 0,
 });
 
 /**
- * Paginated ledger of every earning the driver has ever received —
- * trip payouts + cancellation shares. Owns its own pagination state
- * so the Earnings page can render an infinite-scroll "Load more" feed.
- *
- *   fetch({ page, limit, append }) — same signature as the user wallet
- *                                    store. `append: true` extends the
- *                                    list (Load more); otherwise the
- *                                    current page is replaced.
- *   refresh()                       — re-fetch page 1 (e.g. after a
- *                                    trip completes/cancellation).
+ * Paginated ledger of every financial transaction that moved the driver's wallet —
+ * Credits (trips, topups, bonuses), Auto deductions (cash settlements, platform cuts),
+ * Penalties (no kit, late cancel), and Debits (withdrawals).
  */
 export const useDriverEarningsLedgerStore = create((set, get) => ({
   rows: [],
   totals: { ...EMPTY_LEDGER_TOTALS },
+  category: 'all',
   page: 1,
   limit: 20,
   total: 0,
@@ -75,17 +72,20 @@ export const useDriverEarningsLedgerStore = create((set, get) => ({
   fetched: false,
   error: null,
 
-  async fetch({ page = 1, limit = 20, append = false } = {}) {
-    set({ loading: true, error: null });
+  async fetch({ page = 1, limit = 20, category = 'all', append = false } = {}) {
+    set({ loading: true, error: null, category });
     try {
-      const res = await api.get('/driver/earnings/ledger', {
-        params: { page, limit },
-      });
+      const params = { page, limit, sort: 'newest' };
+      if (category && category !== 'all') {
+        params.category = category;
+      }
+      const res = await api.get('/driver/wallet/transactions', { params });
       const data = res?.data?.data || {};
-      const next = Array.isArray(data.rows) ? data.rows : [];
+      const next = Array.isArray(data.transactions) ? data.transactions : [];
       set((state) => ({
         rows: append ? [...state.rows, ...next] : next,
         totals: data.totals || EMPTY_LEDGER_TOTALS,
+        category,
         page: Number(data.page) || page,
         limit: Number(data.limit) || limit,
         total: Number(data.total) || 0,
@@ -101,20 +101,25 @@ export const useDriverEarningsLedgerStore = create((set, get) => ({
       const message =
         err?.response?.data?.message ||
         err?.message ||
-        'Failed to load earnings';
+        'Failed to load transactions';
       set({ loading: false, error: message });
       throw err;
     }
   },
 
+  setCategory(category) {
+    return get().fetch({ page: 1, limit: get().limit, category, append: false });
+  },
+
   refresh() {
-    return get().fetch({ page: 1, limit: get().limit, append: false });
+    return get().fetch({ page: 1, limit: get().limit, category: get().category, append: false });
   },
 
   reset() {
     set({
       rows: [],
       totals: { ...EMPTY_LEDGER_TOTALS },
+      category: 'all',
       page: 1,
       limit: 20,
       total: 0,

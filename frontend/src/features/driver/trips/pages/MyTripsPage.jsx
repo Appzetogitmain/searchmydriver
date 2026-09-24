@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Loader2, AlertCircle, Inbox } from 'lucide-react';
+import { Loader2, AlertCircle, Inbox, RefreshCw, Car, Sparkles } from 'lucide-react';
 import Card from '../../../../components/Card';
 import Button from '../../../../components/Button';
 import { useCachedQuery } from '../../../../hooks/useCachedQuery';
 import { mergeLiveBookingIntoList } from '../../../../utils/mergeLiveBooking';
 import { buildCacheKey } from '../../../../store/lib/buildCacheKey';
 import { useDriverTripsListStore } from '../../../../store/driver/useDriverTripsStore';
+import {
+  useDriverEligibleRequestsQueryStore,
+  useDriverTripRequestsStore,
+} from '../../../../store/driver/useDriverTripRequestsStore';
 import useDriverActiveTripStore from '../../../../store/driver/useDriverActiveTripStore';
-import useDriverIncomingOfferStore from '../../../../store/driver/useDriverIncomingOfferStore';
 import { useSocketEvent } from '../../../../hooks/useSocket';
 import { S2C_EVENTS } from '../../../../constants/socketEvents';
 import {
@@ -17,92 +20,115 @@ import {
 } from '../../../../constants/bookingStatus';
 import DriverScreenShell from '../../components/DriverScreenShell';
 import DriverTripCard from '../components/DriverTripCard';
+import DriverTripRequestCard from '../components/DriverTripRequestCard';
+import api from '../../../../utils/api';
 
-const TABS = [
-  { id: 'requests', label: 'Requests' },
-  { id: 'all', label: 'All' },
+const MAIN_TABS = [
+  { id: 'requests', label: 'Trip Requests' },
+  { id: 'all', label: 'All Trips' },
   { id: 'ongoing', label: 'Ongoing' },
   { id: 'completed', label: 'Completed' },
   { id: 'cancelled', label: 'Cancelled' },
 ];
 
-const PAGE_LIMIT = 15;
+const REQUEST_SUB_FILTERS = [
+  { id: 'all', label: 'All Requests' },
+  { id: 'incity', label: 'In-City' },
+  { id: 'outstation', label: 'Outstation' },
+  { id: 'current', label: 'Current' },
+  { id: 'scheduled', label: 'Scheduled' },
+];
 
-/**
- * Driver trip history.
- *
- * Sticky dark header (title + tab bar) + scrollable list body.
- * Reuses `DriverTripCard` (shared with the earnings page's "recent
- * payouts" feed) so any future fields added there land here for free.
- */
-const VALID_TABS = new Set(TABS.map((t) => t.id));
+const PAGE_LIMIT = 15;
+const VALID_TABS = new Set(MAIN_TABS.map((t) => t.id));
 
 const MyTripsPage = () => {
   const navigate = useNavigate();
-  // Deep-link tab via `?tab=ongoing` so the driver home banner (and
-  // any future surface) can drop the driver straight into the right
-  // bucket. We seed the initial tab from the URL once on mount and
-  // then keep them in lockstep through `handleTabChange` — avoiding a
-  // URL→state effect that would trip React's "no setState in effect"
-  // rule.
   const [searchParams, setSearchParams] = useSearchParams();
+
   const [tab, setTab] = useState(() => {
     const initial = searchParams.get('tab');
-    return initial && VALID_TABS.has(initial) ? initial : 'all';
+    return initial && VALID_TABS.has(initial) ? initial : 'requests';
   });
+
+  const [requestFilter, setRequestFilter] = useState('all');
   const [page, setPage] = useState(1);
+  const [acceptingId, setAcceptingId] = useState(null);
+  const [actionError, setActionError] = useState(null);
+
+  const liveTakenBookings = useDriverTripRequestsStore((s) => s.liveTakenBookings);
+  const markBookingTaken = useDriverTripRequestsStore((s) => s.markBookingTaken);
 
   const handleTabChange = useCallback(
     (next) => {
       setTab(next);
       setPage(1);
+      setActionError(null);
       const params = new URLSearchParams(searchParams);
-      if (next === 'all') params.delete('tab');
+      if (next === 'requests') params.delete('tab');
       else params.set('tab', next);
       setSearchParams(params, { replace: true });
     },
     [searchParams, setSearchParams],
   );
 
-  const params = useMemo(
+  // Trips History Query
+  const tripsParams = useMemo(
     () => ({ tab, page, limit: PAGE_LIMIT }),
     [tab, page],
   );
-  const cacheKey = buildCacheKey('driver-trips-list', params);
+  const tripsCacheKey = buildCacheKey('driver-trips-list', tripsParams);
 
-  const { data, loading, error, refetch } = useCachedQuery(
-    useDriverTripsListStore,
-    cacheKey,
-    params,
+  const {
+    data: tripsData,
+    loading: tripsLoading,
+    error: tripsError,
+    refetch: refetchTrips,
+  } = useCachedQuery(useDriverTripsListStore, tripsCacheKey, tripsParams);
+
+  // Eligible Trip Requests Query
+  const requestsParams = useMemo(
+    () => ({ category: requestFilter }),
+    [requestFilter],
+  );
+  const requestsCacheKey = buildCacheKey('driver-eligible-requests', requestsParams);
+
+  const {
+    data: requestsData,
+    loading: requestsLoading,
+    error: requestsError,
+    refetch: refetchRequests,
+  } = useCachedQuery(
+    useDriverEligibleRequestsQueryStore,
+    requestsCacheKey,
+    requestsParams,
   );
 
-  // Driver-side active-trip handle. Mirrors the user-side flow:
-  // hydrate on mount + apply socket patches so the in-flight row
-  // phase is always live (driver_assigned → en_route → arrived →
-  // started …).
+  // Active Trip store
   const activeBooking = useDriverActiveTripStore((s) => s.booking);
   const fetchActive = useDriverActiveTripStore((s) => s.fetchActive);
   const applyActiveUpdate = useDriverActiveTripStore((s) => s.applyUpdate);
   const setActiveBooking = useDriverActiveTripStore((s) => s.setBooking);
   const clearActiveBooking = useDriverActiveTripStore((s) => s.clear);
 
-  const pendingOffers = useDriverIncomingOfferStore((s) => s.offers);
-
   useEffect(() => {
     fetchActive().catch(() => {});
-    refetch?.().catch(() => {});
+    if (tab === 'requests') {
+      refetchRequests?.().catch(() => {});
+    } else {
+      refetchTrips?.().catch(() => {});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [tab]);
 
-  // Keep both sources in lockstep over the socket so the list rows
-  // reflect every dispatcher / trip-transition event while the driver
-  // sits on this page. We mirror `refetch` into a ref so the
-  // socket-event callback below always sees the latest reference
-  // without having to re-subscribe on every render.
-  const refetchRef = useRef(refetch);
+  // Socket updates
+  const refetchTripsRef = useRef(refetchTrips);
+  const refetchRequestsRef = useRef(refetchRequests);
   useEffect(() => {
-    refetchRef.current = refetch;
-  }, [refetch]);
+    refetchTripsRef.current = refetchTrips;
+    refetchRequestsRef.current = refetchRequests;
+  }, [refetchTrips, refetchRequests]);
+
   useSocketEvent(
     S2C_EVENTS.BOOKING_UPDATED,
     useCallback(
@@ -115,143 +141,331 @@ const MyTripsPage = () => {
           payload.status === BOOKING_STATUS.NO_DRIVERS_FOUND
         ) {
           clearActiveBooking();
+        } else if (
+          payload.status === BOOKING_STATUS.DRIVER_ASSIGNED ||
+          payload.status === BOOKING_STATUS.AWAITING_PAYMENT
+        ) {
+          if (payload.bookingId) {
+            markBookingTaken(payload.bookingId);
+          }
         }
-        refetchRef.current?.().catch(() => {});
+        refetchTripsRef.current?.().catch(() => {});
+        refetchRequestsRef.current?.().catch(() => {});
       },
-      [applyActiveUpdate, clearActiveBooking],
+      [applyActiveUpdate, clearActiveBooking, markBookingTaken],
     ),
   );
 
-  const trips = data?.data || [];
-  const pagination = data?.pagination || { total: 0, page: 1, pages: 1 };
+  useSocketEvent(
+    S2C_EVENTS.BOOKING_OFFERED,
+    useCallback(() => {
+      refetchRequestsRef.current?.().catch(() => {});
+    }, []),
+  );
 
-  // Merge the live (socket-updated) booking into the list so the row
-  // for an in-flight trip always reflects the freshest lifecycle
-  // phase — same idea as `/user/activity`. The store can be ahead of
-  // the list by a tick when a transition socket lands.
+  useSocketEvent(
+    S2C_EVENTS.BOOKING_OFFER_WITHDRAWN,
+    useCallback(
+      (payload) => {
+        if (payload?.bookingId) {
+          markBookingTaken(payload.bookingId);
+        }
+        refetchRequestsRef.current?.().catch(() => {});
+      },
+      [markBookingTaken],
+    ),
+  );
+
+  // Accept Booking Action from Card
+  const handleAcceptRequest = async (reqItem) => {
+    if (!reqItem?.bookingId) return;
+    setAcceptingId(reqItem.bookingId);
+    setActionError(null);
+
+    try {
+      const res = await api.post(`/driver/bookings/${reqItem.bookingId}/accept`);
+      const booking = res?.data?.data?.booking || res?.data?.data;
+      
+      // Invalidate queries
+      useDriverEligibleRequestsQueryStore.getState().invalidate();
+      useDriverTripsListStore.getState().invalidate();
+
+      if (booking?._id || reqItem.bookingId) {
+        const targetId = booking?._id || reqItem.bookingId;
+        setActiveBooking(booking);
+        navigate(`/driver/trip/${targetId}`);
+      }
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Could not accept booking. It may have been claimed by another driver.';
+      setActionError(msg);
+      markBookingTaken(reqItem.bookingId);
+      refetchRequestsRef.current?.().catch(() => {});
+    } finally {
+      setAcceptingId(null);
+    }
+  };
+
+  const handleDeclineRequest = (reqItem) => {
+    // Optionally mark declined locally
+  };
+
+  const trips = tripsData?.data || [];
+  const pagination = tripsData?.pagination || { total: 0, page: 1, pages: 1 };
   const visibleTrips = useMemo(
     () => mergeLiveBookingIntoList(activeBooking, trips),
     [activeBooking, trips],
   );
 
-  const handleSelect = (trip) => {
-    if (!trip) return;
+  // Map requests and inject live taken status
+  const rawRequests = Array.isArray(requestsData) ? requestsData : [];
+  const eligibleRequests = useMemo(() => {
+    return rawRequests.map((item) => {
+      const isLiveTaken = liveTakenBookings.has(String(item.bookingId));
+      if (isLiveTaken) {
+        return { ...item, isTaken: true, takenByOther: true, canAccept: false };
+      }
+      return item;
+    });
+  }, [rawRequests, liveTakenBookings]);
+
+  // Request Counts for Filter Badges
+  const filterCounts = useMemo(() => {
+    const counts = { all: rawRequests.length, incity: 0, outstation: 0, current: 0, scheduled: 0 };
+    rawRequests.forEach((r) => {
+      if (r.serviceType === 'hourly') counts.incity += 1;
+      if (r.serviceType === 'outstation') counts.outstation += 1;
+      if (r.category === 'current' || (!r.isTaken && r.status === BOOKING_STATUS.SEARCHING)) counts.current += 1;
+      if (r.bookingType === 'scheduled' || r.category === 'scheduled') counts.scheduled += 1;
+    });
+    return counts;
+  }, [rawRequests]);
+
+  const handleSelectHistoryTrip = (trip) => {
+    if (!trip?._id) return;
     if (ACTIVE_BOOKING_STATUSES.includes(trip.status)) {
       setActiveBooking(trip);
-      navigate(`/driver/trip/${trip._id}`);
     }
-    // Completed/cancelled trips don't have a dedicated details page yet —
-    // wire one up by routing to `/driver/trip/:id` once it learns to render
-    // archived bookings, then this branch will resolve naturally.
+    navigate(`/driver/trip/${trip._id}`);
   };
 
-  const totalTrips = pagination.total || 0;
+  const isRequestsTab = tab === 'requests';
+  const totalHistoryTrips = pagination.total || 0;
 
   return (
     <DriverScreenShell
       header={
-        <header className="bg-dark px-4 pt-4 pb-4 rounded-b-3xl">
-          <div className="flex items-baseline justify-between mb-3">
-            <h1 className="text-lg font-bold text-white">My Trips</h1>
-            {totalTrips > 0 && (
+        <header className="bg-dark px-4 pt-4 pb-4 rounded-b-3xl shadow-lg">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-bold text-white">
+                {isRequestsTab ? 'Trip Requests' : 'My Trips'}
+              </h1>
+              {isRequestsTab && eligibleRequests.length > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500 text-white animate-pulse">
+                  {eligibleRequests.length} Available
+                </span>
+              )}
+            </div>
+
+            {isRequestsTab && (
+              <button
+                type="button"
+                onClick={() => refetchRequests()}
+                disabled={requestsLoading}
+                className="p-1.5 rounded-full bg-white/10 text-white/80 hover:bg-white/20 active:scale-95 transition disabled:opacity-40"
+                title="Refresh requests"
+              >
+                <RefreshCw className={`w-4 h-4 ${requestsLoading ? 'animate-spin' : ''}`} />
+              </button>
+            )}
+
+            {!isRequestsTab && totalHistoryTrips > 0 && (
               <span className="text-[11px] text-white/60">
-                {totalTrips} trip{totalTrips === 1 ? '' : 's'}
+                {totalHistoryTrips} trip{totalHistoryTrips === 1 ? '' : 's'}
               </span>
             )}
           </div>
-          <TabBar tabs={TABS} active={tab} onChange={handleTabChange} />
+
+          {/* Main Tabs */}
+          <TabBar tabs={MAIN_TABS} active={tab} onChange={handleTabChange} />
+
+          {/* Sub-Filters Pill Bar (Only on Trip Requests Tab) */}
+          {isRequestsTab && (
+            <div className="flex gap-2 overflow-x-auto pt-3 pb-1 -mx-1 px-1 scrollbar-hide border-t border-white/10 mt-3">
+              {REQUEST_SUB_FILTERS.map((f) => {
+                const isActive = requestFilter === f.id;
+                const count = filterCounts[f.id] || 0;
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setRequestFilter(f.id)}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
+                      isActive
+                        ? 'bg-amber-400 text-slate-950 shadow-sm font-bold'
+                        : 'bg-white/10 text-white/80 hover:bg-white/20'
+                    }`}
+                  >
+                    <span>{f.label}</span>
+                    {count > 0 && (
+                      <span
+                        className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                          isActive
+                            ? 'bg-slate-900 text-amber-300 font-bold'
+                            : 'bg-white/20 text-white'
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </header>
       }
-      bodyClassName="p-4 -mt-2 pb-8 space-y-3"
+      bodyClassName="p-4 -mt-2 pb-8 space-y-3.5"
     >
-      {loading && !data && (
-        <Card className="flex items-center justify-center py-10">
-          <Loader2 className="w-5 h-5 animate-spin text-text-muted" />
-        </Card>
-      )}
-
-      {error && (
-        <Card className="border-l-4 border-l-danger">
+      {/* Error message banner */}
+      {actionError && (
+        <Card className="border-l-4 border-l-danger bg-rose-50/90 animate-shake">
           <div className="flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-danger shrink-0 mt-0.5" />
             <div className="flex-1">
-              <p className="text-sm font-medium text-text">Couldn't load trips</p>
-              <p className="text-xs text-text-muted mt-0.5">{error}</p>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="mt-2"
-                onClick={() => refetch()}
-              >
-                Retry
-              </Button>
+              <p className="text-sm font-bold text-rose-900">Request Error</p>
+              <p className="text-xs text-rose-700 mt-0.5">{actionError}</p>
             </div>
           </div>
         </Card>
       )}
 
-      {!loading && !error && tab !== 'requests' && trips.length === 0 && (
-        <Card className="flex flex-col items-center justify-center py-14 text-center">
-          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
-            <Inbox className="w-6 h-6 text-primary" />
-          </div>
-          <p className="text-sm font-semibold text-text">No trips here yet</p>
-          <p className="text-xs text-text-muted mt-1 max-w-[240px]">
-            Once you accept a booking, it'll show up in this list with its full history.
-          </p>
-        </Card>
-      )}
+      {/* ─────────────────── REQUESTS TAB VIEW ─────────────────── */}
+      {isRequestsTab ? (
+        <>
+          {requestsLoading && !requestsData && (
+            <Card className="flex flex-col items-center justify-center py-12 text-center">
+              <Loader2 className="w-6 h-6 animate-spin text-primary mb-2" />
+              <p className="text-xs text-text-muted">Checking available trip requests in your area...</p>
+            </Card>
+          )}
 
-      {tab === 'requests' && pendingOffers.length === 0 && (
-        <Card className="flex flex-col items-center justify-center py-14 text-center">
-          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
-            <Inbox className="w-6 h-6 text-primary" />
-          </div>
-          <p className="text-sm font-semibold text-text">No incoming requests</p>
-          <p className="text-xs text-text-muted mt-1 max-w-[240px]">
-            New ride requests will appear here when you're online.
-          </p>
-        </Card>
-      )}
+          {requestsError && (
+            <Card className="border-l-4 border-l-danger">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-danger shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-text">Couldn't load trip requests</p>
+                  <p className="text-xs text-text-muted mt-0.5">{requestsError}</p>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="mt-2"
+                    onClick={() => refetchRequests()}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
 
-      {tab === 'requests' ? (
-        pendingOffers.map((offer, idx) => (
-          <DriverTripCard
-            key={offer.bookingId}
-            trip={{ 
-              ...offer, 
-              _id: offer.bookingId, 
-              status: BOOKING_STATUS.SEARCHING,
-              fareSnapshot: { driverEarning: offer.fare?.driverEarning }
-            }}
-            className="animate-fade-in-up"
-            style={{ animationDelay: `${idx * 0.04}s` }}
-          />
-        ))
+          {!requestsLoading && !requestsError && eligibleRequests.length === 0 && (
+            <Card className="flex flex-col items-center justify-center py-14 text-center">
+              <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+                <Car className="w-7 h-7 text-primary" />
+              </div>
+              <p className="text-base font-bold text-text">No Trip Requests Available</p>
+              <p className="text-xs text-text-muted mt-1.5 max-w-[280px] leading-relaxed">
+                When customers search for drivers for In-City, Outstation, or Scheduled trips in your area, they will appear here instantly.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                onClick={() => refetchRequests()}
+              >
+                Check for New Requests
+              </Button>
+            </Card>
+          )}
+
+          {eligibleRequests.map((reqItem, idx) => (
+            <DriverTripRequestCard
+              key={reqItem.bookingId || idx}
+              request={reqItem}
+              onAccept={handleAcceptRequest}
+              onDecline={handleDeclineRequest}
+              isAccepting={acceptingId === reqItem.bookingId}
+              className="animate-fade-in-up"
+              style={{ animationDelay: `${idx * 0.04}s` }}
+            />
+          ))}
+        </>
       ) : (
-        visibleTrips.map((trip, idx) => (
-          <DriverTripCard
-            key={trip._id}
-            trip={trip}
-            onClick={
-              ACTIVE_BOOKING_STATUSES.includes(trip.status)
-                ? () => handleSelect(trip)
-                : undefined
-            }
-            className="animate-fade-in-up"
-            style={{ animationDelay: `${idx * 0.04}s` }}
-          />
-        ))
-      )}
+        /* ─────────────────── HISTORY TABS VIEW ─────────────────── */
+        <>
+          {tripsLoading && !tripsData && (
+            <Card className="flex items-center justify-center py-10">
+              <Loader2 className="w-5 h-5 animate-spin text-text-muted" />
+            </Card>
+          )}
 
-      {pagination.pages > 1 && (
-        <Pagination
-          page={pagination.page}
-          pages={pagination.pages}
-          total={pagination.total}
-          onChange={setPage}
-          disabled={loading}
-        />
+          {tripsError && (
+            <Card className="border-l-4 border-l-danger">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-danger shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-text">Couldn't load trips</p>
+                  <p className="text-xs text-text-muted mt-0.5">{tripsError}</p>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="mt-2"
+                    onClick={() => refetchTrips()}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {!tripsLoading && !tripsError && trips.length === 0 && (
+            <Card className="flex flex-col items-center justify-center py-14 text-center">
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+                <Inbox className="w-6 h-6 text-primary" />
+              </div>
+              <p className="text-sm font-semibold text-text">No trips found</p>
+              <p className="text-xs text-text-muted mt-1 max-w-[240px]">
+                Trips you accept and complete will appear in this list with their full history.
+              </p>
+            </Card>
+          )}
+
+          {visibleTrips.map((trip, idx) => (
+            <DriverTripCard
+              key={trip._id}
+              trip={trip}
+              onClick={() => handleSelectHistoryTrip(trip)}
+              className="animate-fade-in-up"
+              style={{ animationDelay: `${idx * 0.04}s` }}
+            />
+          ))}
+
+          {pagination.pages > 1 && (
+            <Pagination
+              page={pagination.page}
+              pages={pagination.pages}
+              total={pagination.total}
+              onChange={setPage}
+              disabled={tripsLoading}
+            />
+          )}
+        </>
       )}
     </DriverScreenShell>
   );

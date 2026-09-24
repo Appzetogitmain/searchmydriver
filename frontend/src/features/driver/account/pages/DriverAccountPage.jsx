@@ -38,6 +38,9 @@ import { useCachedQuery } from '../../../../hooks/useCachedQuery';
 import { buildCacheKey } from '../../../../store/lib/buildCacheKey';
 import { formatCurrency, formatPhone, formatDate } from '../../../../utils/formatters';
 import DriverScreenShell from '../../components/DriverScreenShell';
+import DriverIdentityCard from '../components/DriverIdentityCard';
+import DriverUploadedDocumentsList from '../components/DriverUploadedDocumentsList';
+import DriverBankDetailsCard from '../components/DriverBankDetailsCard';
 
 /* ------------------------------------------------------------------ */
 /* Menu config                                                         */
@@ -153,63 +156,7 @@ const DriverAccountPage = () => {
     label: '—',
   };
 
-  const personalRows = useMemo(
-    () =>
-      [
-        driver?.driverId && {
-          icon: IdCard,
-          label: 'Driver ID',
-          value: driver.driverId,
-        },
-        { icon: Phone, label: 'Phone', value: phone || '—' },
-        { icon: Mail, label: 'Email', value: email || 'Not added' },
-        driver?.gender && {
-          icon: User,
-          label: 'Gender',
-          value: capitalise(driver.gender),
-        },
-        driver?.dateOfBirth && {
-          icon: Calendar,
-          label: 'Date of birth',
-          value: formatDate(driver.dateOfBirth),
-        },
-      ].filter(Boolean),
-    [driver, phone, email],
-  );
 
-  const drivingRows = useMemo(() => {
-    const license = driver?.drivingLicense || {};
-    return [
-      license.number && {
-        icon: IdCard,
-        label: 'Driving license',
-        value: license.number,
-        sub: license.expiryDate
-          ? `Expires ${formatDate(license.expiryDate)}`
-          : null,
-      },
-      typeof driver?.experienceYears === 'number' && {
-        icon: Briefcase,
-        label: 'Experience',
-        value: `${driver.experienceYears} year${
-          driver.experienceYears === 1 ? '' : 's'
-        }`,
-      },
-      driver?.availability && {
-        icon: Calendar,
-        label: 'Availability',
-        value: availabilityLabel(driver.availability),
-      },
-      Array.isArray(driver?.vehicleExperience) &&
-        driver.vehicleExperience.length > 0 && {
-          icon: Car,
-          label: 'Registered vehicles',
-          value: `${driver.vehicleExperience.length} vehicle${
-            driver.vehicleExperience.length === 1 ? '' : 's'
-          }`,
-        },
-    ].filter(Boolean);
-  }, [driver]);
 
   const handleLogout = () => {
     logout();
@@ -279,27 +226,13 @@ const DriverAccountPage = () => {
     >
       <StatsRow today={today} wallet={wallet} />
 
-      {personalRows.length > 0 && (
-        <InfoCard title="Personal details" rows={personalRows} />
-      )}
+      <DriverIdentityCard driver={driver} />
 
-      {drivingRows.length > 0 && (
-        <InfoCard title="Driving credentials" rows={drivingRows} />
-      )}
+      <DriverUploadedDocumentsList
+        documents={driver?.documents}
+      />
 
-      {driver?.bankDetails?.accountNumber && (
-        <InfoCard
-          title="Bank account"
-          rows={[
-            {
-              icon: Building2,
-              label: driver.bankDetails.bankName || 'Bank',
-              value: maskAccount(driver.bankDetails.accountNumber),
-              sub: driver.bankDetails.ifsc || null,
-            },
-          ]}
-        />
-      )}
+      <DriverBankDetailsCard bankDetails={driver?.bankDetails} />
 
       {MENU_GROUPS.map((group) => (
         <div key={group.title}>

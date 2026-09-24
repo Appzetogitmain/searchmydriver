@@ -543,6 +543,87 @@ export const deleteDriverDocumentService = async (staff, driverId, docId) => {
   return driver;
 };
 
+export const updateDriverProfileByAdminService = async (staff, driverId, payload) => {
+  const driver = await Driver.findById(driverId);
+  if (!driver) {
+    throw new ApiError(404, 'Driver not found');
+  }
+
+  await assertStaffCanAccessDriver(staff, driver);
+
+  const {
+    name,
+    phone,
+    email,
+    gender,
+    dateOfBirth,
+    languages,
+    city,
+    homeZone,
+    drivingLicense,
+    experienceYears,
+    availability,
+    vehicleExperience,
+    carTypeExperience,
+    bankDetails,
+    profilePicture,
+    approvalStatus,
+    approvalNote,
+  } = payload;
+
+  if (name !== undefined) driver.name = name.trim();
+  if (phone !== undefined) driver.phone = phone.trim();
+  if (email !== undefined) driver.email = email.trim().toLowerCase();
+  if (gender !== undefined) driver.gender = gender;
+  if (dateOfBirth !== undefined) driver.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
+  if (Array.isArray(languages)) driver.languages = languages;
+  if (city !== undefined) driver.city = city.trim();
+  if (homeZone !== undefined) driver.homeZone = homeZone || null;
+  if (profilePicture !== undefined) driver.profilePicture = profilePicture;
+
+  if (drivingLicense && typeof drivingLicense === 'object') {
+    driver.drivingLicense = {
+      ...(driver.drivingLicense?.toObject?.() || driver.drivingLicense || {}),
+      ...drivingLicense,
+      number: drivingLicense.number ? drivingLicense.number.trim().toUpperCase() : driver.drivingLicense?.number,
+      expiryDate: drivingLicense.expiryDate ? new Date(drivingLicense.expiryDate) : driver.drivingLicense?.expiryDate,
+    };
+  }
+
+  if (experienceYears !== undefined) driver.experienceYears = Number(experienceYears) || 0;
+  if (availability !== undefined) driver.availability = availability;
+
+  if (Array.isArray(vehicleExperience) && vehicleExperience.length > 0) {
+    const { normalizeDriverVehicleExperience, syncCarTypeExperienceFromVehicles } = await import(
+      '../utils/driverVehicleExperience.util.js'
+    );
+    const vehicles = await normalizeDriverVehicleExperience(vehicleExperience);
+    driver.vehicleExperience = vehicles;
+    driver.carTypeExperience = syncCarTypeExperienceFromVehicles(vehicles);
+  } else if (Array.isArray(carTypeExperience)) {
+    driver.carTypeExperience = carTypeExperience;
+  }
+
+  if (bankDetails && typeof bankDetails === 'object') {
+    driver.bankDetails = {
+      ...(driver.bankDetails?.toObject?.() || driver.bankDetails || {}),
+      ...bankDetails,
+    };
+  }
+
+  if (approvalStatus && ['pending', 'approved', 'rejected', 'suspended'].includes(approvalStatus)) {
+    driver.approvalStatus = approvalStatus;
+    if (approvalNote !== undefined) driver.approvalNote = approvalNote;
+    if (approvalStatus === 'approved') {
+      driver.approvedAt = driver.approvedAt || new Date();
+      driver.approvedBy = staff._id;
+    }
+  }
+
+  await driver.save();
+  return driver;
+};
+
 async function assertSingleSuperAdmin(role, excludeUserId = null) {
   if (role !== USER_ROLES.ADMIN) return;
 

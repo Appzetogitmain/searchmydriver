@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import api from '../../../../utils/api';
 import {
+  AlertTriangle,
   ArrowLeft,
   CalendarClock,
   Car as CarIcon,
@@ -583,7 +585,7 @@ const DriverActiveTripPage = () => {
       return (
         <DriverTripInvoiceDetails
           booking={booking}
-          onBack={() => navigate('/driver/trips?tab=completed')}
+          onBack={() => navigate(-1)}
         />
       );
     }
@@ -1232,6 +1234,20 @@ const DriverActiveTripPage = () => {
                       'Confirm & Complete Trip'
                     )}
                   </Button>
+                ) : Number(driver?.wallet?.balance || 0) < 0 ? (
+                  <div className="rounded-2xl border border-red-200 bg-red-50/95 p-3.5 text-left shadow-sm">
+                    <div className="flex items-start gap-2.5">
+                      <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-bold text-red-900">
+                          Cash Collection Unavailable
+                        </p>
+                        <p className="text-[11px] text-red-700 leading-relaxed mt-0.5">
+                          Your wallet balance is in negative (₹{Number(driver?.wallet?.balance || 0).toLocaleString('en-IN')}). Cash payment collection is disabled. Please ask customer to complete payment online using the QR code or link above.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 ) : (
                   <>
                     <Button
@@ -1261,6 +1277,10 @@ const DriverActiveTripPage = () => {
         onClose={() => setCollectCashConfirmOpen(false)}
         onConfirm={async () => {
           setCollectCashConfirmOpen(false);
+          if (Number(driver?.wallet?.balance || 0) < 0) {
+            toast.error('Cannot collect cash while wallet balance is negative. Please ask the customer to pay online.');
+            return;
+          }
           try {
             await useDriverActiveTripStore.getState().completeTrip({ paymentMethod: 'cash' });
             setSettlementModalOpen(false);

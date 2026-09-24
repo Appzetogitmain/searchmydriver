@@ -13,9 +13,11 @@ import {
   ShieldAlert,
   Video,
   UploadCloud,
+  Edit3,
 } from 'lucide-react';
 import Avatar from '../../../components/Avatar';
 import AdminDocumentUploadModal from '../components/ManageDrivers/AdminDocumentUploadModal';
+import AdminEditDriverModal from '../components/ManageDrivers/AdminEditDriverModal';
 import api from '../../../utils/api';
 import { useCachedQuery } from '../../../hooks/useCachedQuery';
 import { buildCacheKey } from '../../../store/lib/buildCacheKey';
@@ -39,6 +41,7 @@ const DriverProfilePage = () => {
   const { driverId } = useParams();
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingDocument, setEditingDocument] = useState(null);
 
   const queryParams = useMemo(() => ({ driverId }), [driverId]);
@@ -145,6 +148,14 @@ const DriverProfilePage = () => {
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={() => setEditModalOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary-dark transition-colors shadow-sm cursor-pointer"
+          >
+            <Edit3 className="w-4 h-4" />
+            <span>Edit Details</span>
+          </button>
+          <button
+            type="button"
             onClick={handleDownloadPdf}
             disabled={downloadingPdf || loading}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
@@ -160,7 +171,7 @@ const DriverProfilePage = () => {
             type="button"
             onClick={() => refetch()}
             disabled={loading}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             Refresh
@@ -403,6 +414,13 @@ const DriverProfilePage = () => {
         }}
         driverId={driverId}
         editingDocument={editingDocument}
+        onSuccess={handleStatusUpdated}
+      />
+
+      <AdminEditDriverModal
+        open={editModalOpen}
+        onClose={() => setEditModalOpen(false)}
+        driver={driver}
         onSuccess={handleStatusUpdated}
       />
     </div>

@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Button from '../../../../components/Button';
 import Input from '../../../../components/Input';
 import StepIndicator from '../../../../components/StepIndicator';
 import Modal from '../../../../components/Modal';
-import { ArrowLeft, User, Phone, Lock, MapPin } from 'lucide-react';
+import { ArrowLeft, User, Phone, Lock, MapPin, CheckCircle2 } from 'lucide-react';
 import api from '../../../../utils/api';
 import useDriverAuthStore from '../../../../store/useDriverAuthStore';
 
@@ -14,7 +14,21 @@ import { DRIVER_ONBOARDING_STEPS } from '../../../../utils/driverOnboarding';
 
 const IdentityDetailsPage = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { driver, isAuthenticated, setAuth, updateDriver } = useDriverAuthStore();
+
+  const queryRef =
+    searchParams.get('ref') ||
+    searchParams.get('referral') ||
+    searchParams.get('referralCode') ||
+    sessionStorage.getItem('driver_referral_code') ||
+    '';
+  
+  useEffect(() => {
+    if (queryRef) {
+      sessionStorage.setItem('driver_referral_code', queryRef.trim().toUpperCase());
+    }
+  }, [queryRef]);
   
   useEffect(() => {
     if (!isAuthenticated || !driver) return;
@@ -28,7 +42,7 @@ const IdentityDetailsPage = () => {
     name: driver?.name || '',
     phone: driver?.phone || '',
     password: '',
-    referralCode: driver?.referralCode || '',
+    referralCode: driver?.referralCode || queryRef || '',
     zoneId: driver?.homeZone?._id || driver?.homeZone || '',
     languages: (driver?.languages && driver?.languages.length > 0) ? driver.languages.join(', ') : 'English, Hindi'
   });

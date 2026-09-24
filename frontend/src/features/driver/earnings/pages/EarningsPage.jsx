@@ -6,14 +6,22 @@ import BottomSheet from '../../../../components/BottomSheet';
 import {
   Loader2,
   AlertCircle,
+  AlertTriangle,
   Wallet,
   Inbox,
   Car,
   XCircle,
   AlertOctagon,
-  Clock4,
-  TimerReset,
   ChevronRight,
+  Plus,
+  ArrowDownLeft,
+  ArrowUpRight,
+  ShieldAlert,
+  CreditCard,
+  Gift,
+  Zap,
+  Clock,
+  CheckCircle2,
 } from 'lucide-react';
 import { useCachedQuery } from '../../../../hooks/useCachedQuery';
 import { buildCacheKey } from '../../../../store/lib/buildCacheKey';
@@ -27,18 +35,114 @@ import DriverScreenShell from '../../components/DriverScreenShell';
 import DriverTopupSheet from '../../components/DriverTopupSheet';
 import WithdrawFundsModal from '../../../../components/WithdrawFundsModal';
 import EditBankDetailsModal from '../../../../components/EditBankDetailsModal';
-import { Plus } from 'lucide-react';
 
 const EMPTY = { earnings: 0, trips: 0 };
 
+const CATEGORY_TABS = [
+  { id: 'all', label: 'All Transactions' },
+  { id: 'credit', label: 'Credits (+)' },
+  { id: 'auto_deduction', label: 'Auto Deductions' },
+  { id: 'penalty', label: 'Penalties' },
+  { id: 'debit', label: 'Debits (−)' },
+];
+
 /**
- * Driver earnings dashboard.
- *
- *   Sticky header  → title + this-week hero
- *   Scrolling body → bar chart · today/week/month stats · payout CTA · recent payouts
- *
- * No mock fallbacks: if the API hasn't loaded yet we show a skeleton; if
- * it errors we surface a retry. Never fake numbers in an earnings UI.
+ * Categorize transaction source into visual types & icons
+ */
+export function getTransactionMeta(tx) {
+  const source = tx.source || '';
+  const direction = tx.direction || (source === 'trip_earning' || source === 'topup' ? 'credit' : 'debit');
+
+  if (source === 'no_kit_penalty' || source === 'driver_cancellation_penalty' || source === 'cancellation_fee') {
+    return {
+      category: 'penalty',
+      categoryLabel: 'Penalty',
+      title: source === 'no_kit_penalty' ? 'No Driver Kit Penalty' : 'Cancellation Penalty',
+      badgeClass: 'bg-rose-100 text-rose-800 border-rose-200',
+      tone: 'text-rose-700 bg-rose-100',
+      Icon: AlertOctagon,
+    };
+  }
+
+  if (source === 'cash_trip_settlement' || source === 'monthly_registration_deduction') {
+    return {
+      category: 'auto_deduction',
+      categoryLabel: 'Auto Deduction',
+      title:
+        source === 'cash_trip_settlement'
+          ? 'Cash Ride Platform Settlement'
+          : 'Monthly Ride Cash Registration Fee',
+      badgeClass: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+      tone: 'text-indigo-700 bg-indigo-100',
+      Icon: Zap,
+    };
+  }
+
+  if (direction === 'credit') {
+    if (source === 'topup') {
+      return {
+        category: 'credit',
+        categoryLabel: 'Top-up',
+        title: 'Wallet Recharge / Top-up',
+        badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+        tone: 'text-emerald-700 bg-emerald-100',
+        Icon: Plus,
+      };
+    }
+    if (source === 'referral_reward' || source === 'signup_bonus') {
+      return {
+        category: 'credit',
+        categoryLabel: 'Reward',
+        title: source === 'signup_bonus' ? 'Signup Referral Bonus' : 'Referral Reward',
+        badgeClass: 'bg-purple-100 text-purple-800 border-purple-200',
+        tone: 'text-purple-700 bg-purple-100',
+        Icon: Gift,
+      };
+    }
+    if (source === 'cancellation_fee_waived' || source === 'booking_refund') {
+      return {
+        category: 'credit',
+        categoryLabel: 'Refund',
+        title: 'Refund / Adjustment',
+        badgeClass: 'bg-teal-100 text-teal-800 border-teal-200',
+        tone: 'text-teal-700 bg-teal-100',
+        Icon: ArrowDownLeft,
+      };
+    }
+    return {
+      category: 'credit',
+      categoryLabel: 'Trip Credit',
+      title: tx.description || 'Trip Earning Payout',
+      badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+      tone: 'text-emerald-700 bg-emerald-100',
+      Icon: Car,
+    };
+  }
+
+  // General Debits / Withdrawals
+  if (source === 'withdrawal') {
+    return {
+      category: 'debit',
+      categoryLabel: 'Withdrawal',
+      title: 'Wallet Withdrawal Payout',
+      badgeClass: 'bg-slate-100 text-slate-800 border-slate-200',
+      tone: 'text-slate-700 bg-slate-100',
+      Icon: ArrowUpRight,
+    };
+  }
+
+  return {
+    category: 'debit',
+    categoryLabel: 'Debit',
+    title: tx.description || 'Wallet Debit',
+    badgeClass: 'bg-slate-100 text-slate-800 border-slate-200',
+    tone: 'text-slate-700 bg-slate-100',
+    Icon: Wallet,
+  };
+}
+
+/**
+ * Driver earnings & comprehensive financial transaction breakdown dashboard.
  */
 const EarningsPage = () => {
   const navigate = useNavigate();
@@ -49,10 +153,6 @@ const EarningsPage = () => {
     {},
   );
 
-  // Driver profile carries the live wallet balance — the header hero
-  // shows this (and the "withdraw" CTA implicitly anchors on it)
-  // instead of the weekly-earnings number, which is already covered by
-  // the stat tiles below.
   const profileKey = buildCacheKey('driver-profile', {});
   const { data: profile } = useCachedQuery(useDriverProfileStore, profileKey, {});
   const wallet = profile?.wallet || {};
@@ -60,7 +160,9 @@ const EarningsPage = () => {
   const lifetimeEarnings = Number(wallet.totalEarnings) || 0;
   const totalWithdrawn = Number(wallet.totalWithdrawn) || 0;
 
-  // Ledger: paginated feed of every earning (trip + cancellation share).
+  const isBalanceNegative = walletBalance < 0;
+
+  // Unified financial transactions ledger
   const ledgerRows = useDriverEarningsLedgerStore((s) => s.rows);
   const ledgerTotals = useDriverEarningsLedgerStore((s) => s.totals);
   const ledgerPage = useDriverEarningsLedgerStore((s) => s.page);
@@ -68,10 +170,12 @@ const EarningsPage = () => {
   const ledgerHasMore = useDriverEarningsLedgerStore((s) => s.hasMore);
   const ledgerLoading = useDriverEarningsLedgerStore((s) => s.loading);
   const ledgerFetched = useDriverEarningsLedgerStore((s) => s.fetched);
+  const activeCategory = useDriverEarningsLedgerStore((s) => s.category);
   const fetchLedger = useDriverEarningsLedgerStore((s) => s.fetch);
+  const setCategory = useDriverEarningsLedgerStore((s) => s.setCategory);
 
   useEffect(() => {
-    fetchLedger({ page: 1, limit: 20 }).catch(() => {});
+    fetchLedger({ page: 1, limit: 20, category: 'all' }).catch(() => {});
   }, [fetchLedger]);
 
   const summary = data?.summary || {};
@@ -92,12 +196,15 @@ const EarningsPage = () => {
 
   const onLoadMore = () => {
     if (ledgerLoading || !ledgerHasMore) return;
-    fetchLedger({ page: ledgerPage + 1, limit: ledgerLimit, append: true }).catch(
-      () => {},
-    );
+    fetchLedger({
+      page: ledgerPage + 1,
+      limit: ledgerLimit,
+      category: activeCategory,
+      append: true,
+    }).catch(() => {});
   };
 
-  const [selectedLedgerRow, setSelectedLedgerRow] = useState(null);
+  const [selectedTx, setSelectedTx] = useState(null);
   const [topupOpen, setTopupOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [editBankOpen, setEditBankOpen] = useState(false);
@@ -106,30 +213,67 @@ const EarningsPage = () => {
     <DriverScreenShell
       header={
         <header className="bg-dark px-4 pt-4 pb-5 rounded-b-3xl">
-          <h1 className="text-lg font-bold text-white mb-3">Earnings</h1>
-          <Card className="!bg-white/10 backdrop-blur-sm !shadow-none border-0">
+          <h1 className="text-lg font-bold text-white mb-3">Earnings & Financials</h1>
+
+          {/* Balance Hero Card */}
+          <Card
+            className={`!shadow-none border ${
+              isBalanceNegative
+                ? '!bg-rose-950/70 border-rose-500/60 ring-2 ring-rose-500/30'
+                : '!bg-white/10 backdrop-blur-sm border-white/10'
+            }`}
+          >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-xs text-white/70 uppercase tracking-wide font-semibold">
-                  Wallet balance
-                </p>
-                <div className="flex items-baseline gap-2 mt-1">
-                  <span className="text-3xl font-bold text-white">
-                    {formatCurrency(walletBalance)}
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-white/70 uppercase tracking-wide font-semibold">
+                    Current Wallet Balance
+                  </p>
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                      isBalanceNegative
+                        ? 'bg-rose-500 text-white'
+                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    }`}
+                  >
+                    {isBalanceNegative ? '− In Minus' : '+ In Plus'}
                   </span>
                 </div>
-                <p className="text-[11px] text-white/70 mt-1">
-                  Available to withdraw
+
+                <div className="flex items-baseline gap-2 mt-1.5">
+                  <span
+                    className={`text-3xl font-extrabold tracking-tight ${
+                      isBalanceNegative ? 'text-rose-400' : 'text-white'
+                    }`}
+                  >
+                    {isBalanceNegative ? '− ' : '+ '}
+                    {formatCurrency(Math.abs(walletBalance))}
+                  </span>
+                </div>
+
+                <p
+                  className={`text-[11px] mt-1 font-medium ${
+                    isBalanceNegative ? 'text-rose-300 font-semibold' : 'text-white/70'
+                  }`}
+                >
+                  {isBalanceNegative
+                    ? '⚠️ Outstanding balance — recharge required'
+                    : 'Available balance for withdrawals & services'}
                 </p>
               </div>
+
               <div className="flex flex-col gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => setTopupOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary text-white text-xs font-semibold hover:bg-primary-dark transition-colors"
+                  className={`inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 ${
+                    isBalanceNegative
+                      ? 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse ring-2 ring-white/50'
+                      : 'bg-primary text-white hover:bg-primary-dark'
+                  }`}
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  Add Funds
+                  {isBalanceNegative ? 'Recharge Now' : 'Add Funds'}
                 </button>
                 <button
                   type="button"
@@ -141,7 +285,7 @@ const EarningsPage = () => {
                       setWithdrawOpen(true);
                     }
                   }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white text-dark text-xs font-semibold hover:bg-white/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white text-dark text-xs font-semibold hover:bg-white/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   disabled={walletBalance <= 0}
                 >
                   <Wallet className="w-3.5 h-3.5" />
@@ -149,6 +293,7 @@ const EarningsPage = () => {
                 </button>
               </div>
             </div>
+
             {(lifetimeEarnings > 0 || totalWithdrawn > 0) && (
               <div className="flex items-center gap-3 mt-3 pt-3 border-t border-white/10 text-[11px] text-white/80">
                 <span>
@@ -175,6 +320,41 @@ const EarningsPage = () => {
       }
       bodyClassName="p-4 -mt-2 pb-8 space-y-4"
     >
+      {/* Critical Negative Balance Warning Banner */}
+      {isBalanceNegative && (
+        <Card className="border-l-4 border-l-rose-500 bg-rose-50/90 border border-rose-200 shadow-sm animate-fade-in">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-rose-100 flex items-center justify-center shrink-0 mt-0.5 text-rose-600">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-bold text-rose-900">
+                Please recharge the wallet
+              </h3>
+              <p className="text-xs text-rose-700 mt-0.5 leading-relaxed">
+                Your wallet balance is currently in minus (
+                <strong className="font-bold text-rose-900">
+                  −{formatCurrency(Math.abs(walletBalance))}
+                </strong>
+                ) due to cash collection settlements or penalties. Please recharge the
+                wallet to continue receiving ride offers without interruption.
+              </p>
+              <div className="mt-3">
+                <Button
+                  size="sm"
+                  variant="danger"
+                  className="!h-8 !px-3 !text-xs gap-1.5 font-bold shadow-sm"
+                  onClick={() => setTopupOpen(true)}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Recharge Wallet Now
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {loading && !data && (
         <Card className="flex items-center justify-center py-10">
           <Loader2 className="w-5 h-5 animate-spin text-text-muted" />
@@ -203,10 +383,11 @@ const EarningsPage = () => {
 
       {!!data && (
         <>
+          {/* 7-Day Performance Chart */}
           <Card>
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs text-text-muted font-semibold uppercase tracking-wide">
-                Last 7 days
+                Trip Earnings (Last 7 days)
               </p>
               {peak > 0 && (
                 <span className="text-[11px] text-text-muted">
@@ -217,6 +398,7 @@ const EarningsPage = () => {
             <EarningsBarChart buckets={buckets} peak={peak} />
           </Card>
 
+          {/* Quick Period Summary */}
           <Card padding="p-0">
             <ul className="divide-y divide-border-light">
               {stats.map((stat) => (
@@ -238,54 +420,92 @@ const EarningsPage = () => {
             </ul>
           </Card>
 
-          <EarningsBreakdown totals={ledgerTotals} />
+          {/* Financial Breakdown Grid */}
+          <FinancialBreakdownCard totals={ledgerTotals} />
 
-          <Button
-            fullWidth
-            variant="driver"
-            icon={Wallet}
-            onClick={() => navigate('/driver/payments')}
-          >
-            View payout history
-          </Button>
+          {/* All Financial Transactions Section with Category Tabs */}
+          <section className="space-y-3 pt-2">
+            <div className="flex items-center justify-between px-1">
+              <div>
+                <h2 className="text-sm font-bold text-text">
+                  Financial Transaction Ledger
+                </h2>
+                <p className="text-[11px] text-text-muted">
+                  Complete breakdown of credits, auto deductions & penalties
+                </p>
+              </div>
+              {ledgerLoading && (
+                <Loader2 className="w-4 h-4 animate-spin text-primary shrink-0" />
+              )}
+            </div>
 
-          <AllEarningsFeed
-            rows={ledgerRows}
-            loading={ledgerLoading}
-            fetched={ledgerFetched}
-            hasMore={ledgerHasMore}
-            onLoadMore={onLoadMore}
-            onSelect={setSelectedLedgerRow}
-          />
+            {/* Filter Tabs */}
+            <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-hide">
+              {CATEGORY_TABS.map((t) => {
+                const isActive = activeCategory === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setCategory(t.id)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition ${
+                      isActive
+                        ? 'bg-dark text-white shadow-sm'
+                        : 'bg-white border border-border text-text-secondary hover:bg-gray-50'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Transactions Feed */}
+            <AllTransactionsFeed
+              rows={ledgerRows}
+              loading={ledgerLoading}
+              fetched={ledgerFetched}
+              hasMore={ledgerHasMore}
+              onLoadMore={onLoadMore}
+              onSelect={setSelectedTx}
+            />
+          </section>
         </>
       )}
 
+      {/* Transaction Detail Bottom Sheet */}
       <BottomSheet
-        open={!!selectedLedgerRow}
-        onClose={() => setSelectedLedgerRow(null)}
-        title="Transaction details"
+        open={!!selectedTx}
+        onClose={() => setSelectedTx(null)}
+        title="Transaction Breakdown"
       >
-        {selectedLedgerRow && <LedgerDetail row={selectedLedgerRow} />}
+        {selectedTx && <TransactionDetailSheet tx={selectedTx} />}
       </BottomSheet>
 
+      {/* Top-up Sheet */}
       <DriverTopupSheet
         open={topupOpen}
         onClose={() => setTopupOpen(false)}
-        onSuccess={() => refetch()}
+        onSuccess={() => {
+          refetch();
+          fetchLedger({ page: 1, limit: 20, category: activeCategory }).catch(() => {});
+        }}
       />
 
+      {/* Withdraw Funds Modal */}
       <WithdrawFundsModal
         isOpen={withdrawOpen}
         onClose={() => setWithdrawOpen(false)}
-        maxAmount={walletBalance}
+        maxAmount={Math.max(0, walletBalance)}
         isDriver={true}
         bankDetails={profile?.bankDetails}
         onWithdrawSuccess={() => {
           refetch();
-          fetchLedger({ page: 1, limit: 20 }).catch(() => {});
+          fetchLedger({ page: 1, limit: 20, category: activeCategory }).catch(() => {});
         }}
       />
 
+      {/* Edit Bank Details Modal */}
       <EditBankDetailsModal
         isOpen={editBankOpen}
         onClose={() => setEditBankOpen(false)}
@@ -301,245 +521,325 @@ const EarningsPage = () => {
 };
 
 /* ------------------------------------------------------------------ */
-/* Earnings breakdown (trips vs. cancellation shares)                  */
+/* Financial Breakdown Summary Component                              */
 /* ------------------------------------------------------------------ */
 
-function EarningsBreakdown({ totals }) {
-  const trip = Number(totals?.tripEarnings) || 0;
-  const cancellation = Number(totals?.cancellationEarnings) || 0;
-  const penalty = Number(totals?.penaltyDeductions) || 0;
-  const netEarnings = Number(totals?.netEarnings) || trip + cancellation - penalty;
-  const lifetimeCredit = trip + cancellation;
-  if (lifetimeCredit <= 0 && penalty <= 0) return null;
+function FinancialBreakdownCard({ totals }) {
+  const credits = Number(totals?.totalCredits) || 0;
+  const autoDeductions = Number(totals?.totalAutoDeductions) || 0;
+  const penalties = Number(totals?.totalPenalties) || 0;
+  const debits = Number(totals?.totalDebits) || 0;
+
   return (
-    <Card padding="p-0">
-      <div className="flex items-center justify-between px-4 pt-3.5 pb-2">
-        <p className="text-xs text-text-muted font-semibold uppercase tracking-wide">
-          Net earnings
-        </p>
-        <p
-          className={`text-base font-bold ${
-            netEarnings < 0 ? 'text-rose-700' : 'text-text'
-          }`}
-        >
-          {formatCurrency(netEarnings)}
+    <Card padding="p-0" className="overflow-hidden">
+      <div className="bg-gray-50/80 px-4 py-3 border-b border-border-light">
+        <p className="text-xs font-bold text-text uppercase tracking-wider">
+          Lifetime Financial Summary
         </p>
       </div>
-      <ul className="divide-y divide-border-light">
-        <BreakdownRow
-          icon={Car}
-          tone="text-primary bg-primary/10"
-          label="Trip payouts"
-          subLabel={`${Number(totals?.tripCount) || 0} trip${
-            (totals?.tripCount || 0) === 1 ? '' : 's'
-          }`}
-          amount={trip}
-          direction="credit"
-        />
-        <BreakdownRow
-          icon={XCircle}
-          tone="text-amber-600 bg-amber-100"
-          label="Cancellation shares"
-          subLabel={`${Number(totals?.cancellationCount) || 0} cancel${
-            (totals?.cancellationCount || 0) === 1 ? '' : 's'
-          }`}
-          amount={cancellation}
-          direction="credit"
-        />
-        {penalty > 0 && (
-          <BreakdownRow
-            icon={AlertOctagon}
-            tone="text-rose-700 bg-rose-100"
-            label="Cancel penalties"
-            subLabel={`${Number(totals?.penaltyCount) || 0} penalt${
-              (totals?.penaltyCount || 0) === 1 ? 'y' : 'ies'
-            }`}
-            amount={penalty}
-            direction="debit"
-          />
-        )}
-      </ul>
+      <div className="grid grid-cols-2 divide-x divide-y divide-border-light">
+        <div className="p-3.5">
+          <div className="flex items-center gap-1.5 text-xs text-text-muted">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+            <span className="font-semibold truncate">Total Credits</span>
+          </div>
+          <p className="text-base font-bold text-emerald-700 mt-1">
+            +{formatCurrency(credits)}
+          </p>
+          <p className="text-[10px] text-text-muted mt-0.5">
+            {totals?.creditCount || 0} transaction{totals?.creditCount === 1 ? '' : 's'}
+          </p>
+        </div>
+
+        <div className="p-3.5">
+          <div className="flex items-center gap-1.5 text-xs text-text-muted">
+            <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0" />
+            <span className="font-semibold truncate">Auto Deductions</span>
+          </div>
+          <p className="text-base font-bold text-indigo-700 mt-1">
+            −{formatCurrency(autoDeductions)}
+          </p>
+          <p className="text-[10px] text-text-muted mt-0.5">
+            {totals?.autoDeductionCount || 0} cash settlement{totals?.autoDeductionCount === 1 ? '' : 's'}
+          </p>
+        </div>
+
+        <div className="p-3.5">
+          <div className="flex items-center gap-1.5 text-xs text-text-muted">
+            <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+            <span className="font-semibold truncate">Total Penalties</span>
+          </div>
+          <p className="text-base font-bold text-rose-700 mt-1">
+            −{formatCurrency(penalties)}
+          </p>
+          <p className="text-[10px] text-text-muted mt-0.5">
+            {totals?.penaltyCount || 0} penalt{totals?.penaltyCount === 1 ? 'y' : 'ies'}
+          </p>
+        </div>
+
+        <div className="p-3.5">
+          <div className="flex items-center gap-1.5 text-xs text-text-muted">
+            <span className="w-2 h-2 rounded-full bg-slate-500 shrink-0" />
+            <span className="font-semibold truncate">Total Debited / Out</span>
+          </div>
+          <p className="text-base font-bold text-slate-700 mt-1">
+            −{formatCurrency(debits)}
+          </p>
+          <p className="text-[10px] text-text-muted mt-0.5">
+            {totals?.debitCount || 0} withdrawal{totals?.debitCount === 1 ? '' : 's'}
+          </p>
+        </div>
+      </div>
     </Card>
   );
 }
 
-function BreakdownRow({ icon: Icon, tone, label, subLabel, amount, direction = 'credit' }) {
-  const isDebit = direction === 'debit';
-  return (
-    <li className="flex items-center gap-3 px-4 py-3">
-      <div
-        className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${tone}`}
-      >
-        <Icon className="w-4 h-4" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-text truncate">{label}</p>
-        <p className="text-[11px] text-text-muted">{subLabel}</p>
-      </div>
-      <p
-        className={`text-sm font-bold shrink-0 ${
-          isDebit ? 'text-rose-700' : 'text-text'
-        }`}
-      >
-        {isDebit ? '\u2212 ' : ''}
-        {formatCurrency(amount)}
-      </p>
-    </li>
-  );
-}
-
 /* ------------------------------------------------------------------ */
-/* All-earnings feed (paginated ledger)                                */
+/* Transactions Feed Component                                        */
 /* ------------------------------------------------------------------ */
 
-/**
- * Unified, paginated feed of every earning the driver has ever
- * received: trip payouts AND cancellation shares (when a user cancels
- * and the admin policy splits the fee with the driver).
- *
- * Pagination is "Load more" — same UX as the user wallet. Replacing the
- * old "last 10 completed trips" tile so drivers can scroll their full
- * history without leaving the page.
- */
-function AllEarningsFeed({ rows, loading, fetched, hasMore, onLoadMore, onSelect }) {
+function AllTransactionsFeed({ rows, loading, fetched, hasMore, onLoadMore, onSelect }) {
   const isEmpty = fetched && rows.length === 0;
-  return (
-    <section>
-      <div className="flex items-center justify-between mb-2 px-1">
-        <p className="text-xs uppercase tracking-wide font-semibold text-text-muted">
-          All earnings
-        </p>
-        {loading && rows.length > 0 && (
-          <Loader2 className="w-4 h-4 animate-spin text-text-muted" />
-        )}
-      </div>
 
-      {!fetched && loading ? (
-        <Card>
-          <div className="flex justify-center py-6">
-            <Loader2 className="w-5 h-5 animate-spin text-text-muted" />
-          </div>
-        </Card>
-      ) : isEmpty ? (
-        <Card className="flex flex-col items-center justify-center py-10 text-center">
-          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
-            <Inbox className="w-6 h-6 text-primary" />
-          </div>
-          <p className="text-sm font-semibold text-text">No earnings yet</p>
-          <p className="text-xs text-text-muted mt-1 max-w-[240px]">
-            Completed trips and your share of cancellation fees show up here.
-          </p>
-        </Card>
-      ) : (
-        <>
-          <Card padding="p-0" className="divide-y divide-border-light overflow-hidden">
-            {rows.map((row) => (
-              <EarningsLedgerRow
-                key={row._id}
-                row={row}
-                onSelect={onSelect}
-              />
-            ))}
-          </Card>
-          {hasMore && (
-            <Button
-              fullWidth
-              variant="ghost"
-              size="sm"
-              className="mt-3"
-              loading={loading}
-              onClick={onLoadMore}
-            >
-              Load more
-            </Button>
-          )}
-        </>
+  if (!fetched && loading) {
+    return (
+      <Card>
+        <div className="flex justify-center py-8">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+        </div>
+      </Card>
+    );
+  }
+
+  if (isEmpty) {
+    return (
+      <Card className="flex flex-col items-center justify-center py-12 text-center">
+        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+          <Inbox className="w-6 h-6 text-primary" />
+        </div>
+        <p className="text-sm font-semibold text-text">No transactions found</p>
+        <p className="text-xs text-text-muted mt-1 max-w-[240px]">
+          Transactions in this category will appear here in real-time.
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <Card padding="p-0" className="divide-y divide-border-light overflow-hidden">
+        {rows.map((tx) => (
+          <TransactionRow key={tx._id} tx={tx} onSelect={onSelect} />
+        ))}
+      </Card>
+      {hasMore && (
+        <Button
+          fullWidth
+          variant="ghost"
+          size="sm"
+          className="mt-3"
+          loading={loading}
+          onClick={onLoadMore}
+        >
+          Load more transactions
+        </Button>
       )}
-    </section>
+    </>
   );
 }
 
-function EarningsLedgerRow({ row, onSelect }) {
-  const isPenalty = row.kind === 'penalty';
-  const isCancellation = row.kind === 'cancellation_share';
-  const Icon = isPenalty ? AlertOctagon : isCancellation ? XCircle : Car;
-  const tone = isPenalty
-    ? 'text-rose-700 bg-rose-100'
-    : isCancellation
-      ? 'text-amber-600 bg-amber-100'
-      : 'text-success bg-success/10';
-  const title = isPenalty
-    ? 'Cancellation penalty'
-    : isCancellation
-      ? 'Cancellation share'
-      : 'Trip earning';
-  const subline = [
-    row.bookingNumber ? `#${row.bookingNumber}` : null,
-    row.serviceType ? labelForService(row.serviceType) : null,
-    formatLedgerDate(row.occurredAt),
-  ]
-    .filter(Boolean)
-    .join(' \u00B7 ');
+function TransactionRow({ tx, onSelect }) {
+  const meta = getTransactionMeta(tx);
+  const Icon = meta.Icon;
+  const isCredit = tx.direction === 'credit';
+  const amount = Number(tx.amountRupees) || 0;
+  const balanceAfter = Number(tx.balanceAfter);
 
-  const sign = row.direction === 'debit' ? '\u2212' : '+';
-  const amountTone =
-    row.direction === 'debit' ? 'text-rose-700' : 'text-success';
+  const formattedDate = tx.createdAt
+    ? new Date(tx.createdAt).toLocaleString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
 
   return (
     <button
       type="button"
-      onClick={() => onSelect?.(row)}
-      className="w-full flex items-center gap-3 px-3 py-3 hover:bg-gray-50 transition-colors text-left"
+      onClick={() => onSelect?.(tx)}
+      className="w-full flex items-center gap-3 px-3.5 py-3 hover:bg-gray-50 transition-colors text-left"
     >
       <div
-        className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${tone}`}
+        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${meta.tone}`}
       >
-        <Icon className="w-4 h-4" />
+        <Icon className="w-5 h-5" />
       </div>
+
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-text truncate">{title}</p>
-        <p className="text-[11px] text-text-muted truncate">{subline}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-semibold text-text truncate">{meta.title}</p>
+        </div>
+        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-text-muted truncate">
+          <span>{formattedDate}</span>
+          {Number.isFinite(balanceAfter) && (
+            <>
+              <span>&middot;</span>
+              <span>
+                Balance:{' '}
+                <strong
+                  className={`font-semibold ${
+                    balanceAfter < 0 ? 'text-rose-600' : 'text-text-secondary'
+                  }`}
+                >
+                  {balanceAfter < 0 ? '−' : ''}
+                  {formatCurrency(Math.abs(balanceAfter))}
+                </strong>
+              </span>
+            </>
+          )}
+        </div>
       </div>
-      <p className={`text-sm font-bold ${amountTone} shrink-0`}>
-        {sign}
-        {formatCurrency(row.amountRupees)}
-      </p>
-      <ChevronRight className="w-4 h-4 text-text-muted shrink-0" />
+
+      <div className="flex flex-col items-end shrink-0">
+        <p
+          className={`text-sm font-extrabold tabular-nums ${
+            isCredit ? 'text-emerald-700' : 'text-rose-700'
+          }`}
+        >
+          {isCredit ? '+ ' : '− '}
+          {formatCurrency(amount)}
+        </p>
+        <span
+          className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider border mt-0.5 ${meta.badgeClass}`}
+        >
+          {meta.categoryLabel}
+        </span>
+      </div>
+
+      <ChevronRight className="w-4 h-4 text-text-muted shrink-0 ml-1" />
     </button>
   );
 }
 
-function labelForService(serviceType) {
-  switch (serviceType) {
-    case 'hourly':
-      return 'Hourly';
-    case 'outstation':
-      return 'Outstation';
-    case 'oneway':
-      return 'One-way';
-    case 'round_trip':
-      return 'Round trip';
-    default:
-      return serviceType;
-  }
-}
+/* ------------------------------------------------------------------ */
+/* Transaction Detail Sheet                                           */
+/* ------------------------------------------------------------------ */
 
-function formatLedgerDate(iso) {
-  if (!iso) return '';
-  try {
-    return new Date(iso).toLocaleString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return '';
-  }
+function TransactionDetailSheet({ tx }) {
+  const meta = getTransactionMeta(tx);
+  const Icon = meta.Icon;
+  const isCredit = tx.direction === 'credit';
+  const amount = Number(tx.amountRupees) || 0;
+  const balanceAfter = Number(tx.balanceAfter);
+
+  const formattedDate = tx.createdAt
+    ? new Date(tx.createdAt).toLocaleString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    : '—';
+
+  return (
+    <div className="space-y-4 pb-4">
+      {/* Header Banner */}
+      <div className="flex items-center gap-3 bg-gray-50 p-3.5 rounded-2xl border border-border-light">
+        <div
+          className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${meta.tone}`}
+        >
+          <Icon className="w-6 h-6" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <span
+            className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border ${meta.badgeClass}`}
+          >
+            {meta.categoryLabel}
+          </span>
+          <p className="text-sm font-bold text-text mt-1 truncate">{meta.title}</p>
+        </div>
+        <div className="text-right shrink-0">
+          <p
+            className={`text-lg font-extrabold ${
+              isCredit ? 'text-emerald-700' : 'text-rose-700'
+            }`}
+          >
+            {isCredit ? '+ ' : '− '}
+            {formatCurrency(amount)}
+          </p>
+          <span className="text-[10px] text-text-muted font-medium capitalize">
+            {tx.status || 'Success'}
+          </span>
+        </div>
+      </div>
+
+      {/* Info Breakdown Lines */}
+      <Card className="space-y-3">
+        <div className="flex justify-between text-xs border-b border-slate-100 pb-2">
+          <span className="text-text-muted">Transaction ID:</span>
+          <span className="font-mono text-text font-semibold break-all text-right">
+            {tx._id}
+          </span>
+        </div>
+
+        <div className="flex justify-between text-xs border-b border-slate-100 pb-2">
+          <span className="text-text-muted">Date & Time:</span>
+          <span className="font-medium text-text">{formattedDate}</span>
+        </div>
+
+        <div className="flex justify-between text-xs border-b border-slate-100 pb-2">
+          <span className="text-text-muted">Nature:</span>
+          <span
+            className={`font-bold uppercase ${
+              isCredit ? 'text-emerald-700' : 'text-rose-700'
+            }`}
+          >
+            {isCredit ? 'Credit (Money In)' : 'Debit (Money Out)'}
+          </span>
+        </div>
+
+        {Number.isFinite(balanceAfter) && (
+          <div className="flex justify-between text-xs border-b border-slate-100 pb-2">
+            <span className="text-text-muted">Balance After Transaction:</span>
+            <span
+              className={`font-bold tabular-nums ${
+                balanceAfter < 0 ? 'text-rose-700' : 'text-text'
+              }`}
+            >
+              {balanceAfter < 0 ? '−' : ''}
+              {formatCurrency(Math.abs(balanceAfter))}
+            </span>
+          </div>
+        )}
+
+        {tx.refId && (
+          <div className="flex justify-between text-xs border-b border-slate-100 pb-2">
+            <span className="text-text-muted">Reference:</span>
+            <span className="font-semibold text-text">
+              {tx.refType ? `${tx.refType} · ` : ''}
+              {tx.refId}
+            </span>
+          </div>
+        )}
+
+        {tx.description && (
+          <div className="text-xs pt-1">
+            <span className="text-text-muted block mb-1">Description / Notes:</span>
+            <p className="font-medium text-text bg-gray-50 p-2 rounded-lg border border-slate-100">
+              {tx.description}
+            </p>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
 }
 
 /* ------------------------------------------------------------------ */
-/* Bar chart                                                           */
+/* Bar Chart Component                                                */
 /* ------------------------------------------------------------------ */
 
 function EarningsBarChart({ buckets, peak }) {
@@ -569,254 +869,6 @@ function EarningsBarChart({ buckets, peak }) {
       })}
     </div>
   );
-}
-
-/* ------------------------------------------------------------------ */
-/* Breakdown sheet                                                     */
-/* ------------------------------------------------------------------ */
-
-/**
- * Bottom sheet that opens when a driver taps any ledger row. Shows the
- * source-specific breakdown so the driver can see exactly how the
- * amount on that row was made up — fare share + waiting + extension
- * uplift for trip rows, fee + share% for cancellation rows, and the
- * cancel reason for penalty rows.
- *
- * Trip-row components come pre-computed on the row's `meta` (see
- * `listDriverEarningsLedgerService` projection) so there's no extra
- * round-trip on tap.
- */
-function LedgerBreakdownSheet({ row, onClose }) {
-  const isOpen = !!row;
-  const meta = row?.meta || {};
-
-  let title = 'Earnings breakdown';
-  let Icon = Car;
-  let tone = 'text-success bg-success/10';
-  if (row?.kind === 'penalty') {
-    title = 'Cancellation penalty';
-    Icon = AlertOctagon;
-    tone = 'text-rose-700 bg-rose-100';
-  } else if (row?.kind === 'cancellation_share') {
-    title = 'Cancellation share';
-    Icon = XCircle;
-    tone = 'text-amber-600 bg-amber-100';
-  } else if (row?.kind === 'trip') {
-    title = 'Trip earning';
-  }
-
-  const direction = row?.direction === 'debit' ? 'debit' : 'credit';
-  const sign = direction === 'debit' ? '\u2212' : '+';
-  const amountTone = direction === 'debit' ? 'text-rose-700' : 'text-success';
-
-  return (
-    <BottomSheet
-      isOpen={isOpen}
-      onClose={onClose}
-      title={title}
-      showHandle
-    >
-      {row && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <div
-              className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${tone}`}
-            >
-              <Icon className="w-5 h-5" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-text truncate">
-                {row.bookingNumber ? `#${row.bookingNumber}` : title}
-              </p>
-              <p className="text-[11px] text-text-muted truncate">
-                {[
-                  row.serviceType ? labelForService(row.serviceType) : null,
-                  formatLedgerDate(row.occurredAt),
-                ]
-                  .filter(Boolean)
-                  .join(' \u00B7 ')}
-              </p>
-            </div>
-            <p className={`text-base font-bold ${amountTone} shrink-0`}>
-              {sign}
-              {formatCurrency(row.amountRupees)}
-            </p>
-          </div>
-
-          {row.kind === 'trip' && <TripBreakdownBlock meta={meta} row={row} />}
-          {row.kind === 'cancellation_share' && (
-            <CancellationShareBlock meta={meta} row={row} />
-          )}
-          {row.kind === 'penalty' && <PenaltyBlock meta={meta} row={row} />}
-        </div>
-      )}
-    </BottomSheet>
-  );
-}
-
-function TripBreakdownBlock({ meta, row }) {
-  const fareEarning = Number(meta.fareEarning) || 0;
-  const waitingCharge = Number(meta.waitingChargeRupees) || 0;
-  const waitingMinutes = Number(meta.waitingMinutes) || 0;
-  const waitingNoShow = !!meta.waitingNoShow;
-  const extensionsCount = Number(meta.extensionsCount) || 0;
-  const extensionHours = Number(meta.extensionAdditionalHours) || 0;
-  const extensionDriverEarning = Number(meta.extensionDriverEarning) || 0;
-  const baseFare = Math.max(0, fareEarning - extensionDriverEarning);
-
-  return (
-    <div className="bg-gray-50 rounded-2xl divide-y divide-border-light">
-      <BreakdownLine
-        icon={Car}
-        tone="text-emerald-700 bg-emerald-100"
-        label="Fare share"
-        sublabel="Daily rate after platform commission"
-        amount={baseFare}
-      />
-      {extensionsCount > 0 && (
-        <BreakdownLine
-          icon={TimerReset}
-          tone="text-indigo-700 bg-indigo-100"
-          label={`Extensions \u00B7 +${extensionHours}h`}
-          sublabel={`${extensionsCount} paid extension${
-            extensionsCount === 1 ? '' : 's'
-          }`}
-          amount={extensionDriverEarning}
-        />
-      )}
-      {waitingCharge > 0 && (
-        <BreakdownLine
-          icon={Clock4}
-          tone="text-amber-700 bg-amber-100"
-          label="Waiting charge"
-          sublabel={
-            waitingNoShow
-              ? 'Customer no-show \u2014 auto-billed'
-              : `${waitingMinutes} billable min \u00B7 100% to you`
-          }
-          amount={waitingCharge}
-        />
-      )}
-      <div className="flex items-center justify-between px-4 py-3">
-        <p className="text-sm font-semibold text-text">Total credited</p>
-        <p className="text-base font-bold text-success">
-          {formatCurrency(row.amountRupees)}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function CancellationShareBlock({ meta, row }) {
-  const feeCharged = Number(meta.feeCharged) || 0;
-  const cancelledBy = meta.cancelledBy ? humanise(meta.cancelledBy) : '';
-  const reason = meta.reason ? humanise(meta.reason) : '';
-  return (
-    <div className="bg-gray-50 rounded-2xl divide-y divide-border-light">
-      {feeCharged > 0 && (
-        <BreakdownLine
-          icon={XCircle}
-          tone="text-amber-700 bg-amber-100"
-          label="Fee charged to customer"
-          sublabel="Split between you and the platform"
-          amount={feeCharged}
-        />
-      )}
-      <BreakdownLine
-        icon={Wallet}
-        tone="text-emerald-700 bg-emerald-100"
-        label="Your share"
-        sublabel="Credited to your wallet"
-        amount={row.amountRupees}
-      />
-      {(cancelledBy || reason) && (
-        <div className="px-4 py-3 text-xs text-text-muted space-y-1">
-          {cancelledBy && (
-            <p>
-              <span className="text-text-secondary">Cancelled by:</span>{' '}
-              {cancelledBy}
-            </p>
-          )}
-          {reason && (
-            <p>
-              <span className="text-text-secondary">Reason:</span> {reason}
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PenaltyBlock({ meta, row }) {
-  const reason = meta.reason ? humanise(meta.reason) : '';
-  const bookingStatus = meta.bookingStatus ? humanise(meta.bookingStatus) : '';
-  return (
-    <div className="bg-gray-50 rounded-2xl divide-y divide-border-light">
-      <BreakdownLine
-        icon={AlertOctagon}
-        tone="text-rose-700 bg-rose-100"
-        label="Penalty deducted"
-        sublabel="Out-of-grace cancellation"
-        amount={row.amountRupees}
-        direction="debit"
-      />
-      {(reason || bookingStatus) && (
-        <div className="px-4 py-3 text-xs text-text-muted space-y-1">
-          {reason && (
-            <p>
-              <span className="text-text-secondary">Reason:</span> {reason}
-            </p>
-          )}
-          {bookingStatus && (
-            <p>
-              <span className="text-text-secondary">Cancelled at:</span>{' '}
-              {bookingStatus}
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function BreakdownLine({
-  icon: Icon,
-  tone,
-  label,
-  sublabel,
-  amount,
-  direction = 'credit',
-}) {
-  const isDebit = direction === 'debit';
-  return (
-    <div className="flex items-center gap-3 px-4 py-3">
-      <div
-        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${tone}`}
-      >
-        <Icon className="w-4 h-4" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-text truncate">{label}</p>
-        {sublabel && (
-          <p className="text-[11px] text-text-muted truncate">{sublabel}</p>
-        )}
-      </div>
-      <p
-        className={`text-sm font-bold shrink-0 ${
-          isDebit ? 'text-rose-700' : 'text-text'
-        }`}
-      >
-        {isDebit ? '\u2212 ' : ''}
-        {formatCurrency(amount)}
-      </p>
-    </div>
-  );
-}
-
-function humanise(value) {
-  if (!value) return '';
-  return String(value).replace(/_/g, ' ');
 }
 
 export default EarningsPage;

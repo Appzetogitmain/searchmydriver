@@ -53,6 +53,7 @@ import {
   getDriverEarnings,
   getDriverEarningsLedger,
   getDriverPendingOffers,
+  getDriverEligibleTripRequests,
 } from '../controllers/driverTrips.controller.js';
 import {
   getDriverActiveBooking,
@@ -147,6 +148,7 @@ router.put('/online', protectDriver, setOnlineStatus);
 router.get('/home/summary', protectDriver, getDriverHomeSummary);
 router.get('/trips', protectDriver, getDriverTripsList);
 router.get('/trips/pending-offers', protectDriver, getDriverPendingOffers);
+router.get('/trips/eligible-requests', protectDriver, getDriverEligibleTripRequests);
 router.get('/earnings', protectDriver, getDriverEarnings);
 router.get('/earnings/ledger', protectDriver, getDriverEarningsLedger);
 

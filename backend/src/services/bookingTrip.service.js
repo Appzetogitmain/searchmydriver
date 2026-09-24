@@ -813,6 +813,13 @@ export async function completeTripService(driverId, bookingId, { actualKm = 0, p
   // Payment Verification / Settlement:
   const due = amountDueForBooking(booking);
   if (paymentMethod === 'cash') {
+    const driverDoc = await Driver.findById(driverId).select('wallet.balance').lean();
+    if (Number(driverDoc?.wallet?.balance || 0) < 0) {
+      throw new ApiError(
+        400,
+        'Cannot collect cash payment with a negative wallet balance. Please ask the customer to complete payment online or recharge your wallet.'
+      );
+    }
     // Driver explicitly confirmed collecting cash
     booking.paymentMethod = 'cash';
     booking.paymentStatus = BOOKING_PAYMENT_STATUS.PAID;

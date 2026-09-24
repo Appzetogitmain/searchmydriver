@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Button from '../../../../components/Button';
 import { Headset } from 'lucide-react';
 import HelpDeskModal from '../../../../components/HelpDeskModal';
@@ -9,9 +9,16 @@ import { navigateDriverAfterAuth } from '../../../auth/utils/authNavigation';
 
 const DriverSignUpPage = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { isAuthenticated, driver } = useDriverAuthStore();
   const [isHelpDeskOpen, setIsHelpDeskOpen] = useState(false);
 
+  useEffect(() => {
+    const ref = searchParams.get('ref') || searchParams.get('referral') || searchParams.get('referralCode');
+    if (ref) {
+      sessionStorage.setItem('driver_referral_code', ref.trim().toUpperCase());
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (isAuthenticated && driver) {

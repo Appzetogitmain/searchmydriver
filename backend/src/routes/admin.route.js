@@ -7,6 +7,7 @@ import {
   getCustomers,
   getDrivers,
   getDriverById,
+  updateDriverProfileByAdmin,
   updateDriverStatus,
   suspendDriver,
   unsuspendDriver,
@@ -349,6 +350,7 @@ router.post(
 router.get('/drivers', protectStaff, restrictTo(...ALL_STAFF), requirePermission(PERMISSIONS.DRIVERS), getDrivers);
 router.get('/drivers/live', protectStaff, restrictTo(...ALL_STAFF), requirePermission(PERMISSIONS.LIVE_MAP), getLiveDriversSnapshot);
 router.get('/drivers/:id', protectStaff, restrictTo(...ALL_STAFF), requirePermission(PERMISSIONS.DRIVERS), getDriverById);
+router.put('/drivers/:id', protectStaff, restrictTo(...ALL_STAFF), requirePermission(PERMISSIONS.DRIVERS), updateDriverProfileByAdmin);
 /* ---- Driver profile PDF export -------------------------------------- */
 // Streams a one-click PDF dossier of the driver (identity, licence,
 // bank, vehicles, every uploaded document image). Used by ops to

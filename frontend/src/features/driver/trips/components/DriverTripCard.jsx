@@ -143,19 +143,25 @@ const DriverTripCard = ({ trip, onClick, className = '', style }) => {
         </div>
       )}
 
-      {(duration || isOngoing) && (
-        <div className="flex items-center gap-3 mt-2 text-xs text-text-muted">
-          {duration && (
-            <span className="inline-flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-              {duration}
-            </span>
-          )}
-          {isOngoing && (
+      {(duration || isOngoing || onClick) && (
+        <div className="flex items-center justify-between gap-3 mt-2 text-xs text-text-muted border-t border-slate-50 pt-2">
+          <div className="flex items-center gap-3">
+            {duration && (
+              <span className="inline-flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                {duration}
+              </span>
+            )}
+          </div>
+          {isOngoing ? (
             <span className="inline-flex items-center gap-1 text-primary font-semibold">
               Resume trip →
             </span>
-          )}
+          ) : onClick ? (
+            <span className="inline-flex items-center gap-1 text-primary-dark font-medium">
+              View details →
+            </span>
+          ) : null}
         </div>
       )}
     </Card>

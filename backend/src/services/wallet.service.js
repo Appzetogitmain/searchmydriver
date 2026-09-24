@@ -83,18 +83,55 @@ export async function getWalletService(userId, userType = 'User') {
 
 export async function listWalletTransactionsService(
   userId,
-  { page = 1, limit = 20, userType = 'User', sort = 'chronological_asc', direction } = {}
+  { page = 1, limit = 20, userType = 'User', sort = 'newest', direction, category, source } = {}
 ) {
   if (!userId) throw new ApiError(400, 'userId is required');
   const safeLimit = Math.max(1, Math.min(100, Number(limit) || 20));
   const safePage = Math.max(1, Number(page) || 1);
   const filter = { userId, userType };
 
-  if (direction && ['credit', 'debit'].includes(String(direction).toLowerCase())) {
+  const cat = String(category || '').toLowerCase().trim();
+  if (cat === 'credit') {
+    filter.direction = 'credit';
+  } else if (cat === 'debit') {
+    filter.direction = 'debit';
+    filter.source = {
+      $nin: [
+        WALLET_TXN_SOURCE.NO_KIT_PENALTY,
+        WALLET_TXN_SOURCE.DRIVER_CANCELLATION_PENALTY,
+        WALLET_TXN_SOURCE.CANCELLATION_FEE,
+        WALLET_TXN_SOURCE.CASH_TRIP_SETTLEMENT,
+        WALLET_TXN_SOURCE.MONTHLY_REGISTRATION_DEDUCTION,
+      ],
+    };
+  } else if (cat === 'auto_deduction' || cat === 'auto_deductions') {
+    filter.source = {
+      $in: [
+        WALLET_TXN_SOURCE.CASH_TRIP_SETTLEMENT,
+        WALLET_TXN_SOURCE.MONTHLY_REGISTRATION_DEDUCTION,
+      ],
+    };
+  } else if (cat === 'penalty' || cat === 'penalties') {
+    filter.source = {
+      $in: [
+        WALLET_TXN_SOURCE.NO_KIT_PENALTY,
+        WALLET_TXN_SOURCE.DRIVER_CANCELLATION_PENALTY,
+        WALLET_TXN_SOURCE.CANCELLATION_FEE,
+      ],
+    };
+  } else if (source) {
+    if (Array.isArray(source)) {
+      filter.source = { $in: source };
+    } else if (source.includes(',')) {
+      filter.source = { $in: source.split(',') };
+    } else {
+      filter.source = source;
+    }
+  } else if (direction && ['credit', 'debit'].includes(String(direction).toLowerCase())) {
     filter.direction = String(direction).toLowerCase();
   }
 
-  let sortQuery = { createdAt: 1 };
+  let sortQuery = { createdAt: -1 };
   const sortKey = String(sort || '').toLowerCase().trim();
   if (sortKey === 'desc' || sortKey === 'chronological_desc' || sortKey === 'newest') {
     sortQuery = { createdAt: -1 };
@@ -106,15 +143,126 @@ export async function listWalletTransactionsService(
     sortQuery = { description: -1, source: -1, createdAt: -1 };
   }
 
-  const [transactions, total] = await Promise.all([
+  const [transactions, total, totalsAgg] = await Promise.all([
     WalletTransaction.find(filter)
       .sort(sortQuery)
       .skip((safePage - 1) * safeLimit)
       .limit(safeLimit)
       .lean(),
     WalletTransaction.countDocuments(filter),
+    WalletTransaction.aggregate([
+      { $match: { userId: new mongoose.Types.ObjectId(userId), userType } },
+      {
+        $group: {
+          _id: null,
+          totalCredits: {
+            $sum: {
+              $cond: [{ $eq: ['$direction', 'credit'] }, '$amountRupees', 0],
+            },
+          },
+          totalDebits: {
+            $sum: {
+              $cond: [{ $eq: ['$direction', 'debit'] }, '$amountRupees', 0],
+            },
+          },
+          totalAutoDeductions: {
+            $sum: {
+              $cond: [
+                {
+                  $in: [
+                    '$source',
+                    [
+                      WALLET_TXN_SOURCE.CASH_TRIP_SETTLEMENT,
+                      WALLET_TXN_SOURCE.MONTHLY_REGISTRATION_DEDUCTION,
+                    ],
+                  ],
+                },
+                '$amountRupees',
+                0,
+              ],
+            },
+          },
+          totalPenalties: {
+            $sum: {
+              $cond: [
+                {
+                  $in: [
+                    '$source',
+                    [
+                      WALLET_TXN_SOURCE.NO_KIT_PENALTY,
+                      WALLET_TXN_SOURCE.DRIVER_CANCELLATION_PENALTY,
+                      WALLET_TXN_SOURCE.CANCELLATION_FEE,
+                    ],
+                  ],
+                },
+                '$amountRupees',
+                0,
+              ],
+            },
+          },
+          creditCount: {
+            $sum: {
+              $cond: [{ $eq: ['$direction', 'credit'] }, 1, 0],
+            },
+          },
+          autoDeductionCount: {
+            $sum: {
+              $cond: [
+                {
+                  $in: [
+                    '$source',
+                    [
+                      WALLET_TXN_SOURCE.CASH_TRIP_SETTLEMENT,
+                      WALLET_TXN_SOURCE.MONTHLY_REGISTRATION_DEDUCTION,
+                    ],
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          penaltyCount: {
+            $sum: {
+              $cond: [
+                {
+                  $in: [
+                    '$source',
+                    [
+                      WALLET_TXN_SOURCE.NO_KIT_PENALTY,
+                      WALLET_TXN_SOURCE.DRIVER_CANCELLATION_PENALTY,
+                      WALLET_TXN_SOURCE.CANCELLATION_FEE,
+                    ],
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          debitCount: {
+            $sum: {
+              $cond: [{ $eq: ['$direction', 'debit'] }, 1, 0],
+            },
+          },
+        },
+      },
+    ]),
   ]);
-  return { transactions, total, page: safePage, limit: safeLimit };
+
+  const rawTotals = totalsAgg[0] || {};
+  const totals = {
+    totalCredits: Math.round((rawTotals.totalCredits || 0) * 100) / 100,
+    totalDebits: Math.round((rawTotals.totalDebits || 0) * 100) / 100,
+    totalAutoDeductions: Math.round((rawTotals.totalAutoDeductions || 0) * 100) / 100,
+    totalPenalties: Math.round((rawTotals.totalPenalties || 0) * 100) / 100,
+    creditCount: rawTotals.creditCount || 0,
+    debitCount: rawTotals.debitCount || 0,
+    autoDeductionCount: rawTotals.autoDeductionCount || 0,
+    penaltyCount: rawTotals.penaltyCount || 0,
+  };
+
+  return { transactions, total, page: safePage, limit: safeLimit, pages: Math.ceil(total / safeLimit) || 1, totals };
 }
 
 /* ------------------------------------------------------------------ */

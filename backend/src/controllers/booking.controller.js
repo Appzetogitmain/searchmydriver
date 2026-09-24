@@ -190,7 +190,7 @@ export const driverAcceptBooking = asyncHandler(async (req, res) => {
   }
   const result = await acceptBookingService(req.params.id, req.driver._id);
   if (!result.ok) {
-    throw new ApiError(409, result.reason || 'Cannot accept booking');
+    throw new ApiError(400, result.message || result.reason || 'Cannot accept booking');
   }
   return res.status(200).json(new ApiResponse(200, result, 'Booking accepted'));
 });

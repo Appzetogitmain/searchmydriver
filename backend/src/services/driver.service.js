@@ -236,6 +236,13 @@ export const updateOnboardingStepService = async (driverId, data) => {
     throw new ApiError(404, 'Driver not found');
   }
 
+  if (isApplicationSubmitted(driver)) {
+    throw new ApiError(
+      403,
+      'Application has already been submitted. Personal details and documents are locked and can only be modified by an administrator.',
+    );
+  }
+
   if (stepNumber === 1) {
     const { name, password, zoneId, languages } = stepData;
     if (name) driver.name = name;
@@ -277,6 +284,12 @@ export const updateOnboardingStepService = async (driverId, data) => {
     if (stepData.documents) mergeDocumentsByType(driver.documents, stepData.documents);
     if (driver.onboardingStep < 2) driver.onboardingStep = 2;
   } else if (stepNumber === 3) {
+    if (driver.bankDetails?.accountNumber) {
+      throw new ApiError(
+        403,
+        'Bank details are locked once added and can only be updated by the administrator via the Admin Panel.',
+      );
+    }
     driver.bankDetails = stepData.bankDetails;
     if (driver.onboardingStep < 3) driver.onboardingStep = 3;
   } else if (stepNumber === 4) {

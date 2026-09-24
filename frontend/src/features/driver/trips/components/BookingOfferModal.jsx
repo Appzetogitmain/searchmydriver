@@ -20,6 +20,8 @@ import { S2C_EVENTS } from '../../../../constants/socketEvents';
 import { SERVICE_TYPES, SERVICE_TYPE_LABELS } from '../../../../constants/serviceTypes';
 import { BOOKING_TYPE, TRIP_TYPE_LABELS } from '../../../../constants/bookingStatus';
 import { formatDistance } from '../../../../utils/geo';
+import { formatCurrency } from '../../../../utils/formatters';
+import useDriverAuthStore from '../../../../store/useDriverAuthStore';
 import Button from '../../../../components/Button';
 
 /**
@@ -267,6 +269,7 @@ const BookingOfferModal = () => {
   const clearOffer = useDriverIncomingOfferStore((s) => s.clearOffer);
   const acceptOffer = useDriverIncomingOfferStore((s) => s.accept);
   const rejectOffer = useDriverIncomingOfferStore((s) => s.reject);
+  const driver = useDriverAuthStore((s) => s.driver);
   const navigate = useNavigate();
 
   // Looping alert tone that rings while an offer is on screen. Stops the
@@ -493,6 +496,20 @@ const BookingOfferModal = () => {
             </div>
           )}
 
+          {offer.paymentMode === 'cash' && Number(driver?.wallet?.balance || 0) < 0 && (
+            <div className="flex items-start gap-3 rounded-2xl bg-rose-50 p-3 mt-4 border border-rose-200 animate-fade-in">
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-rose-900">
+                  Cash Ride Not Allowed
+                </p>
+                <p className="text-xs text-rose-700 mt-1 leading-snug">
+                  Your wallet balance is currently in minus ({formatCurrency(driver?.wallet?.balance || 0)}). You cannot accept cash bookings. Please recharge your wallet or accept online payment rides.
+                </p>
+              </div>
+            </div>
+          )}
+
           {offer.offerExpiresAt && (
             <CountdownBar
               expiresAt={offer.offerExpiresAt}
@@ -539,7 +556,10 @@ const BookingOfferModal = () => {
             <Button
               fullWidth
               onClick={handleAccept}
-              disabled={busy === 'reject'}
+              disabled={
+                busy === 'reject' ||
+                (offer.paymentMode === 'cash' && Number(driver?.wallet?.balance || 0) < 0)
+              }
               loading={busy === 'accept'}
             >
               {busy === 'accept' ? (

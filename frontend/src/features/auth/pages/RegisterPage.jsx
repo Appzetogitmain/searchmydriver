@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import Button from '../../../components/Button';
 import Input from '../../../components/Input';
 import Modal from '../../../components/Modal';
@@ -9,12 +9,31 @@ import api from '../../../utils/api';
 import useUserAuthStore from '../../../store/useUserAuthStore';
 import { navigateUserAfterAuth } from '../utils/authNavigation';
 
-
 const RegisterPage = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const setAuth = useUserAuthStore((state) => state.setAuth);
+
+  const queryRef =
+    searchParams.get('ref') ||
+    searchParams.get('referral') ||
+    searchParams.get('referralCode') ||
+    sessionStorage.getItem('user_referral_code') ||
+    '';
+
+  useEffect(() => {
+    if (queryRef) {
+      sessionStorage.setItem('user_referral_code', queryRef.trim().toUpperCase());
+    }
+  }, [queryRef]);
   
-  const [formData, setFormData] = useState({ name: '', phone: '', password: '', referralCode: '', city: '' });
+  const [formData, setFormData] = useState({
+    name: '',
+    phone: '',
+    password: '',
+    referralCode: queryRef || '',
+    city: '',
+  });
 
   const [otp, setOtp] = useState('');
   const [showOtpModal, setShowOtpModal] = useState(false);

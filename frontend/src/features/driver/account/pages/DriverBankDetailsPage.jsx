@@ -139,19 +139,15 @@ const DriverBankDetailsPage = () => {
             <FieldRow label="Last updated" value={formatDate(driver.updatedAt)} icon={Hash} />
           </Card>
 
-          <Card className="p-4 space-y-2">
+          <Card className="p-4 space-y-2 border border-slate-200">
             <div className="flex items-center justify-between">
-              <p className="text-[11px] uppercase tracking-wide font-semibold text-text-muted">Security note</p>
-              <button
-                type="button"
-                onClick={() => setIsEditModalOpen(true)}
-                className="text-xs font-semibold text-primary"
-              >
-                Edit Bank Details
-              </button>
+              <p className="text-[11px] uppercase tracking-wide font-semibold text-text-muted flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-slate-400" />
+                Security & Modification Policy
+              </p>
             </div>
             <p className="text-sm text-text-secondary leading-relaxed">
-              Keep your bank details accurate so payouts reach you without delays. If something changes, update your profile or contact support.
+              Bank details are securely locked. Once bank details have been added, the driver cannot make any changes personally. Any information or document can only be updated or modified by the Admin via the Admin Panel.
             </p>
           </Card>
         </>

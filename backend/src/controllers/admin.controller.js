@@ -36,6 +36,11 @@ export const getDriverById = asyncHandler(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, result, 'Driver profile fetched successfully'));
 });
 
+export const updateDriverProfileByAdmin = asyncHandler(async (req, res) => {
+  const result = await adminService.updateDriverProfileByAdminService(req.staff, req.params.id, req.body);
+  return res.status(200).json(new ApiResponse(200, result, 'Driver profile updated successfully'));
+});
+
 export const updateDriverStatus = asyncHandler(async (req, res) => {
   const result = await adminService.updateDriverStatusService(req.staff, req.params.id, req.body);
   return res.status(200).json(new ApiResponse(200, result, `Driver status updated successfully`));

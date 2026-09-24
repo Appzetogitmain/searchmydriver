@@ -34,6 +34,8 @@ export const getMyWalletTransactions = asyncHandler(async (req, res) => {
     limit: req.query.limit,
     sort: req.query.sort,
     direction: req.query.direction,
+    category: req.query.category,
+    source: req.query.source,
     userType,
   });
   return res
