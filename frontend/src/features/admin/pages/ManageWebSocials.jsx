@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Plus, Pencil, Trash2, Loader2, RefreshCw, X, Globe, Settings, Check } from 'lucide-react';
+import { Plus, Pencil, Trash2, Loader2, RefreshCw, X, Globe, Settings, Check, Smartphone, ExternalLink, Save, User, Car } from 'lucide-react';
 import api from '../../../utils/api';
 
 const Facebook = (props) => (
@@ -211,6 +211,12 @@ const ManageWebSocials = () => {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
+  // App download links state
+  const [userAppLink, setUserAppLink] = useState('');
+  const [driverAppLink, setDriverAppLink] = useState('');
+  const [loadingAppLinks, setLoadingAppLinks] = useState(true);
+  const [savingAppLinks, setSavingAppLinks] = useState(false);
+
   const fetchSocials = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -225,7 +231,41 @@ const ManageWebSocials = () => {
     }
   }, []);
 
-  useEffect(() => { fetchSocials(); }, [fetchSocials]);
+  const fetchAppLinks = useCallback(async () => {
+    setLoadingAppLinks(true);
+    try {
+      const res = await api.get('/web-socials/admin/app-links');
+      if (res?.data?.data) {
+        setUserAppLink(res.data.data.userAppLink || '');
+        setDriverAppLink(res.data.data.driverAppLink || '');
+      }
+    } catch (err) {
+      console.error('Failed to fetch app links:', err);
+    } finally {
+      setLoadingAppLinks(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSocials();
+    fetchAppLinks();
+  }, [fetchSocials, fetchAppLinks]);
+
+  const handleSaveAppLinks = async (e) => {
+    if (e) e.preventDefault();
+    setSavingAppLinks(true);
+    try {
+      await api.put('/web-socials/admin/app-links', {
+        userAppLink: userAppLink.trim(),
+        driverAppLink: driverAppLink.trim(),
+      });
+      toast.success('Mobile App download links updated successfully!');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to update app links');
+    } finally {
+      setSavingAppLinks(false);
+    }
+  };
 
   const openNew = () => { setEditingSocial(null); setShowForm(true); };
   const openEdit = (s) => { setEditingSocial(s); setShowForm(true); };
@@ -248,9 +288,149 @@ const ManageWebSocials = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <style>{`@keyframes slideInRight{from{transform:translateX(100%)}to{transform:translateX(0)}}`}</style>
 
+      {/* App Download Links Management Card */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gradient-to-r from-emerald-50/50 via-teal-50/30 to-white">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/20 shrink-0">
+              <Smartphone className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Mobile App Download Links</h2>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
+                Update the official App Store / Play Store links shown on the website's app download section.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleSaveAppLinks}
+            disabled={savingAppLinks || loadingAppLinks}
+            className="h-10 px-5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white text-xs font-bold uppercase tracking-wider rounded-xl flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer shadow-sm shadow-emerald-600/20 shrink-0"
+          >
+            {savingAppLinks ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Saving...</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                <span>Save App Links</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        <div className="p-6">
+          {loadingAppLinks ? (
+            <div className="flex justify-center items-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+            </div>
+          ) : (
+            <form onSubmit={handleSaveAppLinks} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* User App Link */}
+              <div className="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-5 space-y-3 hover:border-slate-300 transition-all">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900">User App Link</h4>
+                      <p className="text-[11px] text-slate-500 font-medium">Passenger mobile application URL</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/50 uppercase tracking-wide">
+                    Passenger
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 pt-1">
+                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">
+                    Store / Download URL
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={userAppLink}
+                      onChange={(e) => setUserAppLink(e.target.value)}
+                      placeholder="https://apps.apple.com/app/... or https://play.google.com/store/apps/..."
+                      className="flex-1 h-11 px-4 rounded-xl border border-slate-200 text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all bg-white"
+                    />
+                    {userAppLink.trim() && (
+                      <a
+                        href={userAppLink.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-11 h-11 flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-emerald-600 hover:border-emerald-200 transition-colors"
+                        title="Test User App Link"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-medium">
+                    Leave blank to default to website booking portal (<span className="font-semibold text-slate-500">/welcome</span>).
+                  </p>
+                </div>
+              </div>
+
+              {/* Driver App Link */}
+              <div className="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-5 space-y-3 hover:border-slate-300 transition-all">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+                      <Car className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900">Driver App Link</h4>
+                      <p className="text-[11px] text-slate-500 font-medium">Driver / Partner mobile application URL</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200/50 uppercase tracking-wide">
+                    Partner
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 pt-1">
+                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">
+                    Store / Download URL
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={driverAppLink}
+                      onChange={(e) => setDriverAppLink(e.target.value)}
+                      placeholder="https://apps.apple.com/app/... or https://play.google.com/store/apps/..."
+                      className="flex-1 h-11 px-4 rounded-xl border border-slate-200 text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all bg-white"
+                    />
+                    {driverAppLink.trim() && (
+                      <a
+                        href={driverAppLink.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-11 h-11 flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-amber-600 hover:border-amber-200 transition-colors"
+                        title="Test Driver App Link"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-medium">
+                    Leave blank to default to driver portal (<span className="font-semibold text-slate-500">/driver/login</span>).
+                  </p>
+                </div>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+
+      {/* Website Social Links Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div>
           <h2 className="text-xl font-bold text-slate-900">Manage Website Social Links</h2>

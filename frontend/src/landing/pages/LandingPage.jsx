@@ -11,6 +11,7 @@ const LandingPage = () => {
   const [faqs, setFaqs] = useState([]);
   const [openFaqIndex, setOpenFaqIndex] = useState(null);
   const [showFullDesc, setShowFullDesc] = useState(false);
+  const [appLinks, setAppLinks] = useState({ userAppLink: '', driverAppLink: '' });
 
   const words = ['PROFESSIONAL DRIVER', 'CHAUFFEUR', 'HOURLY DRIVER', 'MONTHLY DRIVER'];
   const [wordIndex, setWordIndex] = useState(0);
@@ -102,6 +103,20 @@ const LandingPage = () => {
       }
     };
     fetchBanners();
+  }, []);
+
+  useEffect(() => {
+    const fetchAppLinks = async () => {
+      try {
+        const res = await api.get('/web-socials/app-links');
+        if (res?.data?.data) {
+          setAppLinks(res.data.data);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch app download links:', err);
+      }
+    };
+    fetchAppLinks();
   }, []);
 
   useEffect(() => {
@@ -222,7 +237,15 @@ const LandingPage = () => {
               </button>
               
               <button 
-                onClick={() => navigate('/welcome')}
+                onClick={() => {
+                  if (appLinks.userAppLink?.trim()) {
+                    window.open(appLinks.userAppLink.trim(), '_blank', 'noopener,noreferrer');
+                  } else {
+                    const el = document.getElementById('download-app-section');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                    else navigate('/welcome');
+                  }
+                }}
                 className="inline-flex items-center justify-center px-6 py-3 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-xl transition-all duration-300 cursor-pointer text-xs tracking-wider uppercase"
               >
                 Download App
@@ -642,7 +665,7 @@ const LandingPage = () => {
       )}
 
       {/* App Download Banner */}
-      <section className="py-16 bg-gradient-to-r from-emerald-600 to-teal-700 relative overflow-hidden">
+      <section id="download-app-section" className="py-16 bg-gradient-to-r from-emerald-600 to-teal-700 relative overflow-hidden">
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px]" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center space-y-8">
           <h2 className="text-3xl font-extrabold text-white tracking-tight">
@@ -654,7 +677,9 @@ const LandingPage = () => {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-6 pt-2">
             {/* User App */}
             <a
-              href="/welcome"
+              href={appLinks.userAppLink?.trim() || '/welcome'}
+              target={appLinks.userAppLink?.trim() ? '_blank' : undefined}
+              rel={appLinks.userAppLink?.trim() ? 'noopener noreferrer' : undefined}
               className="w-full sm:w-auto inline-flex items-center justify-center gap-4 bg-black text-white px-8 py-3.5 rounded-full hover:bg-black/95 transition-all border border-emerald-500/25 shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
             >
               <svg className="w-7 h-7 fill-current" viewBox="0 0 24 24">
@@ -668,7 +693,9 @@ const LandingPage = () => {
 
             {/* Driver App */}
             <a
-              href="/driver/login"
+              href={appLinks.driverAppLink?.trim() || '/driver/login'}
+              target={appLinks.driverAppLink?.trim() ? '_blank' : undefined}
+              rel={appLinks.driverAppLink?.trim() ? 'noopener noreferrer' : undefined}
               className="w-full sm:w-auto inline-flex items-center justify-center gap-4 bg-black text-white px-8 py-3.5 rounded-full hover:bg-black/95 transition-all border border-emerald-500/25 shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
             >
               <svg className="w-7 h-7 fill-current" viewBox="0 0 24 24">

@@ -3,6 +3,8 @@ import { ApiResponse } from '../utils/apiResponse.js';
 import { ApiError } from '../utils/apiError.js';
 import WebSocialLink from '../models/webSocialLink.model.js';
 
+import PlatformSettings from '../models/platformSettings.model.js';
+
 const INITIAL_SOCIALS = [
   { platform: 'Facebook', url: 'https://facebook.com', icon: 'facebook', sortOrder: 0 },
   { platform: 'Twitter', url: 'https://twitter.com', icon: 'twitter', sortOrder: 1 },
@@ -74,4 +76,49 @@ export const listActiveSocials = asyncHandler(async (req, res) => {
   await seedSocialsIfNeeded();
   const socials = await WebSocialLink.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean();
   return res.status(200).json(new ApiResponse(200, socials, 'Active social links fetched successfully'));
+});
+
+export const getWebSocialAppLinks = asyncHandler(async (req, res) => {
+  let settings = await PlatformSettings.findOne().lean();
+  if (!settings) {
+    settings = await PlatformSettings.create({});
+  }
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        userAppLink: settings.userAppLink || '',
+        driverAppLink: settings.driverAppLink || '',
+      },
+      'App links fetched successfully'
+    )
+  );
+});
+
+export const updateWebSocialAppLinks = asyncHandler(async (req, res) => {
+  const { userAppLink, driverAppLink } = req.body;
+  let settings = await PlatformSettings.findOne();
+  if (!settings) {
+    settings = await PlatformSettings.create({
+      userAppLink: userAppLink !== undefined ? userAppLink.trim() : '',
+      driverAppLink: driverAppLink !== undefined ? driverAppLink.trim() : '',
+      updatedBy: req.user?._id || null,
+    });
+  } else {
+    if (userAppLink !== undefined) settings.userAppLink = userAppLink.trim();
+    if (driverAppLink !== undefined) settings.driverAppLink = driverAppLink.trim();
+    if (req.user?._id) settings.updatedBy = req.user._id;
+    await settings.save();
+  }
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        userAppLink: settings.userAppLink || '',
+        driverAppLink: settings.driverAppLink || '',
+      },
+      'App links updated successfully'
+    )
+  );
 });

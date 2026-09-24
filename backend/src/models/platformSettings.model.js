@@ -30,6 +30,9 @@ const platformSettingsSchema = new mongoose.Schema(
     userSupportPhone: { type: String, default: '9981570665', trim: true },
     userSupportEmail: { type: String, default: 'Searchmydrivers@gmail.com', trim: true },
     userSupportResponseTime: { type: String, default: 'We usually reply within 24 hours.', trim: true },
+    // App download links
+    userAppLink: { type: String, default: '', trim: true },
+    driverAppLink: { type: String, default: '', trim: true },
     referral: {
       user: {
         enabled: { type: Boolean, default: false },
