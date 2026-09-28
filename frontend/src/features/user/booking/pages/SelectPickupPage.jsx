@@ -27,6 +27,8 @@ import { SERVICE_TYPES } from '../../../../constants/serviceTypes';
 import { getCarBrandName, getCarModelName } from '../../../../utils/vehicleCatalog';
 import useBookingDraftStore from '../../../../store/user/useBookingDraftStore';
 import { useZoneCheck } from '../../../../hooks/useZoneCheck';
+import { useGeolocation } from '../../../../hooks/useGeolocation';
+import EnableLocationButton from '../../../../components/location/EnableLocationButton';
 import OutOfServiceDialog from '../../../../components/dialogs/OutOfServiceDialog';
 
 /**
@@ -190,6 +192,22 @@ const SelectPickupPage = () => {
     },
   });
 
+  // Snap the pickup pin to the user's position once we have it — including
+  // when location only becomes available later (e.g. GPS turned on while on
+  // this screen, picked up by the app-wide LocationGate).
+  const { coords: geoCoords, error: geoError } = useGeolocation({ enabled: !pickup });
+  const geoCenteredRef = useRef(false);
+  useEffect(() => {
+    if (!mapInstance || !geoCoords || pickup || geoCenteredRef.current) return;
+    geoCenteredRef.current = true;
+    const { lat, lng } = geoCoords;
+    moveMapTo({ lat, lng });
+    if (pickupMarkerRef.current) pickupMarkerRef.current.position = { lat, lng };
+    reverseGeocode({ lat, lng }, 'pickup').then((point) => {
+      if (point) applyLocation(point, 'pickup');
+    });
+  }, [mapInstance, geoCoords, pickup, moveMapTo, reverseGeocode, applyLocation]);
+
   /* ------------------------------------------------------------------ */
   /* Map init                                                             */
   /* ------------------------------------------------------------------ */
@@ -270,21 +288,6 @@ const SelectPickupPage = () => {
       const point = await reverseGeocode({ lat, lng }, field);
       if (point) applyLocation(point, field);
     });
-
-    if (!pickup && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          moveMapTo({ lat, lng });
-          if (pickupMarkerRef.current) pickupMarkerRef.current.position = { lat, lng };
-          const point = await reverseGeocode({ lat, lng }, 'pickup');
-          if (point) applyLocation(point, 'pickup');
-        },
-        () => {},
-        { enableHighAccuracy: true, timeout: 8_000, maximumAge: 30_000 },
-      );
-    }
   }, [
     ready,
     maps,
@@ -414,6 +417,14 @@ const SelectPickupPage = () => {
           </div>
         ) : (
           <div ref={mapRef} className="w-full h-full" />
+        )}
+        {!error && geoError && !pickup && (
+          <div className="absolute top-3 inset-x-3 z-10 flex items-center justify-between gap-3 bg-white/95 backdrop-blur rounded-xl shadow-md px-3 py-2">
+            <p className="text-[11px] text-text-muted leading-snug">
+              {geoError}. Drag the pin or search, or
+            </p>
+            <EnableLocationButton className="shrink-0" label="Use my location" />
+          </div>
         )}
       </div>
 

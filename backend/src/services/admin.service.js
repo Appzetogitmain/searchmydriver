@@ -35,6 +35,7 @@ import {
 } from './adminTask.service.js';
 import { TASK_TYPE } from '../constants/adminTask.js';
 import AdminTask from '../models/adminTask.model.js';
+import { purgeUserAccount } from './user.service.js';
 
 import {
   getStaffScope,
@@ -60,7 +61,7 @@ export const loginStaffService = async (email, password) => {
   const isMatch = await bcrypt.compare(password, staff.password);
   if (!isMatch) {
     console.log("password did not match");
-    throw new ApiError(401, 'Invalid credentials');
+    throw new ApiError(401, 'Wrong password');
   }
 
   staff.password = undefined;
@@ -1313,12 +1314,9 @@ export const deleteUserService = async (adminId, userId) => {
     throw new ApiError(404, 'User not found');
   }
 
-  if (!user.isDeleted) {
-    user.isDeleted = true;
-    user.deletedAt = new Date();
-    user.isActive = false;
-    await user.save();
-  }
+  // Same full purge as self-delete so the number can sign up fresh.
+  // Safe to re-run on an already soft-deleted row (cleans legacy data).
+  await purgeUserAccount(user);
 
   return { id: user._id, message: 'User account deleted successfully' };
 };

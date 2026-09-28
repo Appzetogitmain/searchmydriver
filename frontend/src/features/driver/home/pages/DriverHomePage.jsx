@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import Card from '../../../../components/Card';
 import Toggle from '../../../../components/Toggle';
+import useLocationStatusStore, { LOCATION_STATUS } from '../../../../store/useLocationStatusStore';
 import BannersCarousel from '../../../../components/BannersCarousel';
 import {
   Star,
@@ -124,6 +126,14 @@ const DriverHomePage = () => {
         primeNotification();
       } catch {
         /* ignore */
+      }
+      // Drivers can't receive or run trips without location — check it
+      // (the tap lets the browser show its prompt) before going online.
+      const locStatus = await useLocationStatusStore.getState().check({ request: true });
+      if (locStatus !== LOCATION_STATUS.OK && locStatus !== LOCATION_STATUS.UNSUPPORTED) {
+        useLocationStatusStore.getState().openSheet();
+        toast.error('Turn on location to go online');
+        return;
       }
       const result = await setOnline(true);
       if (result.success) refetchOnline();

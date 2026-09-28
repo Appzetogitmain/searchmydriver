@@ -388,6 +388,9 @@ const DRIVER_USER_FIELDS = [
   'carTypeExperience',
   'languages',
   'drivingLicense',
+  // Location + joined date shown on the driver ID card the customer can open.
+  'city',
+  'createdAt',
 ].join(' ');
 
 const DRIVER_USER_FIELDS_WITH_LOC = `${DRIVER_USER_FIELDS} location`;
@@ -675,6 +678,10 @@ function validateCreateInput(body) {
     }
     if (!monthly?.workingHoursPerDay || monthly.workingHoursPerDay < 1) {
       throw new ApiError(400, 'Monthly: workingHoursPerDay must be >= 1');
+    }
+    // The monthly registration fee must be paid digitally — cash is not accepted.
+    if (paymentMethod === 'cash') {
+      throw new ApiError(400, 'Cash payment is not available for Monthly bookings. Please pay via Wallet or Online.');
     }
   }
 }

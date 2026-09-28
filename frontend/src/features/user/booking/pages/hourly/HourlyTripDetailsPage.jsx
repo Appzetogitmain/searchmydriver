@@ -13,6 +13,7 @@ import Button from '../../../../../components/Button';
 import OutOfServiceDialog from '../../../../../components/dialogs/OutOfServiceDialog';
 import { useGoogleMaps } from '../../../../../hooks/useGoogleMaps';
 import { useGeolocation } from '../../../../../hooks/useGeolocation';
+import EnableLocationButton from '../../../../../components/location/EnableLocationButton';
 import { useNearbyDrivers } from '../../../../../hooks/useNearbyDrivers';
 import { useDriverMarkers } from '../../../../../hooks/useDriverMarkers';
 import { useZoneCheck } from '../../../../../hooks/useZoneCheck';
@@ -482,9 +483,12 @@ const HourlyTripDetailsPage = () => {
         )}
 
         {geoError && !pickup?.address && (
-          <p className="text-[11px] text-text-muted bg-white/80 backdrop-blur rounded-xl px-3 py-2">
-            {geoError} — drag the pin or search to choose your pickup.
-          </p>
+          <div className="flex items-center justify-between gap-3 bg-white/80 backdrop-blur rounded-xl px-3 py-2">
+            <p className="text-[11px] text-text-muted">
+              {geoError} — drag the pin or search to choose your pickup.
+            </p>
+            <EnableLocationButton className="shrink-0" label="Use my location" />
+          </div>
         )}
       </div>
 

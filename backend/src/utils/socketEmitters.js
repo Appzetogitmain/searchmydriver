@@ -141,11 +141,15 @@ export async function emitNotification(target, notification) {
         }
 
         if (fcmToken) {
-          await sendFcmNotification(fcmToken, {
+          const result = await sendFcmNotification(fcmToken, {
             title: payload.title,
             body: payload.body,
             data: payload.data,
           });
+          if (result?.invalidToken) {
+            const Model = recipientModel === 'User' ? User : Driver;
+            await Model.updateOne({ _id: recipientId, fcmToken }, { $set: { fcmToken: '' } });
+          }
         }
       }
     } catch (err) {

@@ -16,6 +16,7 @@ import UserOnboardingGuard from './guards/UserOnboardingGuard';
 import SuperAdminOnlyGuard from './guards/SuperAdminOnlyGuard';
 import AdminLayout from './layouts/AdminLayout';
 import CallOverlay from './components/CallOverlay';
+import LocationGate from './components/location/LocationGate';
 
 // Side-effect: starts the global Socket.IO lifecycle (auto-connects when any
 // auth store has a session, auto-disconnects on logout).
@@ -272,6 +273,7 @@ function App() {
   return (
     <Suspense fallback={<PageLoader />}>
       <CallOverlay />
+      <LocationGate />
       <Routes>
         {/* Public Website Routes */}
         <Route element={<LandingLayout />}>

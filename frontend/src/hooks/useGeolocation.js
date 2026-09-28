@@ -13,6 +13,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 const FRESH_FOR_MS = 5 * 60 * 1000; // 5 min — good enough for "your location"
 let cache = null;
+// Every mounted hook listens here so a fix obtained anywhere (e.g. the
+// app-wide location check after the user turns GPS on) reaches all pages.
+const listeners = new Set();
 
 function readCoords(position) {
   return {
@@ -21,6 +24,12 @@ function readCoords(position) {
     accuracy: position.coords.accuracy,
     fetchedAt: Date.now(),
   };
+}
+
+/** Store a fresh position and push it to every mounted `useGeolocation`. */
+export function primeGeolocationCache(position) {
+  cache = readCoords(position);
+  listeners.forEach((fn) => fn(cache));
 }
 
 export function useGeolocation({ enabled = true, options } = {}) {
@@ -41,15 +50,14 @@ export function useGeolocation({ enabled = true, options } = {}) {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         if (cancelledRef.current) return;
-        const next = readCoords(pos);
-        cache = next;
-        setCoords(next);
+        primeGeolocationCache(pos);
         setLoading(false);
       },
       (err) => {
         if (cancelledRef.current) return;
         setLoading(false);
         if (err?.code === 1) setError('Allow location access to see places near you');
+        else if (err?.code === 2) setError("Your phone's location is turned off");
         else if (err?.code === 3) setError('Location request timed out');
         else setError(err?.message || 'Could not get your location');
       },
@@ -61,6 +69,16 @@ export function useGeolocation({ enabled = true, options } = {}) {
       },
     );
   }, [options]);
+
+  useEffect(() => {
+    const onFix = (next) => {
+      setCoords(next);
+      setError(null);
+      setLoading(false);
+    };
+    listeners.add(onFix);
+    return () => listeners.delete(onFix);
+  }, []);
 
   useEffect(() => {
     cancelledRef.current = false;
