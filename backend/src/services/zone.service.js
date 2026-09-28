@@ -1,4 +1,5 @@
 import Zone from '../models/zone.model.js';
+import WebCity from '../models/webCity.model.js';
 import { ApiError } from '../utils/apiError.js';
 import { ZONE_SHAPE } from '../constants/zoneShapes.js';
 import {
@@ -311,13 +312,15 @@ export const getActiveServiceCitiesService = async () => {
   for (const z of zones) {
     const cityName = (z.city || '').trim();
     if (!cityName) continue;
-    if (!citiesMap.has(cityName)) {
-      citiesMap.set(cityName, {
-        city: cityName,
+    const key = cityName.toLowerCase();
+    if (!citiesMap.has(key)) {
+      const formatted = cityName.charAt(0).toUpperCase() + cityName.slice(1);
+      citiesMap.set(key, {
+        city: formatted,
         zones: [],
       });
     }
-    citiesMap.get(cityName).zones.push({
+    citiesMap.get(key).zones.push({
       _id: z._id,
       name: z.name,
       code: z.code,
@@ -326,6 +329,27 @@ export const getActiveServiceCitiesService = async () => {
     });
   }
 
-  return Array.from(citiesMap.values());
+  // Also include active web cities if any
+  try {
+    const webCities = await WebCity.find({ isActive: true }).select('name');
+    for (const wc of webCities) {
+      const name = (wc.name || '').trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (!citiesMap.has(key)) {
+        const formatted = name.charAt(0).toUpperCase() + name.slice(1);
+        citiesMap.set(key, {
+          city: formatted,
+          zones: [],
+        });
+      }
+    }
+  } catch (err) {
+    // Non-blocking
+  }
+
+  const result = Array.from(citiesMap.values());
+  result.sort((a, b) => a.city.localeCompare(b.city));
+  return result;
 };
 

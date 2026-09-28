@@ -36,27 +36,51 @@ export default function ReferAndEarnPage() {
     }
   };
 
+  const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.searchmydrivers.user';
   const referralCode = user?.referralCode || 'LOAD...';
-  const shareText = `Use my referral code ${referralCode} to sign up and get a bonus on SearchMyDriver!`;
+  const shareMessage = `🚗 Join SearchMyDriver!
 
-  const copyCode = () => {
+Use my referral code ${referralCode} to sign up and earn bonus wallet cash on your first booking!
+
+📲 Download Android App:
+${PLAY_STORE_URL}
+
+🔑 Referral Code: ${referralCode}`;
+
+  const copyCode = async () => {
     if (!user?.referralCode) return;
-    navigator.clipboard.writeText(user.referralCode);
-    toast.success('Referral code copied!');
+    try {
+      await navigator.clipboard.writeText(user.referralCode);
+      toast.success('Referral code copied!');
+    } catch {
+      toast.error('Failed to copy code');
+    }
+  };
+
+  const copyFullMessage = async () => {
+    try {
+      await navigator.clipboard.writeText(shareMessage);
+      toast.success('Invitation & app link copied!');
+    } catch {
+      toast.error('Failed to copy invitation message');
+    }
   };
 
   const shareCode = async () => {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: 'Join SearchMyDriver',
-          text: shareText,
+          title: 'Join SearchMyDriver & Earn Bonus',
+          text: shareMessage,
+          url: PLAY_STORE_URL,
         });
       } catch (err) {
-        console.log('Share failed:', err);
+        if (err.name !== 'AbortError') {
+          copyFullMessage();
+        }
       }
     } else {
-      copyCode();
+      copyFullMessage();
     }
   };
 

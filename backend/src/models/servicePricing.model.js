@@ -459,7 +459,7 @@ const scheduledDispatchSchema = new mongoose.Schema(
      * are otherwise online and idle. Defaults to 30 min.
      */
     RIDE_BUFFER_MINUTES: { type: Number, default: 30, min: 0 },
-    MIN_SCHEDULED_LEAD_HOURS: { type: Number, default: 2, min: 0 },
+    MIN_SCHEDULED_LEAD_HOURS: { type: Number, default: 0.5, min: 0 },
     REMINDER_OFFSETS_MINUTES: {
       type: [Number],
       default: [60, 15],

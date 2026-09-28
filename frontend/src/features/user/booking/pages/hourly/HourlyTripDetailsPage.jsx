@@ -7,6 +7,7 @@ import {
   MapPin,
   ChevronRight,
   Navigation,
+  AlertTriangle,
 } from 'lucide-react';
 import Button from '../../../../../components/Button';
 import OutOfServiceDialog from '../../../../../components/dialogs/OutOfServiceDialog';
@@ -18,6 +19,7 @@ import { useZoneCheck } from '../../../../../hooks/useZoneCheck';
 import { useDirectionsRoute } from '../../../../../hooks/useDirectionsRoute';
 import { haversineMeters } from '../../../../../utils/geo';
 import { reverseGeocode } from '../../../../../utils/geocoding';
+import { isSameCity, getCityDisplayName } from '../../../../../utils/cityValidation';
 import {
   DEFAULT_MAP_CENTER,
   DEFAULT_MAP_ZOOM,
@@ -316,11 +318,21 @@ const HourlyTripDetailsPage = () => {
     }
   }, [coords, refresh, moveMapTo, resolvePoint, setPickupPoint]);
 
+  const isOutsideCityBlocked = useMemo(() => {
+    if (!isOneWay) return false;
+    if (!pickup?.address || !dropoff?.address) return false;
+    return !isSameCity(pickup, dropoff);
+  }, [isOneWay, pickup, dropoff]);
+
+  const pickupCityName = useMemo(() => {
+    return getCityDisplayName(pickup) || 'your pickup city';
+  }, [pickup]);
+
   const canContinue = useMemo(() => {
     if (!pickup?.address || !carId) return false;
-    if (isOneWay && !dropoff?.address) return false;
+    if (isOneWay && (!dropoff?.address || isOutsideCityBlocked)) return false;
     return true;
-  }, [pickup, carId, isOneWay, dropoff]);
+  }, [pickup, carId, isOneWay, dropoff, isOutsideCityBlocked]);
 
   const handleConfirm = () => {
     if (!canContinue) return;
@@ -438,6 +450,36 @@ const HourlyTripDetailsPage = () => {
             </div>
           )}
         </div>
+
+        {isOneWay && isOutsideCityBlocked && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-3.5 flex items-start gap-3 shadow-md animate-in fade-in duration-200">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0 text-xs leading-relaxed">
+              <p className="font-semibold text-amber-950">
+                Out-of-city dropoff selected
+              </p>
+              <p className="mt-0.5 text-amber-800">
+                Hourly bookings are strictly for local travel within <span className="font-semibold">{pickupCityName}</span>. For traveling to another city, please choose Outstation booking.
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate('/user/book/outstation')}
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 text-white font-medium hover:bg-amber-700 transition active:scale-95"
+                >
+                  Switch to Outstation
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setActiveField('dropoff'); setPickerOpen(true); }}
+                  className="px-3 py-1.5 rounded-lg bg-white border border-amber-300 text-amber-900 font-medium hover:bg-amber-100 transition"
+                >
+                  Change Dropoff
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {geoError && !pickup?.address && (
           <p className="text-[11px] text-text-muted bg-white/80 backdrop-blur rounded-xl px-3 py-2">

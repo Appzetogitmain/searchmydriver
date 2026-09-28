@@ -227,11 +227,6 @@ function DateTimeSheetBody({
     return out;
   }, [todayMidnight, dayWindow, maxMs]);
 
-  const timeSlots = useMemo(
-    () => buildTimeSlots(dayStartHour, dayEndHour, stepMinutes),
-    [dayStartHour, dayEndHour, stepMinutes],
-  );
-
   const [draftDay, setDraftDay] = useState(() => {
     if (value instanceof Date && !Number.isNaN(value.getTime())) {
       return stripTime(value);
@@ -255,18 +250,9 @@ function DateTimeSheetBody({
     if (!(day instanceof Date)) return false;
     const dayMs = day.getTime();
     if (Number.isFinite(maxMs) && dayMs > maxMs) return false;
-    const last = timeSlots[timeSlots.length - 1];
-    if (!last) return false;
-    const lastMs = combine(day, last.h, last.m).getTime();
-    return lastMs >= minMs;
-  };
-
-  const isSlotDisabled = (slot) => {
-    if (!draftDay) return true;
-    const ms = combine(draftDay, slot.h, slot.m).getTime();
-    if (ms < minMs) return true;
-    if (ms > maxMs) return true;
-    return false;
+    const endOfDay = new Date(day);
+    endOfDay.setHours(23, 59, 59, 999);
+    return endOfDay.getTime() >= minMs;
   };
 
   const draftMoment = useMemo(() => {
@@ -380,7 +366,7 @@ function DateTimeSheetBody({
         </div>
       </section>
 
-      {/* Time slots */}
+      {/* Time selection */}
       <section>
         <div className="flex items-center gap-2 mb-2">
           <Clock3 className="w-4 h-4 text-text-muted" />
@@ -394,7 +380,7 @@ function DateTimeSheetBody({
             <div className="bg-gray-50 border border-border p-3 rounded-2xl space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-text">
-                  Write / Enter exact time
+                  Enter pickup time
                 </span>
                 {draftTime && (
                   <span className="text-xs font-bold text-primary">
@@ -425,44 +411,13 @@ function DateTimeSheetBody({
                 className="w-full h-11 bg-white border border-border rounded-xl px-3 text-sm font-semibold text-text focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
               <p className="text-[11px] text-text-muted">
-                Type any custom time or select from the 30-minute slots below.
+                Select or enter your preferred pickup time.
               </p>
-            </div>
-
-            {/* Time slots grid */}
-            <div className="grid grid-cols-4 gap-2 max-h-56 overflow-y-auto pr-1">
-              {timeSlots.map((slot) => {
-                const slotDisabled = isSlotDisabled(slot);
-                const isSelected =
-                  draftTime && draftTime.h === slot.h && draftTime.m === slot.m;
-                return (
-                  <button
-                    key={`${slot.h}:${slot.m}`}
-                    type="button"
-                    disabled={slotDisabled}
-                    onClick={() => setDraftTime({ h: slot.h, m: slot.m })}
-                    className={`relative h-10 rounded-xl border text-[12px] font-semibold transition ${
-                      isSelected
-                        ? 'border-primary bg-primary text-slate-900'
-                        : slotDisabled
-                          ? 'border-border bg-gray-50 text-text-muted/60 cursor-not-allowed'
-                          : 'border-border bg-white text-text hover:border-primary/50'
-                    }`}
-                  >
-                    {formatHourMinute(slot.h, slot.m)}
-                    {isSelected && (
-                      <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-slate-900 text-primary flex items-center justify-center">
-                        <Check className="w-2.5 h-2.5" />
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
             </div>
           </div>
         ) : (
           <p className="text-[12px] text-text-muted py-3 px-3 bg-gray-50 rounded-xl">
-            Pick a day first to see available times.
+            Pick a day first to enter pickup time.
           </p>
         )}
       </section>

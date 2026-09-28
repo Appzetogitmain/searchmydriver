@@ -155,7 +155,7 @@ const buildDefaultForm = (serviceType) => ({
     EMERGENCY_POOL_MINUTES: 120,
     RETRY_DELAY_MINUTES: 5,
     RIDE_BUFFER_MINUTES: 30,
-    MIN_SCHEDULED_LEAD_HOURS: 2,
+    MIN_SCHEDULED_LEAD_HOURS: 0.5,
     REMINDER_OFFSETS_MINUTES: [60, 15],
   },
   isActive: true,
@@ -1250,7 +1250,7 @@ const ServicePricingModal = ({ isOpen, onClose, serviceType, existing, onSaved }
                         MIN_SCHEDULED_LEAD_HOURS: Number(e.target.value),
                       })
                     }
-                    helper={`Customer-facing copy will read \u201cWe need at least ${form.scheduledDispatch.MIN_SCHEDULED_LEAD_HOURS || 0} hour${(form.scheduledDispatch.MIN_SCHEDULED_LEAD_HOURS || 0) === 1 ? '' : 's'} between booking and pickup\u201d.`}
+                    helper={`Customer-facing copy will read \u201cWe need at least ${form.scheduledDispatch.MIN_SCHEDULED_LEAD_HOURS < 1 ? `${Math.round((form.scheduledDispatch.MIN_SCHEDULED_LEAD_HOURS || 0) * 60)} minutes` : `${form.scheduledDispatch.MIN_SCHEDULED_LEAD_HOURS || 0} hour${(form.scheduledDispatch.MIN_SCHEDULED_LEAD_HOURS || 0) === 1 ? '' : 's'}`} between booking and pickup\u201d.`}
                   />
                 </div>
                 <p className="text-[11px] text-slate-500">

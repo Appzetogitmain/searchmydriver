@@ -607,6 +607,14 @@ function validateCreateInput(body) {
     if (hourly.slabId && hourly.isCustomDuration) {
       throw new ApiError(400, 'Hourly: slabId and isCustomDuration cannot both be set');
     }
+    // In Hourly booking, if a dropoff destination is specified, it must be within the same city.
+    if (dropoff && (dropoff.address || dropoff.city) && !isSameCity(pickup, dropoff)) {
+      const cityName = getCityDisplayName(pickup) || 'the pickup city';
+      throw new ApiError(
+        400,
+        `Hourly bookings are strictly for local travel within ${cityName}. For destinations outside ${cityName}, please choose Outstation booking.`,
+      );
+    }
   }
   if (serviceType === SERVICE_TYPES.OUTSTATION) {
     if (!outstation?.destinationAddress?.trim()) {
@@ -640,18 +648,17 @@ function validateCreateInput(body) {
         'Outstation: expectedReturnAt must be after pickupAt',
       );
     }
-    if (isOneWay) {
-      const destLocation = dropoff || {
-        address: outstation.destinationAddress,
-        city: outstation.destinationCity || '',
-      };
-      if (isSameCity(pickup, destLocation)) {
-        const cityName = getCityDisplayName(pickup) || 'the pickup city';
-        throw new ApiError(
-          400,
-          `In-city trips are not allowed for Outstation One-Way. Destination must be in another city (outside ${cityName}). For local travel within ${cityName}, please choose Hourly booking.`,
-        );
-      }
+    // Outstation trips (both One-Way and Round-Trip) must be to a destination outside the pickup city.
+    const destLocation = dropoff || {
+      address: outstation.destinationAddress,
+      city: outstation.destinationCity || '',
+    };
+    if (isSameCity(pickup, destLocation)) {
+      const cityName = getCityDisplayName(pickup) || 'the pickup city';
+      throw new ApiError(
+        400,
+        `Outstation bookings are only allowed for destinations outside ${cityName}. For local travel within ${cityName}, please choose Hourly booking.`,
+      );
     }
   }
   if (serviceType === SERVICE_TYPES.MONTHLY) {
