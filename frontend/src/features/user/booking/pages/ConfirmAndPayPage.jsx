@@ -227,7 +227,7 @@ const ConfirmAndPayPage = () => {
     [nowAnchorMs, minLeadHours],
   );
 
-  // Outstation one-way trips must be to another city (e.g. Indore to Ujjain, not Indore to Indore).
+  // Outstation trips must be to another city (e.g. Indore to Ujjain, not Indore to Indore).
   const dropPoint = useMemo(() => {
     if (draft.dropoff?.address) return draft.dropoff;
     if (draft.outstation?.destinationAddress) {
@@ -243,10 +243,18 @@ const ConfirmAndPayPage = () => {
 
   const isInCityOutstationBlocked = useMemo(() => {
     if (!isOutstation) return false;
-    if (draft.outstation?.tripType !== TRIP_TYPE.ONE_WAY) return false;
     if (!draft.pickup?.address || !dropPoint?.address) return false;
     return isSameCity(draft.pickup, dropPoint);
-  }, [isOutstation, draft.outstation?.tripType, draft.pickup, dropPoint]);
+  }, [isOutstation, draft.pickup, dropPoint]);
+
+  const isHourly = draft.serviceType === SERVICE_TYPES.HOURLY;
+
+  const isOutOfCityHourlyBlocked = useMemo(() => {
+    if (!isHourly) return false;
+    if (draft.hourly?.tripType !== TRIP_TYPE.ONE_WAY) return false;
+    if (!draft.pickup?.address || !draft.dropoff?.address) return false;
+    return !isSameCity(draft.pickup, draft.dropoff);
+  }, [isHourly, draft.hourly?.tripType, draft.pickup, draft.dropoff]);
 
   const pickupCityName = useMemo(() => {
     return getCityDisplayName(draft.pickup) || 'your pickup city';
@@ -258,7 +266,6 @@ const ConfirmAndPayPage = () => {
   // double-check at pay-time. Block the CTA until the customer has
   // confirmed they'll feed the driver.
   const foodRequired = !!estimate?.fareBreakdown?.foodRequired;
-  const isHourly = draft.serviceType === SERVICE_TYPES.HOURLY;
   const foodAcknowledged = !!draft.hourly?.foodAcknowledged;
   const foodGateUnmet = isHourly && foodRequired && !foodAcknowledged;
   const setHourly = useBookingDraftStore((s) => s.setHourly);
@@ -422,8 +429,15 @@ const ConfirmAndPayPage = () => {
     if (submitting || !total) return;
     if (isInCityOutstationBlocked) {
       toast.error(
-        `In-city trips are not allowed for Outstation One-Way. Destination must be outside ${pickupCityName}.`,
+        `In-city trips are not allowed for Outstation. Destination must be in another city (outside ${pickupCityName}).`,
         { id: 'outstation-same-city-pay' },
+      );
+      return;
+    }
+    if (isOutOfCityHourlyBlocked) {
+      toast.error(
+        `Hourly bookings are strictly for local travel within ${pickupCityName}. For travel to another city, please choose Outstation.`,
+        { id: 'hourly-out-city-pay' },
       );
       return;
     }
@@ -436,7 +450,7 @@ const ConfirmAndPayPage = () => {
       return;
     }
     submitBooking();
-  }, [submitting, total, isInCityOutstationBlocked, pickupCityName, foodGateUnmet, isOutstation, submitBooking]);
+  }, [submitting, total, isInCityOutstationBlocked, isOutOfCityHourlyBlocked, pickupCityName, foodGateUnmet, isOutstation, submitBooking]);
 
   // Outstation toll/parking ack flow → user accepted, run the create.
   const handleTollAcknowledged = useCallback(() => {
@@ -487,10 +501,10 @@ const ConfirmAndPayPage = () => {
               <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
               <div className="flex-1 min-w-0">
                 <h4 className="text-sm font-bold text-amber-900">
-                  In-City Trip Not Allowed for Outstation One-Way
+                  In-City Trip Not Allowed for Outstation
                 </h4>
                 <p className="text-xs text-amber-800 mt-1 leading-relaxed">
-                  Both pickup and destination are within <span className="font-semibold">{pickupCityName}</span>. Outstation One-Way is strictly for intercity travel to another city.
+                  Both pickup and destination are within <span className="font-semibold">{pickupCityName}</span>. Outstation trips are strictly for travel to another city.
                 </p>
                 <p className="text-xs text-amber-800 mt-1 leading-relaxed">
                   For local travel within <span className="font-semibold">{pickupCityName}</span>, please book an <strong>Hourly</strong> ride instead.
@@ -514,6 +528,44 @@ const ConfirmAndPayPage = () => {
                 className="px-3 py-1.5 rounded-xl bg-white border border-amber-300 hover:bg-amber-100/50 text-amber-900 text-xs font-semibold transition"
               >
                 Switch to Hourly
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isOutOfCityHourlyBlocked && (
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <h4 className="text-sm font-bold text-amber-900">
+                  Out-of-City Dropoff Not Allowed for Hourly
+                </h4>
+                <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                  Hourly bookings are strictly for local travel within <span className="font-semibold">{pickupCityName}</span>. The selected dropoff is in another city.
+                </p>
+                <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                  For travel outside <span className="font-semibold">{pickupCityName}</span>, please book an <strong>Outstation</strong> ride instead.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-amber-200/60">
+              <button
+                type="button"
+                onClick={() => {
+                  useBookingDraftStore.getState().setServiceType(SERVICE_TYPES.OUTSTATION);
+                  navigate('/user/book/outstation/variants');
+                }}
+                className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shadow-sm transition"
+              >
+                Switch to Outstation
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/user/book/hourly/details')}
+                className="px-3 py-1.5 rounded-xl bg-white border border-amber-300 hover:bg-amber-100/50 text-amber-900 text-xs font-semibold transition"
+              >
+                Change Dropoff
               </button>
             </div>
           </div>
@@ -667,16 +719,18 @@ const ConfirmAndPayPage = () => {
           fullWidth
           icon={CheckCircle2}
           loading={submitting}
-          disabled={!estimate || estimating || total <= 0 || foodGateUnmet || isInCityOutstationBlocked}
+          disabled={!estimate || estimating || total <= 0 || foodGateUnmet || isInCityOutstationBlocked || isOutOfCityHourlyBlocked}
           onClick={handlePay}
         >
           {isInCityOutstationBlocked
             ? 'Destination must be in another city'
-            : !total
-              ? 'Calculating fare\u2026'
-              : foodGateUnmet
-                ? 'Confirm driver\u2019s meal to continue'
-                : 'Confirm Booking'}
+            : isOutOfCityHourlyBlocked
+              ? 'Dropoff must be within city'
+              : !total
+                ? 'Calculating fare\u2026'
+                : foodGateUnmet
+                  ? 'Confirm driver\u2019s meal to continue'
+                  : 'Confirm Booking'}
         </Button>
       </div>
 

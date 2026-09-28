@@ -71,11 +71,32 @@ const supportTicketSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Auto-generate ticket number before saving
+// Auto-generate unique sequential ticket number before saving
 supportTicketSchema.pre('save', async function (next) {
-  if (this.isNew) {
-    const count = await mongoose.model('SupportTicket').countDocuments();
-    this.ticketNumber = `TKT-${String(count + 1).padStart(5, '0')}`;
+  if (this.isNew && !this.ticketNumber) {
+    let nextNum = 1;
+    const latest = await mongoose.model('SupportTicket')
+      .findOne({ ticketNumber: /^TKT-\d+$/ })
+      .sort({ createdAt: -1, _id: -1 })
+      .select('ticketNumber')
+      .lean();
+
+    if (latest && latest.ticketNumber) {
+      const match = latest.ticketNumber.match(/\d+$/);
+      if (match) {
+        nextNum = parseInt(match[0], 10) + 1;
+      }
+    }
+
+    let candidate = `TKT-${String(nextNum).padStart(5, '0')}`;
+    let exists = await mongoose.model('SupportTicket').exists({ ticketNumber: candidate });
+    while (exists) {
+      nextNum += 1;
+      candidate = `TKT-${String(nextNum).padStart(5, '0')}`;
+      exists = await mongoose.model('SupportTicket').exists({ ticketNumber: candidate });
+    }
+
+    this.ticketNumber = candidate;
   }
   next();
 });

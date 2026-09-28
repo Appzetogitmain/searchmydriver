@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import Button from '../../../components/Button';
 import Input from '../../../components/Input';
+import Select from '../../../components/Select';
 import Modal from '../../../components/Modal';
 import { User, Phone, Lock, ArrowLeft, Headset, MapPin } from 'lucide-react';
 import HelpDeskModal from '../../../components/HelpDeskModal';
@@ -35,12 +36,76 @@ const RegisterPage = () => {
     city: '',
   });
 
+  const [cities, setCities] = useState([]);
+  const [loadingCities, setLoadingCities] = useState(false);
   const [otp, setOtp] = useState('');
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [isPhoneVerified, setIsPhoneVerified] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isHelpDeskOpen, setIsHelpDeskOpen] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    setLoadingCities(true);
+
+    Promise.allSettled([
+      api.get('/common/service-cities'),
+      api.get('/common/zones'),
+    ])
+      .then(([serviceCitiesRes, zonesRes]) => {
+        if (!isMounted) return;
+        const citySet = new Set();
+
+        if (serviceCitiesRes.status === 'fulfilled' && serviceCitiesRes.value?.data?.data) {
+          const list = serviceCitiesRes.value.data.data;
+          if (Array.isArray(list)) {
+            list.forEach((item) => {
+              if (typeof item === 'string' && item.trim()) {
+                citySet.add(item.trim());
+              } else if (item && typeof item === 'object') {
+                const name = item.city || item.name;
+                if (name && typeof name === 'string' && name.trim()) {
+                  citySet.add(name.trim());
+                }
+              }
+            });
+          }
+        }
+
+        if (zonesRes.status === 'fulfilled' && zonesRes.value?.data?.data) {
+          const list = zonesRes.value.data.data;
+          if (Array.isArray(list)) {
+            list.forEach((z) => {
+              if (z.city && typeof z.city === 'string' && z.city.trim()) {
+                citySet.add(z.city.trim());
+              }
+            });
+          }
+        }
+
+        const sorted = Array.from(citySet).sort((a, b) => a.localeCompare(b));
+        setCities(sorted);
+      })
+      .catch((err) => {
+        console.error('Failed to load service cities:', err);
+      })
+      .finally(() => {
+        if (isMounted) setLoadingCities(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const cityOptions = useMemo(() => {
+    const opts = cities.map((c) => ({ label: c, value: c }));
+    if (formData.city && !cities.includes(formData.city)) {
+      opts.unshift({ label: formData.city, value: formData.city });
+    }
+    return opts;
+  }, [cities, formData.city]);
 
   const handleChange = (field) => (e) => {
     let value = e.target.value;
@@ -119,7 +184,7 @@ const RegisterPage = () => {
           <p className="text-text-secondary text-sm">Join SearchMyDriver and get started</p>
         </div>
 
-        <form onSubmit={handleSendOtp} className="space-y-4 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
+        <form onSubmit={handleSendOtp} className="space-y-4 animate-fade-in-up relative z-20" style={{ animationDelay: '0.1s' }}>
           <Input
             label="Full Name"
             placeholder="Enter your full name"
@@ -160,14 +225,25 @@ const RegisterPage = () => {
             </div>
           </div>
 
-          <Input
+          <Select
             label="City/Location"
-            placeholder="Enter your city or location"
+            placeholder={
+              loadingCities
+                ? 'Loading service cities...'
+                : cityOptions.length > 0
+                ? 'Select your city'
+                : 'Select your city'
+            }
+            options={cityOptions}
             value={formData.city}
-            onChange={handleChange('city')}
+            onChange={(val) => {
+              setFormData((prev) => ({ ...prev, city: val }));
+              if (error) setError('');
+            }}
             icon={MapPin}
-            required
-            autoComplete="off"
+            searchable
+            className="h-12"
+            disabled={loadingCities}
           />
 
           <Input
@@ -193,9 +269,7 @@ const RegisterPage = () => {
           </div>
         </form>
 
-
-
-        <p className="text-center text-sm text-text-secondary mt-6 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+        <p className="text-center text-sm text-text-secondary mt-6 animate-fade-in-up relative z-10" style={{ animationDelay: '0.2s' }}>
           Already have an account?{' '}
           <Link to="/login" className="text-primary font-semibold hover:underline">
             Sign In

@@ -17,13 +17,22 @@ export const createSupportTicket = async (req, res, next) => {
       throw new ApiError(400, 'Subject and description are required');
     }
 
-    const ticket = await SupportTicket.create({
-      creatorType: isUser ? 'user' : 'driver',
-      userId: isUser ? req.user._id : undefined,
-      driverId: isDriver ? req.driver._id : undefined,
-      subject,
-      description,
-    });
+    let ticket;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        ticket = await SupportTicket.create({
+          creatorType: isUser ? 'user' : 'driver',
+          userId: isUser ? req.user._id : undefined,
+          driverId: isDriver ? req.driver._id : undefined,
+          subject: subject.trim(),
+          description: description.trim(),
+        });
+        break;
+      } catch (e) {
+        if (e.code === 11000 && attempt < 2) continue;
+        throw e;
+      }
+    }
 
     const populatedTicket = await SupportTicket.findById(ticket._id)
       .populate('userId', 'name phone_no')
@@ -59,13 +68,22 @@ export const createPublicSupportTicket = async (req, res, next) => {
       throw new ApiError(400, 'All fields are required');
     }
 
-    const ticket = await SupportTicket.create({
-      creatorType,
-      subject,
-      description,
-      contactName,
-      contactPhone,
-    });
+    let ticket;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        ticket = await SupportTicket.create({
+          creatorType,
+          subject: subject.trim(),
+          description: description.trim(),
+          contactName: contactName.trim(),
+          contactPhone: contactPhone.trim(),
+        });
+        break;
+      } catch (e) {
+        if (e.code === 11000 && attempt < 2) continue;
+        throw e;
+      }
+    }
 
     emitToAdmins(S2C_EVENTS.ADMIN_ALERT, {
       type: 'support_ticket',
