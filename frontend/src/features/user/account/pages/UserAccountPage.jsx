@@ -30,7 +30,6 @@ const menuItems = [
   { id: 'payments', icon: CreditCard, label: 'Payment Methods', path: '/user/account/payment-methods' },
   { id: 'wallet', icon: Wallet, label: 'My Wallet', path: '/user/wallet', dynamic: 'wallet' },
   { id: 'payment-history', icon: FileText, label: 'Payment History', path: '/user/account/payment-history' },
-  { id: 'bank-details', icon: Building2, label: 'Bank Details', path: '/user/account/bank-details' },
   { id: 'refer', icon: Users, label: 'Refer & Earn', path: '/user/refer' },
   { id: 'about', icon: Building2, label: 'About Company', path: '/user/about' },
   { id: 'privacy', icon: ShieldCheck, label: 'Privacy Policy', path: '/user/privecy' },

@@ -195,7 +195,7 @@ export const loginDriverService = async (phone, password) => {
 
   const driver = await Driver.findOne({ phone }).select('+password');
   if (!driver) {
-    throw new ApiError(404, 'Driver not registered. Please sign up.');
+    throw new ApiError(404, 'Wrong phone number');
   }
   if (driver.isDeleted) {
     throw new ApiError(401, 'Account deactivated. Please contact support.');
@@ -207,7 +207,7 @@ export const loginDriverService = async (phone, password) => {
 
   const isMatch = await bcrypt.compare(password, driver.password);
   if (!isMatch) {
-    throw new ApiError(401, 'Invalid credentials');
+    throw new ApiError(401, 'Wrong password');
   }
 
   driver.password = undefined;
