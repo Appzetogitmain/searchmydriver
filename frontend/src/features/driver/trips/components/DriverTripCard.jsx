@@ -34,11 +34,13 @@ function statusBadge(status) {
   return STATUS_VARIANTS[status] || { variant: 'default', label: status || '—' };
 }
 
+/** The customer's requested pickup time for each service type. */
 function pickDate(trip) {
   return (
-    trip?.timeline?.completedAt ||
-    trip?.timeline?.startedAt ||
-    trip?.timeline?.driverAssignedAt ||
+    trip?.hourly?.scheduledStartAt ||
+    trip?.outstation?.pickupAt ||
+    trip?.outstation?.startDate ||
+    trip?.monthly?.startDate ||
     trip?.createdAt ||
     null
   );
@@ -55,8 +57,9 @@ function formatTripDate(trip) {
       year: 'numeric',
     }),
     secondary: d.toLocaleTimeString('en-IN', {
-      hour: '2-digit',
+      hour: 'numeric',
       minute: '2-digit',
+      hour12: true,
     }),
   };
 }
@@ -100,6 +103,7 @@ const DriverTripCard = ({ trip, onClick, className = '', style }) => {
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-xs text-text-muted">
             <Calendar className="w-3.5 h-3.5" />
+            <span>Pickup:</span>
             <span className="font-semibold text-text">{dateInfo.primary}</span>
             {dateInfo.secondary && <span>· {dateInfo.secondary}</span>}
           </div>

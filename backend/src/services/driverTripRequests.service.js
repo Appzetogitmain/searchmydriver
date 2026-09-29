@@ -12,6 +12,15 @@ import {
 } from '../constants/bookingStatus.js';
 import { SERVICE_TYPES } from '../constants/serviceTypes.js';
 
+// Same zone the pricing engine uses — format in the customer's local time,
+// not the server's (hosted servers usually run in UTC).
+const APP_TIMEZONE = process.env.APP_TIMEZONE || 'Asia/Kolkata';
+
+/** YYYY-MM-DD for `d` in APP_TIMEZONE (for today / tomorrow checks). */
+function zonedDateKey(d) {
+  return d.toLocaleDateString('en-CA', { timeZone: APP_TIMEZONE });
+}
+
 /**
  * Formats a Date object into time, date, and combined display strings.
  */
@@ -27,25 +36,19 @@ function formatDateTimeStrings(dateObj) {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
+    timeZone: APP_TIMEZONE,
   });
 
-  // Check if today / tomorrow
-  const isToday =
-    d.getDate() === now.getDate() &&
-    d.getMonth() === now.getMonth() &&
-    d.getFullYear() === now.getFullYear();
-
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const isTomorrow =
-    d.getDate() === tomorrow.getDate() &&
-    d.getMonth() === tomorrow.getMonth() &&
-    d.getFullYear() === tomorrow.getFullYear();
+  // Check if today / tomorrow (in the app's timezone)
+  const key = zonedDateKey(d);
+  const isToday = key === zonedDateKey(now);
+  const isTomorrow = key === zonedDateKey(new Date(now.getTime() + 24 * 60 * 60 * 1000));
 
   const dateShort = d.toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
+    timeZone: APP_TIMEZONE,
   });
 
   let datePrefix = '';
@@ -78,6 +81,7 @@ function formatTripRequestItem(booking, driver, carDoc, carTypeDoc) {
     booking.hourly?.scheduledStartAt ||
     booking.outstation?.pickupAt ||
     booking.outstation?.startDate ||
+    booking.monthly?.startDate ||
     booking.createdAt ||
     new Date();
 
@@ -183,11 +187,13 @@ function formatTripRequestItem(booking, driver, carDoc, carTypeDoc) {
     pickupDateTimeDisplay,
     needDriver,
     pickupLocation: booking.pickup?.address || 'Pickup location not specified',
+    pickupCoords: booking.pickup?.location?.coordinates || null,
     pickupCity: booking.pickup?.city || booking.city || '',
     dropLocation:
       booking.dropoff?.address ||
       booking.outstation?.destinationAddress ||
       (isHourly ? booking.pickup?.address : 'As directed'),
+    dropCoords: booking.dropoff?.location?.coordinates || null,
     dropCity: booking.dropoff?.city || '',
     carType: carTypeName.charAt(0).toUpperCase() + carTypeName.slice(1),
     transmission,
