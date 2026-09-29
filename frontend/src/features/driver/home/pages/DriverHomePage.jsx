@@ -233,10 +233,12 @@ const DriverHomePage = () => {
                     {formatCurrency(dispatchBlock.shortBy)}
                   </strong>
                   . Cash bookings only go to drivers with {formatCurrency(0)} or
-                  more, so requests are skipping you even though you are online.
-                  Add at least{' '}
+                  more. Add at least{' '}
                   <strong>{formatCurrency(dispatchBlock.shortBy)}</strong> to
                   start getting them again.
+                </p>
+                <p className="text-xs font-semibold text-emerald-700 mt-1.5">
+                  You can still accept Online and Wallet rides.
                 </p>
               </div>
               <ChevronRight className="w-4 h-4 text-text-muted shrink-0 mt-1" />

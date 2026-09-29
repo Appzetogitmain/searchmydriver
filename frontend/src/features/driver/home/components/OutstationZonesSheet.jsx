@@ -77,18 +77,14 @@ const OutstationZonesSheet = ({
     });
   }, [zones, search]);
 
-  const toggle = (id) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      const key = String(id);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+  const handleSelectZone = (id) => {
+    setSelected(new Set([String(id)]));
   };
 
+  const selectedId = Array.from(selected)[0] || null;
+  const selectedZone = zones.find((z) => String(z._id) === selectedId);
   const selectedCount = selected.size;
-  const canConfirm = selectedCount > 0 && !submitting;
+  const canConfirm = selectedCount === 1 && !submitting;
 
   const handleConfirm = () => {
     if (!canConfirm) return;
@@ -109,12 +105,10 @@ const OutstationZonesSheet = ({
           </div>
           <div className="flex-1 min-w-0 mt-0.5">
             <h3 className="text-base font-bold text-text leading-tight">
-              Pick your outstation zones
+              Pick your pickup zone
             </h3>
             <p className="text-[11px] text-text-muted mt-1 leading-snug">
-              Admins will only offer you outstation trips that pick up
-              from one of these zones. You can change this later from
-              Home.
+              Admins will offer you outstation trips that pick up from this zone. You can change this anytime from Home.
             </p>
           </div>
           <button
@@ -169,24 +163,24 @@ const OutstationZonesSheet = ({
                 <button
                   type="button"
                   key={id}
-                  onClick={() => toggle(id)}
-                  className={`w-full text-left flex items-center gap-3 p-2.5 rounded-xl border transition ${
+                  onClick={() => handleSelectZone(id)}
+                  className={`w-full text-left flex items-center gap-3 p-3 rounded-2xl border transition ${
                     isSelected
-                      ? 'border-primary bg-primary/5'
+                      ? 'border-amber-400 bg-amber-50/40 shadow-xs'
                       : 'border-border-light bg-white hover:border-slate-300'
                   }`}
                 >
                   <div
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
                       isSelected
-                        ? 'bg-primary/15 text-primary'
+                        ? 'bg-amber-100 text-amber-800'
                         : 'bg-bg text-text-secondary'
                     }`}
                   >
                     <MapPin className="w-4 h-4" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-text truncate">
+                    <p className="text-sm font-bold text-text truncate">
                       {z.name}
                     </p>
                     <p className="text-[11px] text-text-muted truncate mt-0.5">
@@ -194,19 +188,19 @@ const OutstationZonesSheet = ({
                     </p>
                   </div>
                   <div
-                    className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${
+                    className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition ${
                       isSelected
-                        ? 'bg-primary border-primary'
+                        ? 'bg-amber-400 border-amber-400 text-slate-950 font-bold'
                         : 'bg-white border-slate-300'
                     }`}
                   >
                     {isSelected && (
                       <svg
                         viewBox="0 0 16 16"
-                        className="w-3.5 h-3.5 text-slate-900"
+                        className="w-3 h-3"
                         fill="none"
                         stroke="currentColor"
-                        strokeWidth="2.5"
+                        strokeWidth="2.8"
                         strokeLinecap="round"
                         strokeLinejoin="round"
                       >
@@ -222,9 +216,9 @@ const OutstationZonesSheet = ({
 
         <div className="mt-4 pt-3 border-t border-border-light flex items-center gap-3">
           <span className="text-[11px] text-text-muted flex-1 truncate">
-            {selectedCount > 0
-              ? `${selectedCount} zone${selectedCount === 1 ? '' : 's'} selected`
-              : 'Pick at least one zone to continue'}
+            {selectedZone
+              ? `Selected: ${selectedZone.name}`
+              : 'Pick 1 pickup zone to continue'}
           </span>
           <Button
             variant="outline"

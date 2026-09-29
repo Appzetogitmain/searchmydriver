@@ -8,7 +8,6 @@ import {
   BOOKING_STATUS,
   BOOKING_TYPE,
   TRIP_TYPE,
-  PAYMENT_MODE,
 } from '../constants/bookingStatus.js';
 import { SERVICE_TYPES } from '../constants/serviceTypes.js';
 
@@ -129,12 +128,16 @@ function formatTripRequestItem(booking, driver, carDoc, carTypeDoc) {
   );
 
   // Payment Mode
-  const isCash =
-    booking.paymentMethod === 'cash' ||
-    booking.paymentMode === PAYMENT_MODE.POST_RIDE ||
-    (isMonthly && booking.paymentMode === 'cash');
+  // `paymentMethod` is what the customer chose. `paymentMode` only says
+  // *when* they pay (hourly/outstation are always post_ride, even online),
+  // so it must not be used to decide cash vs online.
+  const isCash = booking.paymentMethod === 'cash';
 
-  const paymentDisplay = isCash ? 'Cash' : 'Online';
+  const paymentDisplay = isCash
+    ? 'Cash'
+    : booking.paymentMethod === 'wallet'
+      ? 'Wallet'
+      : 'Online';
 
   // Car Details
   const carTypeName =

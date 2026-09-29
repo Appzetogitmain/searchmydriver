@@ -42,8 +42,11 @@ const PaymentStatusPage = () => {
       booking.fareSnapshot?.driverEarning ??
       null;
 
-    const paymentMode = booking.paymentMode || 'online';
-    const mode = paymentMode === 'cash' ? 'Cash collected' : 'Paid Online';
+    // `paymentMode` is stripped from driver bookings; `paymentMethod` is the
+    // customer's actual choice (wallet | cash | online).
+    const method = booking.paymentMethod || 'online';
+    const mode =
+      method === 'cash' ? 'Cash collected' : method === 'wallet' ? 'Paid via Wallet' : 'Paid Online';
 
     const variant =
       booking.paymentStatus === BOOKING_PAYMENT_STATUS.PAID ? 'success' : 'warning';

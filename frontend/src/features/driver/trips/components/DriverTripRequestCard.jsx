@@ -1,19 +1,16 @@
 import React, { useState } from 'react';
 import {
-  Tag,
-  User,
-  Calendar,
   Clock,
   MapPin,
   Briefcase,
   Waypoints,
   Car,
-  Settings2,
   Star,
   Check,
   AlertCircle,
   Loader2,
   ShieldAlert,
+  Navigation,
 } from 'lucide-react';
 import { formatCurrency } from '../../../../utils/formatters';
 
@@ -43,7 +40,9 @@ const DriverTripRequestCard = ({
     pickupDateTimeDisplay = '16 Aug 2025, 12:15 PM',
     needDriver = '4 Hours',
     pickupLocation = 'Pickup location',
+    pickupCoords = null,
     dropLocation = 'Drop location',
+    dropCoords = null,
     bookingTypeDisplay = 'In Station',
     tripTypeDisplay = 'Round Trip',
     carType = 'Sedan',
@@ -54,195 +53,194 @@ const DriverTripRequestCard = ({
     canAccept = true,
   } = request;
 
+  const handleOpenMaps = (e, target = 'route') => {
+    e?.stopPropagation?.();
+    let url = '';
+
+    const formatPoint = (coords, address) => {
+      if (Array.isArray(coords) && coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
+        // [longitude, latitude] -> lat,lng for Google Maps
+        return `${coords[1]},${coords[0]}`;
+      }
+      return address ? encodeURIComponent(address) : '';
+    };
+
+    const origin = formatPoint(pickupCoords, pickupLocation);
+    const destination = formatPoint(dropCoords, dropLocation);
+
+    if (target === 'pickup') {
+      if (origin) {
+        url = `https://www.google.com/maps/search/?api=1&query=${origin}`;
+      }
+    } else if (target === 'drop') {
+      if (destination) {
+        url = `https://www.google.com/maps/search/?api=1&query=${destination}`;
+      }
+    } else {
+      // Full driving directions route from Pickup to Drop
+      if (origin && destination) {
+        url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
+      } else if (origin) {
+        url = `https://www.google.com/maps/search/?api=1&query=${origin}`;
+      } else if (destination) {
+        url = `https://www.google.com/maps/search/?api=1&query=${destination}`;
+      }
+    }
+
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   return (
     <div
-      className={`bg-white rounded-2xl border border-slate-200/90 shadow-sm p-4 sm:p-5 transition-all relative overflow-hidden ${
-        isTaken ? 'opacity-70 bg-slate-50/90' : 'hover:shadow-md'
+      className={`bg-white rounded-xl border border-slate-200/90 shadow-xs p-3 sm:p-4 transition-all relative overflow-hidden ${
+        isTaken ? 'opacity-70 bg-slate-50/90' : 'hover:shadow-sm'
       } ${className}`}
     >
-      {/* Top Badges */}
-      <div className="flex items-center justify-between gap-2 mb-3.5">
-        <span className="inline-flex items-center px-3 py-1 rounded-lg text-[12px] font-bold bg-[#4F46E5] text-white shadow-sm tracking-wide">
-          {tripIdDisplay || `Trip ID: ${bookingNumber || 'TRP124578'}`}
-        </span>
+      {/* Top Header Row */}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-[#4F46E5] text-white">
+            {tripIdDisplay || `Trip ID: ${bookingNumber || 'TRP124578'}`}
+          </span>
+          <span className="text-[11px] font-semibold text-slate-500 truncate">
+            {customerType || 'B2C'}
+          </span>
+        </div>
 
-        <span className="inline-flex items-center px-3 py-1 rounded-lg text-[12px] font-bold bg-[#16A34A] text-white shadow-sm tracking-wide">
-          Driver Earning: {formatCurrency(driverEarning)}
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-bold bg-emerald-600 text-white shrink-0">
+          Earning: {formatCurrency(driverEarning)}
         </span>
       </div>
 
-      {/* Main Header / Time Block */}
-      <div className="flex items-start justify-between gap-4 mb-4">
-        {/* Left: Package & Customer Type */}
-        <div className="space-y-2.5">
-          <div className="flex items-center gap-2">
-            <Tag className="w-5 h-5 text-slate-800 shrink-0 stroke-[2.5]" />
-            <span className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-              {packageTitle || '4 HOURS - Plus'}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <User className="w-5 h-5 text-slate-800 shrink-0 stroke-[2.5]" />
-            <span className="text-sm sm:text-base font-bold text-slate-800">
-              {customerType || 'B2C'}
-            </span>
-          </div>
+      {/* Package & Schedule Row */}
+      <div className="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-slate-100">
+        <div className="min-w-0">
+          <p className="text-xs sm:text-sm font-black text-slate-900 truncate">
+            {packageTitle || '4 HOURS - Plus'}
+          </p>
         </div>
 
-        {/* Right: Payment & Large Scheduled Time */}
-        <div className="text-right shrink-0">
-          <p className="text-xs text-slate-500 font-medium mb-0.5">
-            Payment: <span className="font-bold text-slate-800">{paymentMode}</span>
-          </p>
-          <p className="text-2xl sm:text-3xl font-black text-slate-900 leading-none mb-1">
+        <div className="text-right shrink-0 flex items-center gap-2">
+          <span className="text-[11px] font-semibold text-slate-500">
+            {paymentMode}
+          </span>
+          <span className="text-xs font-black text-slate-900">
             {timeDisplay}
-          </p>
-          <p className="text-[11px] font-medium text-slate-500">
-            {dateDisplay}
-          </p>
+          </span>
+          <span className="text-[11px] text-slate-400 font-medium">
+            · {dateDisplay}
+          </span>
         </div>
       </div>
 
-      {/* Divider */}
-      <div className="border-t border-slate-100 my-3.5" />
+      {/* Clickable Route Box to open Google Maps Route */}
+      <div
+        onClick={(e) => handleOpenMaps(e, 'route')}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') handleOpenMaps(e, 'route');
+        }}
+        title="Click to view route on Google Maps"
+        className="group relative pl-5 pr-7 py-1.5 -mx-1.5 rounded-lg mb-2 text-xs hover:bg-slate-50 active:bg-slate-100 cursor-pointer transition border border-transparent hover:border-slate-200/70"
+      >
+        {/* Route Line Indicator */}
+        {dropLocation && (
+          <div className="absolute left-3.5 top-3.5 bottom-3.5 w-0.5 bg-slate-200 group-hover:bg-indigo-300 transition-colors" />
+        )}
 
-      {/* 3x3 Attributes Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-y-3.5 gap-x-4">
-        {/* Row 1, Col 1: Pickup Date & Time */}
-        <div className="flex items-start gap-2.5 min-w-0">
-          <div className="w-7 h-7 rounded-lg bg-purple-50 flex items-center justify-center shrink-0 mt-0.5">
-            <Calendar className="w-4 h-4 text-[#7C3AED]" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium text-slate-400 leading-tight">Pickup Date & Time</p>
-            <p className="text-xs font-bold text-slate-800 truncate mt-0.5">
-              {pickupDateTimeDisplay}
-            </p>
-          </div>
+        {/* Pickup */}
+        <div
+          className="relative flex items-start gap-1.5 min-w-0"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleOpenMaps(e, 'pickup');
+          }}
+        >
+          <div className="absolute -left-3.5 top-1 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-100 group-hover:ring-emerald-200 transition" />
+          <p className="text-slate-800 font-medium line-clamp-1 leading-snug group-hover:text-indigo-600 transition" title={pickupLocation}>
+            {pickupLocation}
+          </p>
         </div>
 
-        {/* Row 1, Col 2: Need Driver */}
-        <div className="flex items-start gap-2.5 min-w-0 sm:border-l sm:border-slate-100 sm:pl-3">
-          <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center shrink-0 mt-0.5">
-            <Clock className="w-4 h-4 text-[#EA580C]" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium text-slate-400 leading-tight">Need Driver</p>
-            <p className="text-xs font-bold text-slate-800 truncate mt-0.5">
-              {needDriver}
-            </p>
-          </div>
-        </div>
-
-        {/* Row 1, Col 3: Pickup Location */}
-        <div className="flex items-start gap-2.5 min-w-0 sm:border-l sm:border-slate-100 sm:pl-3">
-          <div className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0 mt-0.5">
-            <MapPin className="w-4 h-4 text-[#16A34A]" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium text-slate-400 leading-tight">Pickup Location</p>
-            <p className="text-xs font-bold text-slate-800 line-clamp-2 mt-0.5 leading-snug" title={pickupLocation}>
-              {pickupLocation}
-            </p>
-          </div>
-        </div>
-
-        {/* Row 2, Col 1: Drop Location */}
-        <div className="flex items-start gap-2.5 min-w-0">
-          <div className="w-7 h-7 rounded-lg bg-rose-50 flex items-center justify-center shrink-0 mt-0.5">
-            <MapPin className="w-4 h-4 text-[#E11D48]" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium text-slate-400 leading-tight">Drop Location</p>
-            <p className="text-xs font-bold text-slate-800 line-clamp-2 mt-0.5 leading-snug" title={dropLocation}>
+        {/* Drop */}
+        {dropLocation && (
+          <div
+            className="relative flex items-start gap-1.5 min-w-0 mt-1.5"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleOpenMaps(e, 'drop');
+            }}
+          >
+            <div className="absolute -left-3.5 top-1 w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-rose-100 group-hover:ring-rose-200 transition" />
+            <p className="text-slate-600 font-medium line-clamp-1 leading-snug group-hover:text-indigo-600 transition" title={dropLocation}>
               {dropLocation}
             </p>
           </div>
-        </div>
+        )}
 
-        {/* Row 2, Col 2: Booking Type */}
-        <div className="flex items-start gap-2.5 min-w-0 sm:border-l sm:border-slate-100 sm:pl-3">
-          <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center shrink-0 mt-0.5">
-            <Briefcase className="w-4 h-4 text-[#2563EB]" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium text-slate-400 leading-tight">Booking Type</p>
-            <p className="text-xs font-bold text-slate-800 truncate mt-0.5">
-              {bookingTypeDisplay}
-            </p>
-          </div>
-        </div>
-
-        {/* Row 2, Col 3: Trip Type */}
-        <div className="flex items-start gap-2.5 min-w-0 sm:border-l sm:border-slate-100 sm:pl-3">
-          <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0 mt-0.5">
-            <Waypoints className="w-4 h-4 text-[#6366F1]" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium text-slate-400 leading-tight">Trip Type</p>
-            <p className="text-xs font-bold text-slate-800 truncate mt-0.5">
-              {tripTypeDisplay}
-            </p>
-          </div>
-        </div>
-
-        {/* Row 3, Col 1: Car Type */}
-        <div className="flex items-start gap-2.5 min-w-0">
-          <div className="w-7 h-7 rounded-lg bg-sky-50 flex items-center justify-center shrink-0 mt-0.5">
-            <Car className="w-4 h-4 text-[#0284C7]" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium text-slate-400 leading-tight">Car Type</p>
-            <p className="text-xs font-bold text-slate-800 truncate mt-0.5">
-              {carType}
-            </p>
-          </div>
-        </div>
-
-        {/* Row 3, Col 2: Transmission */}
-        <div className="flex items-start gap-2.5 min-w-0 sm:border-l sm:border-slate-100 sm:pl-3">
-          <div className="w-7 h-7 rounded-lg bg-purple-50 flex items-center justify-center shrink-0 mt-0.5">
-            <Settings2 className="w-4 h-4 text-[#9333EA]" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium text-slate-400 leading-tight">Transmission</p>
-            <p className="text-xs font-bold text-slate-800 truncate mt-0.5">
-              {transmission}
-            </p>
-          </div>
-        </div>
-
-        {/* Row 3, Col 3: Car Category */}
-        <div className="flex items-start gap-2.5 min-w-0 sm:border-l sm:border-slate-100 sm:pl-3">
-          <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center shrink-0 mt-0.5">
-            <Star className="w-4 h-4 text-[#D97706] fill-amber-400" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium text-slate-400 leading-tight">Car Category</p>
-            <p className="text-xs font-bold text-slate-800 truncate mt-0.5">
-              {carCategory}
-            </p>
-          </div>
+        {/* Floating Map / Route Icon */}
+        <div className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 group-hover:bg-indigo-600 group-hover:text-white text-slate-500 flex items-center justify-center transition shadow-2xs" title="Open in Google Maps">
+          <Navigation className="w-3.5 h-3.5 stroke-[2.2]" />
         </div>
       </div>
 
+      {/* Sleek Specs Chips / Badges */}
+      <div className="flex flex-wrap items-center gap-1.5 mb-3 text-[11px]">
+        {carType && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-medium">
+            <Car className="w-3 h-3 text-slate-500" />
+            <span>{carType}{transmission ? ` · ${transmission}` : ''}</span>
+          </span>
+        )}
+
+        {carCategory && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 font-semibold border border-amber-200/60">
+            <Star className="w-3 h-3 text-amber-500 fill-amber-400" />
+            <span>{carCategory}</span>
+          </span>
+        )}
+
+        {bookingTypeDisplay && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-medium">
+            <Briefcase className="w-3 h-3 text-slate-500" />
+            <span>{bookingTypeDisplay}</span>
+          </span>
+        )}
+
+        {tripTypeDisplay && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-medium">
+            <Waypoints className="w-3 h-3 text-slate-500" />
+            <span>{tripTypeDisplay}</span>
+          </span>
+        )}
+
+        {needDriver && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-medium">
+            <Clock className="w-3 h-3 text-slate-500" />
+            <span>{needDriver}</span>
+          </span>
+        )}
+      </div>
+
       {/* Action Footer */}
-      <div className="mt-4 pt-3.5 border-t border-slate-100 flex items-center justify-between gap-3">
+      <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
         {isTaken || takenByOther ? (
-          <div className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-slate-100 text-slate-600 font-bold text-xs border border-slate-200">
-            <AlertCircle className="w-4 h-4 text-slate-500" />
+          <div className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-slate-100 text-slate-600 font-bold text-xs border border-slate-200">
+            <AlertCircle className="w-3.5 h-3.5 text-slate-500" />
             <span>Booked by another driver</span>
           </div>
         ) : cashBlocked ? (
-          <div className="w-full flex items-center justify-between gap-2 p-2.5 rounded-xl bg-rose-50 text-rose-800 border border-rose-200 text-xs">
-            <div className="flex items-center gap-2 font-medium">
-              <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
+          <div className="w-full flex items-center justify-between gap-1.5 p-2 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 text-xs">
+            <div className="flex items-center gap-1.5 font-medium">
+              <ShieldAlert className="w-3.5 h-3.5 text-rose-600 shrink-0" />
               <span>Negative wallet: recharge required for cash bookings</span>
             </div>
           </div>
         ) : (
-          <div className="w-full flex items-center gap-3">
+          <div className="w-full flex items-center gap-2">
             {onDecline && (
               <button
                 type="button"
@@ -251,7 +249,7 @@ const DriverTripRequestCard = ({
                   onDecline(request);
                 }}
                 disabled={isAccepting}
-                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition active:scale-95 disabled:opacity-50"
+                className="px-3.5 py-2 rounded-lg text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition active:scale-95 disabled:opacity-50"
               >
                 Decline
               </button>
@@ -261,16 +259,16 @@ const DriverTripRequestCard = ({
               type="button"
               onClick={() => onAccept(request)}
               disabled={isAccepting || !canAccept}
-              className="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 active:scale-[0.98] shadow-sm flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 py-2 px-3.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] shadow-xs flex items-center justify-center gap-1.5 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isAccepting ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   <span>Accepting...</span>
                 </>
               ) : (
                 <>
-                  <Check className="w-4 h-4 stroke-[3]" />
+                  <Check className="w-3.5 h-3.5 stroke-[3]" />
                   <span>Accept Request</span>
                 </>
               )}

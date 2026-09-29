@@ -251,6 +251,8 @@ function buildOfferPayload(booking, driver, { customer, car, upcomingScheduledTr
     // glance — the offer modal themes itself off this field.
     bookingType: booking.bookingType,
     paymentMode: booking.paymentMode,
+    // wallet | cash | online — what the customer chose to pay with.
+    paymentMethod: booking.paymentMethod,
     pickup: booking.pickup,
     dropoff: booking.dropoff || null,
     hourly: booking.hourly || null,
@@ -496,10 +498,9 @@ export async function dispatchNextDriverService(bookingId) {
       ? await resolveOutstationWalletFloorService()
       : null;
 
-  const isCashBooking =
-    booking.paymentMethod === 'cash' ||
-    booking.paymentMode === PAYMENT_MODE.POST_RIDE ||
-    (booking.serviceType === SERVICE_TYPES.MONTHLY && booking.paymentMode === 'cash');
+  // Cash = what the customer chose. `paymentMode` is only *when* they pay
+  // (post_ride for every hourly/outstation booking, even online ones).
+  const isCashBooking = booking.paymentMethod === 'cash';
 
   // Broadcast to every online driver in the matching city/zone at once.
   // The first to accept wins; everyone else gets BOOKING_OFFER_WITHDRAWN.
@@ -749,10 +750,7 @@ export async function acceptBookingService(bookingId, driverId) {
     return { ok: false, reason: 'driver_suspended' };
   }
 
-  const isCash =
-    booking.paymentMethod === 'cash' ||
-    booking.paymentMode === PAYMENT_MODE.POST_RIDE ||
-    (booking.serviceType === SERVICE_TYPES.MONTHLY && booking.paymentMode === 'cash');
+  const isCash = booking.paymentMethod === 'cash';
 
   if (isCash && Number(driver.wallet?.balance || 0) < 0) {
     return {

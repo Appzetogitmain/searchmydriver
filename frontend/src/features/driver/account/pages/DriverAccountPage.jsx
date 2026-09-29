@@ -39,7 +39,6 @@ import { buildCacheKey } from '../../../../store/lib/buildCacheKey';
 import { formatCurrency, formatPhone, formatDate } from '../../../../utils/formatters';
 import DriverScreenShell from '../../components/DriverScreenShell';
 import DriverIdentityCard from '../components/DriverIdentityCard';
-import DriverUploadedDocumentsList from '../components/DriverUploadedDocumentsList';
 import DriverBankDetailsCard from '../components/DriverBankDetailsCard';
 
 /* ------------------------------------------------------------------ */
@@ -227,10 +226,6 @@ const DriverAccountPage = () => {
       <StatsRow today={today} wallet={wallet} />
 
       <DriverIdentityCard driver={driver} />
-
-      <DriverUploadedDocumentsList
-        documents={driver?.documents}
-      />
 
       <DriverBankDetailsCard bankDetails={driver?.bankDetails} />
 
