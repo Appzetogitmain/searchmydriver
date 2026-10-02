@@ -40,6 +40,7 @@ import MonthlyOptInCard from '../components/MonthlyOptInCard';
 import { useDriverProfileStore } from '../../../../store/driver/useDriverProfileStore';
 import HelpDeskModal from '../../../../components/HelpDeskModal';
 import { useNotificationSound } from '../../../../hooks/useNotificationSound';
+import EnableNotificationsBanner from '../../../user/home/components/EnableNotificationsBanner';
 
 const ACTIVE_STATUS_COPY = {
   [BOOKING_STATUS.DRIVER_ASSIGNED]: 'Heading to customer',
@@ -211,6 +212,8 @@ const DriverHomePage = () => {
             </div>
           </Card>
         )}
+
+        <EnableNotificationsBanner role="driver" />
 
         {dispatchBlock?.code === 'NEGATIVE_WALLET' && (
           <Card

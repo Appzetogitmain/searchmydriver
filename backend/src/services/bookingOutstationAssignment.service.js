@@ -16,6 +16,7 @@ import {
   emitToDriver,
   emitToBooking,
   emitToAdmins,
+  emitNotification,
 } from '../utils/socketEmitters.js';
 import { isSuperAdmin } from '../constants/staffPermissions.js';
 import {
@@ -634,12 +635,15 @@ export async function adminAssignDriverToOutstationService(
   emitToDriver(driver._id, S2C_EVENTS.BOOKING_UPDATED, driverPayload);
   emitToAdmins(S2C_EVENTS.BOOKING_UPDATED, userPayload);
 
-  emitToDriver(driver._id, S2C_EVENTS.NOTIFICATION, {
+  // emitNotification (not a raw socket emit) so it's also saved to the bell
+  // and pushed to the driver's phone.
+  emitNotification({ driverId: driver._id }, {
     title: 'New outstation assignment',
     body: `Admin assigned booking ${updatedBooking.bookingNumber} to you.`,
     severity: 'info',
     data: {
       bookingId: String(updatedBooking._id),
+      url: `/driver/trip/${updatedBooking._id}`,
       // Forward both naming conventions so the driver app can switch
       // over to pickupAt/expectedReturnAt at its own pace.
       pickupAt:

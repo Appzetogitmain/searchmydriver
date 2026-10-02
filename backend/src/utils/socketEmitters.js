@@ -144,7 +144,9 @@ export async function emitNotification(target, notification) {
           const result = await sendFcmNotification(fcmToken, {
             title: payload.title,
             body: payload.body,
-            data: payload.data,
+            // notificationId lets the app de-duplicate the push against the
+            // in-app socket notification for the same event.
+            data: { ...(payload.data || {}), notificationId: String(payload._id) },
           });
           if (result?.invalidToken) {
             const Model = recipientModel === 'User' ? User : Driver;

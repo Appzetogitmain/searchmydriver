@@ -50,6 +50,7 @@ import {
 import {
   getDriverHomeSummary,
   getDriverTripsList,
+  deleteDriverTrip,
   getDriverEarnings,
   getDriverEarningsLedger,
   getDriverPendingOffers,
@@ -149,6 +150,7 @@ router.get('/home/summary', protectDriver, getDriverHomeSummary);
 router.get('/trips', protectDriver, getDriverTripsList);
 router.get('/trips/pending-offers', protectDriver, getDriverPendingOffers);
 router.get('/trips/eligible-requests', protectDriver, getDriverEligibleTripRequests);
+router.delete('/trips/:id', protectDriver, deleteDriverTrip);
 router.get('/earnings', protectDriver, getDriverEarnings);
 router.get('/earnings/ledger', protectDriver, getDriverEarningsLedger);
 

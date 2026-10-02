@@ -4,49 +4,25 @@ import useUserAuthStore from '../store/useUserAuthStore';
 import useDriverAuthStore from '../store/useDriverAuthStore';
 import { requestFcmToken, onFcmMessage } from '../config/firebase';
 import api from '../utils/api';
-
-/**
- * Show a system notification while the app is open. Uses the service worker
- * registration because `new Notification()` throws on Android Chrome.
- */
-async function showForegroundNotification({ title, body, data = {} }) {
-  if (!('Notification' in window) || Notification.permission !== 'granted') {
-    console.warn('[FCM] Notification permission is not granted; cannot display foreground push.');
-    return;
-  }
-  const options = {
-    body,
-    icon: '/favicon.png',
-    data,
-    ...(data.bookingId ? { tag: `booking-${data.bookingId}`, renotify: true } : {}),
-  };
-  try {
-    const registration = await navigator.serviceWorker?.getRegistration('/');
-    if (registration) {
-      await registration.showNotification(title, options);
-      return;
-    }
-    new Notification(title, options);
-  } catch (err) {
-    console.warn('[FCM] Could not show foreground notification:', err?.message || err);
-  }
-}
+import { showSystemNotification } from '../utils/systemNotification';
 
 /**
  * Ask for notification permission (if needed), get this device's FCM token
- * and save it on the logged-in customer. Must be called from a tap on iPhone,
- * where the permission prompt is only allowed after a user gesture.
+ * and save it on the logged-in customer or driver. Must be called from a tap
+ * on iPhone, where the permission prompt is only allowed after a user gesture.
  * Returns true when the device is registered for push.
  */
-export async function registerUserPushToken() {
+export async function registerPushToken(role = 'user') {
   const { isFirebaseConfigured } = await import('../config/firebase');
   if (!isFirebaseConfigured()) return false;
   const token = await requestFcmToken();
   if (!token) return false;
-  await api.post('/auth/fcm-token', { token });
-  console.log('[FCM] Registered token for user successfully');
+  await api.post(role === 'driver' ? '/driver/fcm-token' : '/auth/fcm-token', { token });
+  console.log(`[FCM] Registered token for ${role} successfully`);
   return true;
 }
+
+export const registerUserPushToken = () => registerPushToken('user');
 
 export function useFcm() {
   const navigate = useNavigate();
@@ -96,7 +72,7 @@ export function useFcm() {
       if (data.url && document.visibilityState === 'visible' && window.location.pathname === data.url) {
         return;
       }
-      showForegroundNotification({
+      showSystemNotification({
         title,
         body: payload.notification?.body || data.body || '',
         data,

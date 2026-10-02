@@ -11,6 +11,7 @@ import {
   emitToUser,
   emitToBooking,
   emitToAdmins,
+  emitNotification,
 } from '../utils/socketEmitters.js';
 import { dispatchNextDriverService } from './bookingDispatch.service.js';
 import {
@@ -276,19 +277,20 @@ export async function sendScheduledReminder(bookingId, minutesAhead) {
     scheduledStartAt:
       booking.hourly?.scheduledStartAt || booking.outstation?.pickupAt || booking.outstation?.startDate || null,
   };
-  emitToUser(booking.userId, S2C_EVENTS.NOTIFICATION, {
+  // emitNotification so reminders also reach the phone (and the bell).
+  emitNotification({ userId: booking.userId }, {
     title: 'Scheduled ride reminder',
     body: `Your ride starts in ${payload.minutesAhead} minutes.`,
     severity: 'info',
-    data: payload,
-  });
+    data: { ...payload, url: `/user/book/assigned/${booking._id}` },
+  }).catch(() => {});
   if (booking.driverId) {
-    emitToBooking(booking._id, S2C_EVENTS.NOTIFICATION, {
+    emitNotification({ driverId: booking.driverId }, {
       title: 'Upcoming pickup',
-      body: `Pickup in ${payload.minutesAhead} minutes.`,
+      body: `Pickup for booking ${booking.bookingNumber} in ${payload.minutesAhead} minutes.`,
       severity: 'info',
-      data: payload,
-    });
+      data: { ...payload, url: `/driver/trip/${booking._id}` },
+    }).catch(() => {});
   }
   return { ok: true };
 }

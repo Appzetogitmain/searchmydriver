@@ -11,6 +11,8 @@ import {
 } from '../constants/bookingStatus.js';
 import { PAYMENT_PURPOSE } from '../constants/kitStatus.js';
 import { sanitizeBookingForDriver } from './booking.service.js';
+import mongoose from 'mongoose';
+import { ApiError } from '../utils/apiError.js';
 import {
   loadCancellationPolicy,
   evaluateDriverCancelChance,
@@ -293,6 +295,7 @@ export async function getDriverTripsListService(driverId, query = {}) {
   const filter = {
     driverId,
     isDeleted: false,
+    hiddenForDriver: { $ne: true },
     ...filterBuilder(),
   };
 
@@ -317,6 +320,32 @@ export async function getDriverTripsListService(driverId, query = {}) {
       limit,
     },
   };
+}
+
+/**
+ * Driver removes a finished trip from their trip list.
+ *
+ *   DELETE /driver/trips/:id
+ *
+ * Only the driver's own completed / cancelled / unfulfilled trips can be
+ * removed — never an active one. It only hides the trip from this list;
+ * the booking, earnings and wallet history are untouched.
+ */
+export async function hideDriverTripService(driverId, bookingId) {
+  if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+    throw new ApiError(400, 'Invalid trip id');
+  }
+  const booking = await Booking.findOne({ _id: bookingId, driverId, isDeleted: false })
+    .select('status hiddenForDriver')
+    .lean();
+  if (!booking) throw new ApiError(404, 'Trip not found');
+  if (!TERMINAL_BOOKING_STATUSES.includes(booking.status)) {
+    throw new ApiError(409, 'You can only delete completed or cancelled trips');
+  }
+  if (!booking.hiddenForDriver) {
+    await Booking.updateOne({ _id: bookingId }, { $set: { hiddenForDriver: true } });
+  }
+  return { id: String(bookingId) };
 }
 
 /* ------------------------------------------------------------------ */

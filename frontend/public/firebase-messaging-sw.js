@@ -75,7 +75,11 @@ if (messagingSenderId && apiKey && projectId) {
         body: data.body || '',
         icon: '/favicon.png',
         data,
-        ...(data.bookingId ? { tag: `booking-${data.bookingId}`, renotify: true } : {}),
+        ...(data.notificationId
+          ? { tag: `notif-${data.notificationId}` }
+          : data.bookingId
+            ? { tag: `booking-${data.bookingId}`, renotify: true }
+            : {}),
       };
 
       self.registration.showNotification(notificationTitle, notificationOptions);

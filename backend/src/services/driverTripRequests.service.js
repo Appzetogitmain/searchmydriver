@@ -75,22 +75,31 @@ function formatTripRequestItem(booking, driver, carDoc, carTypeDoc) {
     (id) => String(id) === driverIdStr,
   );
 
-  // Scheduled date / pickup date
-  const rawPickupDate =
-    booking.hourly?.scheduledStartAt ||
-    booking.outstation?.pickupAt ||
-    booking.outstation?.startDate ||
-    booking.monthly?.startDate ||
-    booking.createdAt ||
-    new Date();
-
-  const { timeDisplay, dateDisplay, pickupDateTimeDisplay } =
-    formatDateTimeStrings(rawPickupDate);
-
   // Service & Trip types
   const isHourly = booking.serviceType === SERVICE_TYPES.HOURLY;
   const isOutstation = booking.serviceType === SERVICE_TYPES.OUTSTATION;
   const isMonthly = booking.serviceType === SERVICE_TYPES.MONTHLY;
+
+  // Instant ("current") hourly rides are needed right away. The client stores
+  // a placeholder `scheduledStartAt` (tap time + 15 min) for them, which read
+  // as a fake future pickup — show when the ride was requested instead.
+  const isInstant = isHourly && booking.bookingType !== BOOKING_TYPE.SCHEDULED;
+
+  // Scheduled date / pickup date
+  const rawPickupDate = isInstant
+    ? booking.createdAt || new Date()
+    : booking.hourly?.scheduledStartAt ||
+      booking.outstation?.pickupAt ||
+      booking.outstation?.startDate ||
+      booking.monthly?.startDate ||
+      booking.createdAt ||
+      new Date();
+
+  const formattedPickup = formatDateTimeStrings(rawPickupDate);
+  const { timeDisplay, pickupDateTimeDisplay } = formattedPickup;
+  const dateDisplay = isInstant
+    ? `Instant · ${formattedPickup.dateDisplay}`
+    : formattedPickup.dateDisplay;
 
   let rawTripType = TRIP_TYPE.ROUND_TRIP;
   if (isHourly && booking.hourly?.tripType) rawTripType = booking.hourly.tripType;
@@ -182,6 +191,7 @@ function formatTripRequestItem(booking, driver, carDoc, carTypeDoc) {
     customerType: 'B2C',
     paymentMode: paymentDisplay,
     isCash,
+    isInstant,
     cashBlocked,
     driverEarning,
     totalFare: fareTotal,

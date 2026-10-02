@@ -150,11 +150,13 @@ export async function sendFcmNotification(token, payload) {
         },
         notification: {
           icon: '/favicon.png',
-          // Same tag (e.g. one booking) replaces the previous notification
-          // instead of stacking; renotify still buzzes the phone.
-          ...(payload.data?.bookingId
-            ? { tag: `booking-${payload.data.bookingId}`, renotify: true }
-            : {}),
+          // Same tag as the in-app copy of this notification, so the phone
+          // never shows it twice.
+          ...(payload.data?.notificationId
+            ? { tag: `notif-${payload.data.notificationId}` }
+            : payload.data?.bookingId
+              ? { tag: `booking-${payload.data.bookingId}`, renotify: true }
+              : {}),
         }
       }
     });

@@ -55,6 +55,9 @@ const useNotificationStore = create((set, get) => ({
         )
       ),
       {
+        // Two socket listeners deliver the same event — the shared id makes
+        // react-hot-toast show it once.
+        ...((notification._id || notification.id) ? { id: `notif-${notification._id || notification.id}` } : {}),
         duration: 5000,
         icon: notification.severity === 'warning' ? '⚠️' : (notification.severity === 'success' ? '✅' : '🔔'),
       }

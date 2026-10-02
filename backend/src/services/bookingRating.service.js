@@ -8,6 +8,7 @@ import {
   emitToUser,
   emitToDriver,
   emitToAdmins,
+  emitNotification,
 } from '../utils/socketEmitters.js';
 
 /**
@@ -147,6 +148,14 @@ export async function rateDriverService(userId, bookingId, body = {}) {
   try {
     if (booking.driverId) {
       emitToDriver(booking.driverId, S2C_EVENTS.BOOKING_RATED_BY_CUSTOMER, payload);
+      emitNotification({ driverId: booking.driverId }, {
+        title: `You got a ${stars}★ rating`,
+        body: review
+          ? `"${String(review).slice(0, 80)}" — booking ${booking.bookingNumber || ''}`
+          : `The customer rated booking ${booking.bookingNumber || ''}.`,
+        severity: 'success',
+        data: { type: 'RATED', bookingId: String(booking._id), url: '/driver/trips?tab=completed' },
+      }).catch(() => {});
     }
     emitToUser(booking.userId, S2C_EVENTS.BOOKING_UPDATED, {
       bookingId: String(booking._id),

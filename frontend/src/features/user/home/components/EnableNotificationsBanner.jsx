@@ -1,13 +1,26 @@
 import { useState } from 'react';
 import { BellRing, Share, X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { registerUserPushToken } from '../../../../hooks/useFcm';
+import { registerPushToken } from '../../../../hooks/useFcm';
 
 const DISMISS_KEY = 'smd:notif-banner-dismissed';
 
-function readDismissed() {
+const COPY = {
+  user: {
+    title: 'Get driver alerts on your phone',
+    body: 'Know the moment your driver is assigned and arrives, even when the app is closed.',
+    ios: 'To get notified when your driver arrives',
+  },
+  driver: {
+    title: 'Get trip alerts on your phone',
+    body: 'Get new ride requests, cancellations and payments on your phone, even when the app is closed.',
+    ios: 'To get new ride requests and trip updates',
+  },
+};
+
+function readDismissed(key) {
   try {
-    return localStorage.getItem(DISMISS_KEY) === '1';
+    return localStorage.getItem(key) === '1';
   } catch {
     return false;
   }
@@ -32,15 +45,17 @@ function detectMode() {
  * On iPhone (not yet installed) it explains how to add the app to the
  * Home Screen first, since iOS only allows web push for installed apps.
  */
-const EnableNotificationsBanner = () => {
-  const [mode, setMode] = useState(() => (readDismissed() ? null : detectMode()));
+const EnableNotificationsBanner = ({ role = 'user' }) => {
+  const dismissKey = `${DISMISS_KEY}:${role}`;
+  const copy = COPY[role] || COPY.user;
+  const [mode, setMode] = useState(() => (readDismissed(dismissKey) ? null : detectMode()));
   const [busy, setBusy] = useState(false);
 
   if (!mode) return null;
 
   const dismiss = () => {
     try {
-      localStorage.setItem(DISMISS_KEY, '1');
+      localStorage.setItem(dismissKey, '1');
     } catch {
       // storage unavailable — banner just comes back next visit
     }
@@ -50,7 +65,7 @@ const EnableNotificationsBanner = () => {
   const handleEnable = async () => {
     setBusy(true);
     try {
-      const ok = await registerUserPushToken();
+      const ok = await registerPushToken(role);
       if (ok) {
         toast.success('Notifications enabled');
         setMode(null);
@@ -82,18 +97,16 @@ const EnableNotificationsBanner = () => {
           <BellRing className="w-5 h-5 text-primary" />
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-bold text-text">Get driver alerts on your phone</p>
+          <p className="text-sm font-bold text-text">{copy.title}</p>
           {mode === 'ios-install' ? (
             <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
-              To get notified when your driver arrives, tap{' '}
+              {copy.ios}, tap{' '}
               <Share className="inline w-3.5 h-3.5 -mt-0.5" /> <strong>Share</strong> →{' '}
               <strong>Add to Home Screen</strong>, then open SearchMyDriver from your Home Screen.
             </p>
           ) : (
             <>
-              <p className="text-xs text-text-muted mt-0.5">
-                Know the moment your driver is assigned and arrives, even when the app is closed.
-              </p>
+              <p className="text-xs text-text-muted mt-0.5">{copy.body}</p>
               <button
                 type="button"
                 onClick={handleEnable}

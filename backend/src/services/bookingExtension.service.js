@@ -17,6 +17,7 @@ import {
   emitToBooking,
   emitToAdmins,
   emitToDriver,
+  emitNotification,
 } from '../utils/socketEmitters.js';
 import { getServicePricingByTypeService } from './pricing.service.js';
 import {
@@ -1073,6 +1074,16 @@ export async function initiateExtensionService(userId, bookingId, body = {}) {
       driverEarning: round2(Number(breakdown?.driverEarning) || 0),
       expiresAt,
     });
+    // The code itself stays in the app (not on the lock screen).
+    const extLabel = additionalDays
+      ? `${additionalDays} day${additionalDays === 1 ? '' : 's'}`
+      : `${additionalHours} hour${additionalHours === 1 ? '' : 's'}`;
+    emitNotification({ driverId: booking.driverId }, {
+      title: 'Trip extension requested',
+      body: `The customer wants to extend the trip by ${extLabel}. Open the app to see the extension code.`,
+      severity: 'info',
+      data: { type: 'EXTENSION_REQUESTED', bookingId: String(booking._id), url: `/driver/trip/${booking._id}` },
+    }).catch(() => {});
   }
   // Admin audit trail (with the code so support can troubleshoot live).
   emitToAdmins(S2C_EVENTS.BOOKING_EXTENSION_OTP, {
@@ -1319,6 +1330,12 @@ export async function payExtensionService(userId, bookingId, body = {}) {
     };
     emitToDriver(booking.driverId, S2C_EVENTS.BOOKING_EXTENSION_PAID, driverPayload);
     emitToBooking(booking._id, S2C_EVENTS.BOOKING_UPDATED, driverPayload);
+    emitNotification({ driverId: booking.driverId }, {
+      title: 'Trip extension confirmed',
+      body: `The customer paid for the extension on booking ${booking.bookingNumber}.`,
+      severity: 'success',
+      data: { type: 'EXTENSION_PAID', bookingId: String(booking._id), url: `/driver/trip/${booking._id}` },
+    }).catch(() => {});
   }
 
   emitToAdmins(S2C_EVENTS.BOOKING_EXTENSION_PAID, userPayload);

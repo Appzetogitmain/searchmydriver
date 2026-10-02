@@ -17,6 +17,7 @@ import {
   emitToDriver,
   emitToBooking,
   emitToAdmins,
+  emitNotification,
 } from '../utils/socketEmitters.js';
 import {
   effectiveTotalForBooking,
@@ -180,6 +181,19 @@ function emitPaymentDeadlineRefreshed(booking) {
  * compose: the first successful pre-pay locks in the discount; later
  * extension payments charge only the delta the ledger says is outstanding.
  */
+/** Push "customer paid" / "collect cash" to the assigned driver (amount stays customer-side). */
+function notifyDriverPaymentReceived(booking, via) {
+  const isCash = via === 'cash';
+  emitNotification({ driverId: booking.driverId }, {
+    title: isCash ? 'Collect cash payment' : 'Payment received',
+    body: isCash
+      ? `The customer chose to pay cash for booking ${booking.bookingNumber}. Please collect the fare.`
+      : `The customer paid for booking ${booking.bookingNumber} via ${via === 'wallet' ? 'wallet' : 'online payment'}.`,
+    severity: 'success',
+    data: { type: 'PAYMENT_RECEIVED', bookingId: String(booking._id), url: `/driver/trip/${booking._id}` },
+  }).catch(() => {});
+}
+
 export async function verifyBookingPaymentService(userId, bookingId, { orderId, paymentId, signature }) {
   if (!orderId || !paymentId || !signature) {
     throw new ApiError(400, 'orderId, paymentId and signature are required');
@@ -282,6 +296,7 @@ export async function verifyBookingPaymentService(userId, bookingId, { orderId, 
   emitToBooking(booking._id, S2C_EVENTS.BOOKING_UPDATED, roomPayload);
   if (booking.driverId) {
     emitToDriver(booking.driverId, S2C_EVENTS.BOOKING_UPDATED, roomPayload);
+    notifyDriverPaymentReceived(booking, 'online');
   }
   emitToAdmins(S2C_EVENTS.BOOKING_UPDATED, userPayload);
 
@@ -343,6 +358,7 @@ export async function payBookingWithWalletService(userId, bookingId) {
   emitToBooking(booking._id, S2C_EVENTS.BOOKING_UPDATED, userPayload);
   if (booking.driverId) {
     emitToDriver(booking.driverId, S2C_EVENTS.BOOKING_UPDATED, userPayload);
+    notifyDriverPaymentReceived(booking, 'wallet');
   }
   emitToAdmins(S2C_EVENTS.BOOKING_UPDATED, userPayload);
 
@@ -377,6 +393,7 @@ export async function payBookingWithCashService(userId, bookingId) {
   emitToBooking(booking._id, S2C_EVENTS.BOOKING_UPDATED, userPayload);
   if (booking.driverId) {
     emitToDriver(booking.driverId, S2C_EVENTS.BOOKING_UPDATED, userPayload);
+    notifyDriverPaymentReceived(booking, 'cash');
   }
 
   return booking.toObject();

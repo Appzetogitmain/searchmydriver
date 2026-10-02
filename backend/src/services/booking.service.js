@@ -1468,6 +1468,14 @@ export async function cancelBookingByUserService(userId, bookingId, reason = '')
   if (previouslyAssignedDriver) {
     emitToDriver(previouslyAssignedDriver, S2C_EVENTS.BOOKING_UPDATED, payload);
   }
+  if (previouslyAssignedDriver) {
+    emitNotification({ driverId: previouslyAssignedDriver }, {
+      title: 'Customer cancelled the ride',
+      body: `Booking ${booking.bookingNumber} was cancelled by the customer.`,
+      severity: 'warning',
+      data: { type: 'BOOKING_CANCELLED', bookingId: String(booking._id), url: '/driver/trips?tab=cancelled' },
+    }).catch(() => {});
+  }
   emitToAdmins(S2C_EVENTS.BOOKING_UPDATED, payload);
 
   // --- Start Cancellation Tracking ---
@@ -1637,6 +1645,14 @@ export async function adminCancelBookingService(bookingId, staff, reason = '') {
   emitToBooking(booking._id, S2C_EVENTS.BOOKING_UPDATED, payload);
   if (previouslyAssignedDriver) {
     emitToDriver(previouslyAssignedDriver, S2C_EVENTS.BOOKING_UPDATED, payload);
+  }
+  if (previouslyAssignedDriver) {
+    emitNotification({ driverId: previouslyAssignedDriver }, {
+      title: 'Trip cancelled',
+      body: `Booking ${booking.bookingNumber} was cancelled by SearchMyDriver support.`,
+      severity: 'warning',
+      data: { type: 'BOOKING_CANCELLED', bookingId: String(booking._id), url: '/driver/trips?tab=cancelled' },
+    }).catch(() => {});
   }
   emitToAdmins(S2C_EVENTS.BOOKING_UPDATED, payload);
 
