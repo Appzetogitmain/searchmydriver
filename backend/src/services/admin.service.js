@@ -459,7 +459,7 @@ export const unsuspendDriverService = async (staffOrId, driverId) => {
 };
 
 export const updateDriverDocumentService = async (staff, driverId, docData) => {
-  const { docId, type, fileUrl, status = 'approved', verificationStatus = 'approved' } = docData;
+  const { docId, type, fileUrl, status, verificationStatus, cloudinaryPublicId } = docData;
   if (!type || !fileUrl) {
     throw new ApiError(400, 'Document type and fileUrl are required');
   }
@@ -479,21 +479,31 @@ export const updateDriverDocumentService = async (staff, driverId, docData) => {
     existingIndex = driver.documents.findIndex(d => d.type === type);
   }
 
-  const docStatus = status || verificationStatus || 'approved';
+  let docStatus = verificationStatus || status || 'verified';
+  if (docStatus === 'approved') docStatus = 'verified';
+  if (!['pending', 'verified', 'approved', 'rejected'].includes(docStatus)) {
+    docStatus = 'verified';
+  }
 
   if (existingIndex > -1) {
     driver.documents[existingIndex].type = type;
     driver.documents[existingIndex].fileUrl = fileUrl;
+    if (cloudinaryPublicId) {
+      driver.documents[existingIndex].cloudinaryPublicId = cloudinaryPublicId;
+    }
     driver.documents[existingIndex].verificationStatus = docStatus;
-    driver.documents[existingIndex].status = docStatus;
     driver.documents[existingIndex].uploadedAt = new Date();
+    if (docStatus === 'verified' || docStatus === 'approved') {
+      driver.documents[existingIndex].verifiedAt = new Date();
+    }
   } else {
     driver.documents.push({
       type,
       fileUrl,
+      cloudinaryPublicId: cloudinaryPublicId || '',
       verificationStatus: docStatus,
-      status: docStatus,
       uploadedAt: new Date(),
+      verifiedAt: (docStatus === 'verified' || docStatus === 'approved') ? new Date() : null,
     });
   }
 
