@@ -2,6 +2,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { AUDIENCES, setAuthCookies } from '../utils/cookie.util.js';
 import * as adminService from '../services/admin.service.js';
+import { getUserProfileService } from '../services/user.service.js';
 import { ApiError } from '../utils/apiError.js';
 
 export const loginAdmin = asyncHandler(async (req, res) => {
@@ -67,22 +68,22 @@ export const deleteDriverDocument = asyncHandler(async (req, res) => {
 });
 
 export const suspendUser = asyncHandler(async (req, res) => {
-  const result = await adminService.suspendUserService(req.staff._id, req.params.id, req.body.reason);
+  const result = await adminService.suspendUserService(req.staff, req.params.id, req.body.reason);
   return res.status(200).json(new ApiResponse(200, result, 'User suspended successfully'));
 });
 
 export const unsuspendUser = asyncHandler(async (req, res) => {
-  const result = await adminService.unsuspendUserService(req.staff._id, req.params.id);
+  const result = await adminService.unsuspendUserService(req.staff, req.params.id);
   return res.status(200).json(new ApiResponse(200, result, 'User unsuspended successfully'));
 });
 
 export const toggleUserActive = asyncHandler(async (req, res) => {
-  const result = await adminService.toggleUserActiveService(req.staff._id, req.params.id, req.body.isActive);
+  const result = await adminService.toggleUserActiveService(req.staff, req.params.id, req.body.isActive);
   return res.status(200).json(new ApiResponse(200, result, 'User status updated successfully'));
 });
 
 export const deleteUser = asyncHandler(async (req, res) => {
-  const result = await adminService.deleteUserService(req.staff._id, req.params.id);
+  const result = await adminService.deleteUserService(req.staff, req.params.id);
   return res.status(200).json(new ApiResponse(200, result, 'User deleted successfully'));
 });
 
@@ -108,7 +109,7 @@ export const updateAdminMember = asyncHandler(async (req, res) => {
 });
 
 export const deleteAdminMember = asyncHandler(async (req, res) => {
-  const result = await adminService.deleteAdminMemberService(req.params.id);
+  const result = await adminService.deleteAdminMemberService(req.staff, req.params.id);
   return res.status(200).json(new ApiResponse(200, result, "Admin team member removed successfully"));
 });
 
@@ -128,7 +129,7 @@ export const adjustDriverWallet = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'driverId, amount, and action are required');
   }
 
-  const result = await adminService.adjustDriverWalletService(driverId, amount, action, reason);
+  const result = await adminService.adjustDriverWalletService(req.staff, driverId, amount, action, reason);
   return res.status(200).json(new ApiResponse(200, result, 'Driver wallet adjusted successfully'));
 });
 
@@ -150,4 +151,14 @@ export const adjustUserWallet = asyncHandler(async (req, res) => {
 export const getDashboardStats = asyncHandler(async (req, res) => {
   const result = await adminService.getDashboardStatsService(req.staff);
   return res.status(200).json(new ApiResponse(200, result, "Dashboard stats fetched successfully"));
+});
+
+/**
+ * Admin view of a customer's profile. Unlike the customer app's own profile
+ * endpoint, this checks the staff member's city scope first.
+ */
+export const getAdminUserProfile = asyncHandler(async (req, res) => {
+  await adminService.assertStaffCanViewUserService(req.staff, req.params.userId);
+  const result = await getUserProfileService(req.params.userId);
+  return res.status(200).json(new ApiResponse(200, result, 'User profile fetched'));
 });

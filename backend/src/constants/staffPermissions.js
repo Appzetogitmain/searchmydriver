@@ -55,6 +55,16 @@ export function isTeamMember(staff) {
   return staff?.role === USER_ROLES.TEAM_MEMBER;
 }
 
+/**
+ * City admin: a non-super-admin staff member assigned to one or more zones /
+ * a city. They work everything in their city that their permissions allow,
+ * rather than only individually assigned review tasks.
+ */
+export function hasCityScope(staff) {
+  if (!staff || isSuperAdmin(staff)) return false;
+  return (staff.assignedZones?.length || 0) > 0 || Boolean(String(staff.city || '').trim());
+}
+
 /** Super admin + sub admin — full operational visibility (all drivers, tasks, assign) */
 export function hasOperationalStaffAccess(staff) {
   return isSuperAdmin(staff) || isSubAdmin(staff);

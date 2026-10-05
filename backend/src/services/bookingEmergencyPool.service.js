@@ -445,6 +445,8 @@ export async function listAvailableDriversForAssignmentService({
   carTypeId,
   pickupCoords,   // { lng, lat } from booking.pickup
   requirePositiveWalletBalance = false,
+  // Extra driver filter (city scope for city staff); null = no restriction.
+  scopeFilter = null,
   page = 1,
   limit = 20,
 } = {}) {
@@ -472,6 +474,9 @@ export async function listAvailableDriversForAssignmentService({
   
   if (requirePositiveWalletBalance) {
     matchStage['wallet.balance'] = { $gte: 0 };
+  }
+  if (scopeFilter) {
+    matchStage.$and = [...(matchStage.$and || []), scopeFilter];
   }
 
   if (hasGeo) {

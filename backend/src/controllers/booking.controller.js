@@ -65,6 +65,13 @@ import {
 } from '../services/bookingOutstationAssignment.service.js';
 import { listScheduledBookingJobs } from '../queues/scheduledBooking.queue.js';
 import Booking from '../models/booking.model.js';
+import { Driver } from '../models/driverModels/driver.model.js';
+import {
+  getStaffScope,
+  buildDriverScopeFilter,
+  assertStaffCanAccessBooking,
+  assertStaffCanAccessDriver,
+} from '../utils/staffScope.util.js';
 
 /* ------------------------------------------------------------------ */
 /* User                                                                */
@@ -524,8 +531,13 @@ export const getEmergencyPoolAvailableDrivers = asyncHandler(async (req, res) =>
   // Look up the booking's pickup coordinates so the service can
   // geo-sort drivers by distance from the pickup point.
   const booking = await Booking.findById(req.params.id)
-    .select('pickup paymentMethod')
+    .select('pickup paymentMethod zoneIds city')
     .lean();
+  if (!booking) throw new ApiError(404, 'Booking not found');
+  // City staff may only work bookings in their own city, and only pick
+  // drivers from it.
+  await assertStaffCanAccessBooking(req.staff, booking);
+  const driverScopeFilter = buildDriverScopeFilter(await getStaffScope(req.staff));
   const coords = booking?.pickup?.location?.coordinates;
   const pickupCoords =
     Array.isArray(coords) && coords.length === 2
@@ -535,6 +547,7 @@ export const getEmergencyPoolAvailableDrivers = asyncHandler(async (req, res) =>
   const result = await listAvailableDriversForAssignmentService({
     carTypeId,
     pickupCoords,
+    scopeFilter: driverScopeFilter,
     requirePositiveWalletBalance: booking?.paymentMethod === 'cash',
     page: req.query?.page,
     limit: req.query?.limit,
@@ -547,6 +560,12 @@ export const getEmergencyPoolAvailableDrivers = asyncHandler(async (req, res) =>
 export const assignDriverToEmergencyPoolBooking = asyncHandler(async (req, res) => {
   const { driverId, notes } = req.body || {};
   if (!driverId) throw new ApiError(400, 'driverId is required');
+  const poolBooking = await Booking.findById(req.params.id).select('zoneIds city pickup').lean();
+  if (!poolBooking) throw new ApiError(404, 'Booking not found');
+  await assertStaffCanAccessBooking(req.staff, poolBooking);
+  const targetDriver = await Driver.findById(driverId).select('city address homeZone').lean();
+  if (!targetDriver) throw new ApiError(404, 'Driver not found');
+  await assertStaffCanAccessDriver(req.staff, targetDriver);
   const result = await adminAssignDriverToEmergencyPoolService(
     req.params.id,
     driverId,

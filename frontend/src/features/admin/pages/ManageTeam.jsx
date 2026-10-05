@@ -9,6 +9,7 @@ import Modal from '../../../components/Modal';
 import ServerPaginatedTable from '../components/ServerPaginatedTable';
 import Badge from '../../../components/Badge';
 import api from '../../../utils/api';
+import useAdminAuthStore from '../../../store/useAdminAuthStore';
 import TeamStats from '../components/ManageTeam/TeamStats';
 import TeamFilters from '../components/ManageTeam/TeamFilters';
 import { STAFF_ROLE_LABELS } from '../../../constants/staffRoles';
@@ -18,6 +19,8 @@ import { STAFF_PERMISSIONS, PERMISSION_LABELS } from '../../../constants/permiss
 const ASSIGNABLE_ROLES = ['team_member', 'sub_admin'];
 
 const ManageTeam = () => {
+  const currentAdminId = useAdminAuthStore((s) => s.admin?._id || s.admin?.id);
+  const [deleteError, setDeleteError] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
@@ -72,7 +75,15 @@ const ManageTeam = () => {
       }
       setError(null);
     } catch (err) {
-      setError('Failed to fetch team members');
+      // Team Management is super-admin only — say so instead of a generic error.
+      const status = err?.response?.status;
+      setError(
+        status === 403
+          ? 'Only the super admin can manage the team. Log in with the super admin account to view team members.'
+          : status === 401
+            ? 'Your session has expired. Please log in again.'
+            : err?.response?.data?.message || 'Failed to fetch team members',
+      );
       console.error(err);
     } finally {
       setLoading(false);
@@ -105,6 +116,7 @@ const ManageTeam = () => {
 
   const confirmDelete = (member) => {
     setSelectedMember(member);
+    setDeleteError(null);
     setShowDeleteModal(true);
   };
 
@@ -116,7 +128,9 @@ const ManageTeam = () => {
       setShowDeleteModal(false);
       setSelectedMember(null);
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to delete member');
+      // Keep the dialog open and show exactly why the server refused
+      // (e.g. deleting your own account / the last super admin).
+      setDeleteError(err.response?.data?.message || 'Failed to delete member');
     } finally {
       setSubmitting(false);
     }
@@ -251,17 +265,20 @@ const ManageTeam = () => {
               icon: Edit2,
               onClick: () => handleEdit(row),
             },
-            {
-              label: 'Delete',
-              icon: Trash2,
-              variant: 'danger',
-              onClick: () => confirmDelete(row),
-            },
+            // You can't delete the account you're logged in with.
+            ...(String(row._id) === String(currentAdminId)
+              ? []
+              : [{
+                  label: 'Delete',
+                  icon: Trash2,
+                  variant: 'danger',
+                  onClick: () => confirmDelete(row),
+                }]),
           ]}
         />
       ),
     },
-  ], []);
+  ], [currentAdminId]);
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 lg:p-6 space-y-6 animate-fade-in-up pb-10">
@@ -460,6 +477,11 @@ const ManageTeam = () => {
               This action <span className="font-bold">cannot be undone</span>. All records associated with this account will be removed from the database.
             </p>
           </div>
+          {deleteError && (
+            <div role="alert" className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm font-medium text-amber-800">
+              {deleteError}
+            </div>
+          )}
           <div className="flex gap-3">
             <Button variant="outline" fullWidth onClick={() => setShowDeleteModal(false)} disabled={submitting}>Keep Member</Button>
             <Button

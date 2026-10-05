@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { OPEN_TASK_STATUSES } from '../constants/adminTask.js';
-import { hasOperationalStaffAccess } from '../constants/staffPermissions.js';
+import { hasOperationalStaffAccess, hasCityScope } from '../constants/staffPermissions.js';
 import { ApiError } from './apiError.js';
 
 /** Team members may only see/act on tasks assigned to them. */
@@ -75,6 +75,10 @@ export async function resolveResourceIdsFromTasks(AdminTask, staff, taskType, as
     else return null;
   }
 
+  // City admins see every record in their city (the caller applies the city
+  // filter) — not just the review tasks individually assigned to them.
+  if (hasCityScope(staff)) return null;
+
   const taskDocs = await AdminTask.find(taskFilter).select('resourceId').lean();
   return taskDocs.map((t) => t.resourceId);
 }
@@ -84,6 +88,8 @@ export async function resolveResourceIdsFromTasks(AdminTask, staff, taskType, as
  */
 export async function assertStaffCanAccessResource(staff, AdminTask, taskType, resourceId) {
   if (hasOperationalStaffAccess(staff)) return;
+  // City admins: access is decided by the caller's city check instead.
+  if (hasCityScope(staff)) return;
 
   const task = await AdminTask.findOne({
     taskType,

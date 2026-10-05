@@ -64,7 +64,7 @@ export const rejectKitOrder = asyncHandler(async (req, res) => {
 
 export const dispatchKitOrder = asyncHandler(async (req, res) => {
   const result = await kitOrderService.dispatchKitOrderService(
-    req.staff._id,
+    req.staff,
     req.params.id,
     req.body,
   );
@@ -72,6 +72,6 @@ export const dispatchKitOrder = asyncHandler(async (req, res) => {
 });
 
 export const deliverKitOrder = asyncHandler(async (req, res) => {
-  const result = await kitOrderService.markKitOrderDeliveredService(req.staff._id, req.params.id);
+  const result = await kitOrderService.markKitOrderDeliveredService(req.staff, req.params.id);
   return res.status(200).json(new ApiResponse(200, result, 'Kit order marked delivered'));
 });

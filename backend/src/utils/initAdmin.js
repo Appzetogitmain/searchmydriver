@@ -4,7 +4,7 @@ import { USER_ROLES } from '../constants/roles.js';
 
 export const initSuperAdmin = async () => {
   try {
-    const adminExists = await User.findOne({ role: USER_ROLES.ADMIN });
+    const adminExists = await User.findOne({ role: USER_ROLES.ADMIN, isDeleted: { $ne: true } });
 
     if (!adminExists) {
       console.log('[SYSTEM] No admin found. Initializing default Super Admin...');
