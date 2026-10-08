@@ -27,5 +27,7 @@ export default defineConfig({
           }
           return undefined;
         },
+      },
+    },
+  },
 });
-
