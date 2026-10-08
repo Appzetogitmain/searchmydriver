@@ -6,6 +6,8 @@ import Modal from '../../../../components/Modal';
 import Button from '../../../../components/Button';
 import { DOCUMENT_LABELS } from '../../../../utils/documents';
 
+import { uploadImage } from '../../../../utils/upload';
+
 const AdminDocumentUploadModal = ({
   open,
   onClose,
@@ -55,17 +57,13 @@ const AdminDocumentUploadModal = ({
     setLoading(true);
     try {
       let finalUrl = editingDocument?.fileUrl || null;
+      let finalPublicId = editingDocument?.cloudinaryPublicId || null;
 
       if (file) {
-        // Step 1: Upload new file image
-        const formData = new FormData();
-        formData.append('media', file);
-
-        const uploadRes = await api.post('/admin/ads/upload', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-
-        finalUrl = uploadRes.data?.data?.url || uploadRes.data?.data?.mediaUrl;
+        // Step 1: Upload new image via /common/upload
+        const uploadResult = await uploadImage(file);
+        finalUrl = uploadResult?.url;
+        finalPublicId = uploadResult?.publicId;
         if (!finalUrl) {
           throw new Error('Failed to get uploaded file URL');
         }
@@ -76,7 +74,8 @@ const AdminDocumentUploadModal = ({
         docId: editingDocument?._id,
         type: docType,
         fileUrl: finalUrl,
-        status: 'approved',
+        cloudinaryPublicId: finalPublicId,
+        verificationStatus: 'verified',
       });
 
       toast.success(

@@ -3,6 +3,7 @@ import { ApiResponse } from '../utils/apiResponse.js';
 import {
   getDriverHomeSummaryService,
   getDriverTripsListService,
+  hideDriverTripService,
   getDriverEarningsService,
   listDriverEarningsLedgerService,
 } from '../services/driverTrips.service.js';
@@ -15,6 +16,11 @@ export const getDriverHomeSummary = asyncHandler(async (req, res) => {
 export const getDriverTripsList = asyncHandler(async (req, res) => {
   const result = await getDriverTripsListService(req.driver._id, req.query);
   return res.status(200).json(new ApiResponse(200, result, 'Driver trips fetched'));
+});
+
+export const deleteDriverTrip = asyncHandler(async (req, res) => {
+  const result = await hideDriverTripService(req.driver._id, req.params.id);
+  return res.status(200).json(new ApiResponse(200, result, 'Trip deleted'));
 });
 
 export const getDriverEarnings = asyncHandler(async (req, res) => {

@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Search,
   MapPin,
   Bell,
   ChevronUp,
@@ -16,6 +15,8 @@ import NotificationBell from '../../../../components/common/NotificationBell';
 import Badge from '../../../../components/Badge';
 import BannersCarousel from '../../../../components/BannersCarousel';
 import BookDriverSection from '../components/BookDriverSection';
+import EnableNotificationsBanner from '../components/EnableNotificationsBanner';
+import EnableLocationButton from '../../../../components/location/EnableLocationButton';
 import { useGoogleMaps } from '../../../../hooks/useGoogleMaps';
 import { useGeolocation } from '../../../../hooks/useGeolocation';
 import { useNearbyDrivers } from '../../../../hooks/useNearbyDrivers';
@@ -33,7 +34,6 @@ const NEARBY_REFRESH_MS = 30_000;
 const UserHomePage = () => {
   const navigate = useNavigate();
   const { user } = useUserAuthStore();
-  const [searchQuery, setSearchQuery] = useState('');
   const [showDriverSheet, setShowDriverSheet] = useState(false);
   const [isHelpDeskOpen, setIsHelpDeskOpen] = useState(false);
   const [selectedDriverId, setSelectedDriverId] = useState(null);
@@ -112,7 +112,7 @@ const UserHomePage = () => {
     <div className="flex-1 flex flex-col bg-bg relative">
       {/* ====== Sticky Header ====== */}
       <div className="sticky top-0 z-30 bg-gradient-to-b from-[#FFF5D6] to-[#FFEAA8] border-b border-[#F5D169] px-4 pt-4 pb-4 rounded-b-3xl shadow-md">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between">
           <div className="min-w-0 max-w-[75%]">
             <p className="text-slate-600 text-sm font-bold tracking-wide opacity-80 capitalize">
               Hii {user?.name?.split(' ')[0] || 'Guest'}
@@ -138,23 +138,16 @@ const UserHomePage = () => {
             <NotificationBell prefix="/auth" />
           </div>
         </div>
-
-        <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
-          <input
-            type="text"
-            placeholder="Where would you like to go?"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-11 bg-white rounded-2xl pl-12 pr-4 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 shadow-md"
-          />
-        </div>
       </div>
 
       {/* ====== Scrollable Content ====== */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="pb-4 space-y-5">
           <BannersCarousel />
+
+          <div className="px-4 empty:hidden">
+            <EnableNotificationsBanner />
+          </div>
           
           <div className="px-4">
             <BookDriverSection />
@@ -206,6 +199,7 @@ const UserHomePage = () => {
                       <p className="text-[11px] mt-1">
                         Allow location access to see nearby drivers.
                       </p>
+                      <EnableLocationButton className="mt-3" />
                     </div>
                   ) : (
                     <Loader2 className="w-6 h-6 animate-spin" />

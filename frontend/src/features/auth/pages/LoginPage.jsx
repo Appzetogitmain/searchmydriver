@@ -56,7 +56,7 @@ const LoginPage = () => {
     } catch (error) {
       console.error('Login failed', error);
       const message = error.response
-        ? (error.response.data?.message || 'Invalid credentials. Please try again.')
+        ? (error.response.data?.message || 'Login failed. Please try again.')
         : (error.message || 'Login failed. Please try again.');
       setErrors({ general: message });
     } finally {

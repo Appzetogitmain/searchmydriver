@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import Card from '../../../../components/Card';
 import Toggle from '../../../../components/Toggle';
+import useLocationStatusStore, { LOCATION_STATUS } from '../../../../store/useLocationStatusStore';
 import BannersCarousel from '../../../../components/BannersCarousel';
 import {
   Star,
@@ -38,6 +40,7 @@ import MonthlyOptInCard from '../components/MonthlyOptInCard';
 import { useDriverProfileStore } from '../../../../store/driver/useDriverProfileStore';
 import HelpDeskModal from '../../../../components/HelpDeskModal';
 import { useNotificationSound } from '../../../../hooks/useNotificationSound';
+import EnableNotificationsBanner from '../../../user/home/components/EnableNotificationsBanner';
 
 const ACTIVE_STATUS_COPY = {
   [BOOKING_STATUS.DRIVER_ASSIGNED]: 'Heading to customer',
@@ -125,6 +128,14 @@ const DriverHomePage = () => {
       } catch {
         /* ignore */
       }
+      // Drivers can't receive or run trips without location — check it
+      // (the tap lets the browser show its prompt) before going online.
+      const locStatus = await useLocationStatusStore.getState().check({ request: true });
+      if (locStatus !== LOCATION_STATUS.OK && locStatus !== LOCATION_STATUS.UNSUPPORTED) {
+        useLocationStatusStore.getState().openSheet();
+        toast.error('Turn on location to go online');
+        return;
+      }
       const result = await setOnline(true);
       if (result.success) refetchOnline();
       return;
@@ -202,6 +213,8 @@ const DriverHomePage = () => {
           </Card>
         )}
 
+        <EnableNotificationsBanner role="driver" />
+
         {dispatchBlock?.code === 'NEGATIVE_WALLET' && (
           <Card
             hoverable
@@ -223,10 +236,12 @@ const DriverHomePage = () => {
                     {formatCurrency(dispatchBlock.shortBy)}
                   </strong>
                   . Cash bookings only go to drivers with {formatCurrency(0)} or
-                  more, so requests are skipping you even though you are online.
-                  Add at least{' '}
+                  more. Add at least{' '}
                   <strong>{formatCurrency(dispatchBlock.shortBy)}</strong> to
                   start getting them again.
+                </p>
+                <p className="text-xs font-semibold text-emerald-700 mt-1.5">
+                  You can still accept Online and Wallet rides.
                 </p>
               </div>
               <ChevronRight className="w-4 h-4 text-text-muted shrink-0 mt-1" />

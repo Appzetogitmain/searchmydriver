@@ -61,16 +61,16 @@ export default function DriverReferAndEarnPage() {
     }
   };
 
+  const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.searchmydrivers.partner';
   const referralCode = driver?.referralCode ? driver.referralCode.toUpperCase() : 'PENDING';
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://searchmydriver.com';
-  const referralLink = `${origin}/driver/signup?ref=${referralCode}`;
+  const referralLink = PLAY_STORE_URL;
 
   const shareMessage = `🚗 Join SearchMyDriver as a Driver Partner!
 
-Sign up using my link to get a bonus on your driver wallet:
-👉 ${referralLink}
+Download the Driver Partner App:
+👉 ${PLAY_STORE_URL}
 
-Or enter my Referral Code during registration:
+Use my Referral Code during registration to get a bonus in your driver wallet:
 🔑 Referral Code: ${referralCode}
 
 Start earning with flexible hours and instant payouts!`;
@@ -88,7 +88,7 @@ Start earning with flexible hours and instant payouts!`;
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(referralLink);
-      toast.success('Application link copied!');
+      toast.success('Partner app link copied!');
     } catch {
       toast.error('Could not copy link');
     }
@@ -182,9 +182,9 @@ Start earning with flexible hours and instant payouts!`;
               <div className="flex items-center justify-between mb-1.5 px-1">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
                   <LinkIcon className="w-3.5 h-3.5 text-primary" />
-                  <span>Application Invite Link</span>
+                  <span>Partner App Link</span>
                 </span>
-                <span className="text-[10px] text-emerald-600 font-semibold">Auto-tracks referral</span>
+                <span className="text-[10px] text-emerald-600 font-semibold">Play Store</span>
               </div>
               <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-2xl p-2.5 gap-2">
                 <p className="text-xs font-mono text-slate-600 truncate flex-1 pl-1 select-all">
@@ -249,10 +249,10 @@ Start earning with flexible hours and instant payouts!`;
               </div>
               <div className="min-w-0 flex-1">
                 <h3 className="font-bold text-xs text-slate-900 mb-0.5">
-                  1. Send Link & Code
+                  1. Send App Link & Code
                 </h3>
                 <p className="text-[11px] text-slate-600 leading-relaxed">
-                  Share your link and code with drivers looking for work. When they tap the link, your referral code is automatically attached.
+                  Share your partner app link and referral code with drivers looking for work.
                 </p>
               </div>
             </Card>

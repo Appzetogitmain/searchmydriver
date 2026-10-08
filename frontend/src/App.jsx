@@ -16,6 +16,8 @@ import UserOnboardingGuard from './guards/UserOnboardingGuard';
 import SuperAdminOnlyGuard from './guards/SuperAdminOnlyGuard';
 import AdminLayout from './layouts/AdminLayout';
 import CallOverlay from './components/CallOverlay';
+import LocationGate from './components/location/LocationGate';
+import { showSystemNotification } from './utils/systemNotification';
 
 // Side-effect: starts the global Socket.IO lifecycle (auto-connects when any
 // auth store has a session, auto-disconnects on logout).
@@ -251,17 +253,14 @@ function App() {
         /* ignore autoplay rejections */
       }
 
-      // Trigger native browser/OS desktop notification banner if permission is granted
-      try {
-        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-          new Notification(payload.title, {
-            body: payload.body || '',
-            icon: '/logo.png',
-          });
-        }
-      } catch (err) {
-        console.warn('[Notification] Failed to trigger native desktop notification:', err);
-      }
+      // Mirror every in-app notification into the phone's notification tray.
+      // Same tag as the push copy (see utils/systemNotification), so it's
+      // shown once even when the FCM push also arrives.
+      showSystemNotification({
+        title: payload?.title,
+        body: payload?.body || '',
+        data: { ...(payload?.data || {}), notificationId: payload?._id },
+      });
 
       handleNewNotification(payload);
     };
@@ -272,6 +271,7 @@ function App() {
   return (
     <Suspense fallback={<PageLoader />}>
       <CallOverlay />
+      <LocationGate />
       <Routes>
         {/* Public Website Routes */}
         <Route element={<LandingLayout />}>

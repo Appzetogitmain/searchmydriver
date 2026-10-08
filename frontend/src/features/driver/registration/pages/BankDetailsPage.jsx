@@ -99,6 +99,9 @@ const BankDetailsPage = () => {
     }
   };
 
+  const bankSubmitDisabled =
+    !form.holder || !form.account || !form.ifsc || !form.bank || isSubmitting;
+
   return (
     <div className="flex-1 flex flex-col bg-white min-h-dvh">
       <div className="px-4 pt-4">
@@ -114,7 +117,15 @@ const BankDetailsPage = () => {
         <StepIndicator steps={DRIVER_ONBOARDING_STEPS} currentStep={3} />
         <p className="text-xs text-text-muted mt-3">Payout routing setup</p>
       </div>
-      <form className="flex-1 flex flex-col px-6 pb-8">
+      {/* preventDefault stops the native submit from reloading the page and
+          cancelling the save request. */}
+      <form
+        className="flex-1 flex flex-col px-6 pb-8"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!bankSubmitDisabled) handleContinue();
+        }}
+      >
         <div className="flex-1 space-y-4 animate-fade-in-up">
           <Input label="Account holder name" placeholder="Name as in bank" value={form.holder} onChange={handleChange('holder')} icon={User} />
           <Input label="Account number" placeholder="Bank account number" value={form.account} onChange={handleChange('account')} icon={Hash} />
@@ -122,10 +133,10 @@ const BankDetailsPage = () => {
           <Input label="Bank name" placeholder="Bank name" value={form.bank} onChange={handleChange('bank')} icon={Building2} />
           <Input label="UPI ID (optional)" placeholder="user@upi" value={form.upi} onChange={handleChange('upi')} icon={CreditCard} />
         </div>
-        <Button 
-          fullWidth 
-          onClick={handleContinue} 
-          disabled={!form.holder || !form.account || !form.ifsc || !form.bank || isSubmitting}
+        <Button
+          type="submit"
+          fullWidth
+          disabled={bankSubmitDisabled}
           className="rounded-full py-4 text-base font-bold shadow-lg shadow-primary/20"
         >
           {isSubmitting ? 'SAVING...' : 'CONTINUE'}

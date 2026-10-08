@@ -23,6 +23,8 @@ function sanitizeUser(doc) {
 }
 
 import { OTP } from '../models/otp.model.js';
+import { Notification } from '../models/notification.model.js';
+import SupportTicket from '../models/supportTicket.model.js';
 import { sendSmsOtp } from '../utils/otpService.js';
 
 export const sendUserOtpService = async (phone, referralCode) => {
@@ -156,7 +158,7 @@ export const loginUserService = async (phone, password) => {
 
   const user = await User.findOne({ phone_no: phone }).select('+password');
   if (!user) {
-    throw new ApiError(404, 'User not registered. Please sign up.');
+    throw new ApiError(404, 'Wrong phone number');
   }
   if (user.isDeleted) {
     throw new ApiError(401, 'Account deactivated. Please contact support.');
@@ -172,7 +174,7 @@ export const loginUserService = async (phone, password) => {
 
   const isMatch = await bcrypt.compare(password, user.password);
   if (!isMatch) {
-    throw new ApiError(401, 'Invalid credentials');
+    throw new ApiError(401, 'Wrong password');
   }
 
   const safeUser = await User.findById(user._id).select('-password');
@@ -545,14 +547,66 @@ export const deleteUserAccountService = async (userId) => {
     throw new ApiError(409, 'Finish or cancel your active bookings before deleting your account');
   }
 
-  user.isDeleted = true;
-  user.isActive = false;
-  user.deletedAt = new Date();
-  user.fcmToken = '';
-  await user.save();
+  const { deletedAt } = await purgeUserAccount(user);
 
   return {
     id: user._id,
-    deletedAt: user.deletedAt,
+    deletedAt,
   };
+};
+
+/**
+ * Permanently remove a customer's personal data so the same phone / Google
+ * account can sign up again as a brand-new user.
+ *
+ * Personal data (cars, notifications, support tickets, referrals, OTPs) is
+ * deleted outright. The User row itself is kept but anonymized, because
+ * bookings, wallet transactions, payments and platform revenue reference it
+ * and are also part of drivers' trip history and admin reports. Unique
+ * identifiers (phone_no, googleId, referralCode) are $unset so the sparse
+ * unique indexes release them for a fresh signup.
+ */
+export const purgeUserAccount = async (user) => {
+  const userId = user._id;
+  const phone = user.phone_no;
+  const deletedAt = user.deletedAt || new Date();
+
+  await Promise.all([
+    Car.deleteMany({ userId }),
+    Notification.deleteMany({ recipientId: userId, recipientModel: 'User' }),
+    SupportTicket.deleteMany({ userId }),
+    Referral.deleteMany({
+      $or: [
+        { referredId: userId, referredType: 'User' },
+        { referrerId: userId, referrerType: 'User' },
+      ],
+    }),
+    phone ? OTP.deleteMany({ phone }) : null,
+  ]);
+
+  await User.updateOne(
+    { _id: userId },
+    {
+      $set: {
+        name: 'Deleted User',
+        email: '',
+        city: '',
+        profilePicture: '',
+        gender: null,
+        dateOfBirth: null,
+        fcmToken: '',
+        isEmailVerified: false,
+        isPhoneVerified: false,
+        savedLocations: [],
+        conditions: [],
+        isActive: false,
+        isDeleted: true,
+        deletedAt,
+      },
+      $unset: { phone_no: 1, googleId: 1, referralCode: 1, password: 1 },
+    },
+    { strict: false },
+  );
+
+  return { deletedAt };
 };

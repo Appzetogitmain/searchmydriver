@@ -643,6 +643,9 @@ const bookingSchema = new mongoose.Schema(
     },
 
     isDeleted: { type: Boolean, default: false, index: true },
+    // Driver removed this finished trip from their own trip list. The
+    // booking itself stays for the customer, earnings and admin reports.
+    hiddenForDriver: { type: Boolean, default: false },
   },
   { timestamps: true },
 );

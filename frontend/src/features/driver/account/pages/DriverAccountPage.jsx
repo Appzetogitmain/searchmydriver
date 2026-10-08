@@ -39,7 +39,6 @@ import { buildCacheKey } from '../../../../store/lib/buildCacheKey';
 import { formatCurrency, formatPhone, formatDate } from '../../../../utils/formatters';
 import DriverScreenShell from '../../components/DriverScreenShell';
 import DriverIdentityCard from '../components/DriverIdentityCard';
-import DriverUploadedDocumentsList from '../components/DriverUploadedDocumentsList';
 import DriverBankDetailsCard from '../components/DriverBankDetailsCard';
 
 /* ------------------------------------------------------------------ */
@@ -70,7 +69,6 @@ const MENU_GROUPS = [
       { icon: IdCard, label: 'ID Card', path: '/driver/account/id-card' },
       { icon: User, label: 'My Profile', path: '/driver/account/profile' },
       { icon: FileText, label: 'Documents', path: '/driver/account/documents' },
-      { icon: Building2, label: 'Bank Details', path: '/driver/account/bank-details' },
       { icon: Users, label: 'Refer & Earn', path: '/driver/refer' },
       { icon: Building2, label: 'About Company', path: '/driver/about' },
       { icon: ShieldCheck, label: 'Privacy Policy', path: '/driver/privecy' },
@@ -227,10 +225,6 @@ const DriverAccountPage = () => {
       <StatsRow today={today} wallet={wallet} />
 
       <DriverIdentityCard driver={driver} />
-
-      <DriverUploadedDocumentsList
-        documents={driver?.documents}
-      />
 
       <DriverBankDetailsCard bankDetails={driver?.bankDetails} />
 

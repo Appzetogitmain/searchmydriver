@@ -25,6 +25,19 @@ import {
 } from './adminTask.service.js';
 import { TASK_TYPE } from '../constants/adminTask.js';
 import AdminTask from '../models/adminTask.model.js';
+import {
+  getStaffScope,
+  buildDriverScopeFilter,
+  assertStaffCanAccessDriver,
+} from '../utils/staffScope.util.js';
+
+/** City staff may only handle kit orders placed by drivers in their city. */
+async function assertStaffCanAccessKitOrder(staff, order) {
+  const driver = await Driver.findById(order?.driverId?._id || order?.driverId)
+    .select('city address homeZone')
+    .lean();
+  await assertStaffCanAccessDriver(staff, driver);
+}
 
 function buildRazorpayCheckoutPayload(kitOrder, kit) {
   const amountPaise = Math.round(kitOrder.amount * 100);
@@ -327,6 +340,13 @@ export const getAdminKitOrdersService = async (staff, query) => {
     filter._id = { $in: scope.resourceIds };
   }
 
+  // City staff: only orders from drivers in their city.
+  const driverScopeFilter = buildDriverScopeFilter(await getStaffScope(staff));
+  if (driverScopeFilter) {
+    const scopedDriverIds = await Driver.distinct('_id', driverScopeFilter);
+    filter.$and = [...(filter.$and || []), { driverId: { $in: scopedDriverIds } }];
+  }
+
   const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
 
   let driverIds = null;
@@ -370,6 +390,7 @@ export const getAdminKitOrderByIdService = async (staff, orderId) => {
     .populate('kitId')
     .populate('reviewedBy', 'name email')
     .lean();
+  if (order) await assertStaffCanAccessKitOrder(staff, order);
 
   if (!order) throw new ApiError(404, 'Order not found');
 
@@ -418,6 +439,7 @@ export const approveKitOrderService = async (staff, orderId, note = '') => {
 
   const order = await KitOrder.findById(orderId);
   if (!order) throw new ApiError(404, 'Order not found');
+  await assertStaffCanAccessKitOrder(staff, order);
 
   if (order.paymentStatus !== PAYMENT_STATUS.PAID) {
     throw new ApiError(400, 'Payment must be completed before approval');
@@ -454,6 +476,7 @@ export const rejectKitOrderService = async (staff, orderId, note) => {
 
   const order = await KitOrder.findById(orderId);
   if (!order) throw new ApiError(404, 'Order not found');
+  await assertStaffCanAccessKitOrder(staff, order);
 
   const prev = order.adminStatus;
   order.adminStatus = KIT_ADMIN_STATUS.REJECTED;
@@ -476,7 +499,8 @@ export const rejectKitOrderService = async (staff, orderId, note) => {
   return order;
 };
 
-export const dispatchKitOrderService = async (staffId, orderId, data) => {
+export const dispatchKitOrderService = async (staff, orderId, data) => {
+  const staffId = staff?._id;
   const { carrier, trackingId, trackingUrl } = data;
   if (!carrier || !trackingId) {
     throw new ApiError(400, 'Carrier and tracking ID are required');
@@ -484,6 +508,7 @@ export const dispatchKitOrderService = async (staffId, orderId, data) => {
 
   const order = await KitOrder.findById(orderId);
   if (!order) throw new ApiError(404, 'Order not found');
+  await assertStaffCanAccessKitOrder(staff, order);
   if (order.adminStatus !== KIT_ADMIN_STATUS.APPROVED) {
     throw new ApiError(400, 'Order must be approved before dispatch');
   }
@@ -508,9 +533,11 @@ export const dispatchKitOrderService = async (staffId, orderId, data) => {
   return order;
 };
 
-export const markKitOrderDeliveredService = async (staffId, orderId) => {
+export const markKitOrderDeliveredService = async (staff, orderId) => {
+  const staffId = staff?._id;
   const order = await KitOrder.findById(orderId);
   if (!order) throw new ApiError(404, 'Order not found');
+  await assertStaffCanAccessKitOrder(staff, order);
 
   const prev = order.fulfillmentStatus;
   order.fulfillmentStatus = FULFILLMENT_STATUS.DELIVERED;

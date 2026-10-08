@@ -5,6 +5,7 @@ import { Driver } from '../models/driverModels/driver.model.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { getFirebaseAdmin } from '../config/firebase.js';
+import { getStaffScope, buildUserScopeFilter, buildDriverScopeFilter } from '../utils/staffScope.util.js';
 
 export const sendBroadcast = asyncHandler(async (req, res) => {
   const { audience, recipientId, targetCity, targetZone, title, body, severity } = req.body;
@@ -189,18 +190,28 @@ export const getBroadcastStats = asyncHandler(async (req, res) => {
   );
 });
 
+/** Treat the search box as plain text, not a regex. */
+const escapeRegex = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 export const searchUsers = asyncHandler(async (req, res) => {
   const query = req.query.q || '';
   if (!query || query.length < 2) {
     return res.status(200).json(new ApiResponse(200, [], 'Search query too short'));
   }
 
+  const userScope = await buildUserScopeFilter(await getStaffScope(req.staff));
   const users = await User.find({
     isDeleted: false,
-    $or: [
-      { name: { $regex: query, $options: 'i' } },
-      { phone_no: { $regex: query, $options: 'i' } },
-    ]
+    role: 'user',
+    $and: [
+      {
+        $or: [
+          { name: { $regex: escapeRegex(query), $options: 'i' } },
+          { phone_no: { $regex: escapeRegex(query), $options: 'i' } },
+        ],
+      },
+      ...(userScope ? [userScope] : []),
+    ],
   })
     .select('name phone_no email')
     .limit(10)
@@ -215,12 +226,18 @@ export const searchDrivers = asyncHandler(async (req, res) => {
     return res.status(200).json(new ApiResponse(200, [], 'Search query too short'));
   }
 
+  const driverScope = buildDriverScopeFilter(await getStaffScope(req.staff));
   const drivers = await Driver.find({
     isDeleted: false,
-    $or: [
-      { name: { $regex: query, $options: 'i' } },
-      { phone: { $regex: query, $options: 'i' } },
-    ]
+    $and: [
+      {
+        $or: [
+          { name: { $regex: escapeRegex(query), $options: 'i' } },
+          { phone: { $regex: escapeRegex(query), $options: 'i' } },
+        ],
+      },
+      ...(driverScope ? [driverScope] : []),
+    ],
   })
     .select('name phone')
     .limit(10)

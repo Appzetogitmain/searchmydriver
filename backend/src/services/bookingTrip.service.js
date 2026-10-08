@@ -507,6 +507,29 @@ export async function markDriverArrivedService(driverId, bookingId, { driverCoor
   );
 
   broadcastUpdate(booking);
+
+  // Push "driver arrived" to the customer's phone so it shows even when
+  // the app is closed; tapping it opens the tracking screen. The OTP is
+  // deliberately left out — it would be readable on the lock screen.
+  (async () => {
+    const driver = await Driver.findById(driverId).select('name').lean();
+    await emitNotification(
+      { userId: booking.userId },
+      {
+        title: 'Your driver has arrived 🚗',
+        body: `${driver?.name || 'Your driver'} is waiting at your pickup point. Share your ride OTP to start the trip.`,
+        severity: 'success',
+        data: {
+          type: 'DRIVER_ARRIVED',
+          bookingId: String(booking._id),
+          url: `/user/book/assigned/${booking._id}`,
+        },
+      },
+    );
+  })().catch((err) =>
+    console.warn('[bookingTrip] driver-arrived notification failed:', err?.message),
+  );
+
   return booking.toObject();
 }
 

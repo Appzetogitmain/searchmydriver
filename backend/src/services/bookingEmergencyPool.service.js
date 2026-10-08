@@ -16,6 +16,7 @@ import {
   emitToDriver,
   emitToBooking,
   emitToAdmins,
+  emitNotification,
 } from '../utils/socketEmitters.js';
 import { withdrawCurrentOfferService } from './bookingDispatch.service.js';
 import { updateDriverTripStatusLive } from './driverLocation.service.js';
@@ -409,12 +410,13 @@ export async function adminAssignDriverToEmergencyPoolService(
   // Bubble out the gross fare so the driver app's earnings card can
   // render the same number the user sees on their receipt — we don't
   // wait for the next refresh.
-  emitToDriver(driver._id, S2C_EVENTS.NOTIFICATION, {
+  emitNotification({ driverId: driver._id }, {
     title: 'New assignment',
     body: `Admin assigned booking ${booking.bookingNumber} to you.`,
     severity: 'info',
     data: {
       bookingId: String(booking._id),
+      url: `/driver/trip/${booking._id}`,
       scheduledStartAt: booking.hourly?.scheduledStartAt || null,
     },
   });
@@ -443,6 +445,8 @@ export async function listAvailableDriversForAssignmentService({
   carTypeId,
   pickupCoords,   // { lng, lat } from booking.pickup
   requirePositiveWalletBalance = false,
+  // Extra driver filter (city scope for city staff); null = no restriction.
+  scopeFilter = null,
   page = 1,
   limit = 20,
 } = {}) {
@@ -470,6 +474,9 @@ export async function listAvailableDriversForAssignmentService({
   
   if (requirePositiveWalletBalance) {
     matchStage['wallet.balance'] = { $gte: 0 };
+  }
+  if (scopeFilter) {
+    matchStage.$and = [...(matchStage.$and || []), scopeFilter];
   }
 
   if (hasGeo) {

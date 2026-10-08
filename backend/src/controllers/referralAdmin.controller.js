@@ -5,6 +5,54 @@ import WalletTransaction, { WALLET_TXN_DIRECTION, WALLET_TXN_SOURCE } from '../m
 import { creditWalletService } from '../services/wallet.service.js';
 import { Driver } from '../models/driverModels/driver.model.js';
 import User from '../models/user.model.js';
+import {
+  getStaffScope,
+  buildUserScopeFilter,
+  buildDriverScopeFilter,
+} from '../utils/staffScope.util.js';
+
+/**
+ * Customers + drivers a city staff member may see, or `null` for the super
+ * admin (no restriction). Referrals and withdrawals are scoped through the
+ * people involved, since neither carries a city of its own.
+ */
+async function getScopedPartyIds(staff) {
+  const scope = await getStaffScope(staff);
+  if (!scope.isScoped) return null;
+  const [userFilter, driverFilter] = [await buildUserScopeFilter(scope), buildDriverScopeFilter(scope)];
+  const [userIds, driverIds] = await Promise.all([
+    User.distinct('_id', { role: 'user', ...userFilter }),
+    Driver.distinct('_id', driverFilter),
+  ]);
+  return { userIds, driverIds };
+}
+
+function referralScopeQuery({ userIds, driverIds }) {
+  return {
+    $or: [
+      { referrerType: 'User', referrerId: { $in: userIds } },
+      { referrerType: 'Driver', referrerId: { $in: driverIds } },
+      { referredType: 'User', referredId: { $in: userIds } },
+      { referredType: 'Driver', referredId: { $in: driverIds } },
+    ],
+  };
+}
+
+function withdrawalScopeQuery({ userIds, driverIds }) {
+  return { $or: [{ driverId: { $in: driverIds } }, { userId: { $in: userIds } }] };
+}
+
+/** 403s when the staff member's city scope doesn't cover this record. */
+async function assertInStaffScope(staff, Model, id, buildQuery) {
+  const party = await getScopedPartyIds(staff);
+  if (!party) return;
+  const ok = await Model.exists({ _id: id, ...buildQuery(party) });
+  if (!ok) {
+    const err = new Error('You do not have access to records outside your assigned city');
+    err.statusCode = 403;
+    throw err;
+  }
+}
 
 // Settings (`GET/PUT /admin/referral-settings`)
 export const getReferralSettings = async (req, res, next) => {
@@ -60,6 +108,8 @@ export const listReferrals = async (req, res, next) => {
     const query = {};
     if (req.query.status) query.status = req.query.status;
     if (req.query.referrerType) query.referrerType = req.query.referrerType;
+    const party = await getScopedPartyIds(req.staff);
+    if (party) Object.assign(query, referralScopeQuery(party));
 
     const referrals = await Referral.find(query)
       .sort({ createdAt: -1 })
@@ -88,6 +138,7 @@ export const listReferrals = async (req, res, next) => {
 export const approveReferral = async (req, res, next) => {
   try {
     const { id } = req.params;
+    await assertInStaffScope(req.staff, Referral, id, referralScopeQuery);
     const referral = await Referral.findById(id);
     if (!referral) return res.status(404).json({ message: 'Referral not found' });
     if (referral.status !== 'pending') return res.status(400).json({ message: 'Only pending referrals can be approved' });
@@ -128,6 +179,7 @@ export const approveReferral = async (req, res, next) => {
 export const rejectReferral = async (req, res, next) => {
   try {
     const { id } = req.params;
+    await assertInStaffScope(req.staff, Referral, id, referralScopeQuery);
     const { reason } = req.body;
     const referral = await Referral.findById(id);
     if (!referral) return res.status(404).json({ message: 'Referral not found' });
@@ -154,6 +206,8 @@ export const listWithdrawals = async (req, res, next) => {
 
     const query = {};
     if (req.query.status) query.status = req.query.status;
+    const party = await getScopedPartyIds(req.staff);
+    if (party) Object.assign(query, withdrawalScopeQuery(party));
 
     const withdrawals = await WithdrawalRequest.find(query)
       .sort({ createdAt: -1 })
@@ -182,6 +236,7 @@ export const listWithdrawals = async (req, res, next) => {
 export const approveWithdrawal = async (req, res, next) => {
   try {
     const { id } = req.params;
+    await assertInStaffScope(req.staff, WithdrawalRequest, id, withdrawalScopeQuery);
     const { transactionRef } = req.body;
     const withdrawal = await WithdrawalRequest.findById(id);
     
@@ -219,6 +274,7 @@ export const approveWithdrawal = async (req, res, next) => {
 export const rejectWithdrawal = async (req, res, next) => {
   try {
     const { id } = req.params;
+    await assertInStaffScope(req.staff, WithdrawalRequest, id, withdrawalScopeQuery);
     const { reason } = req.body;
     const withdrawal = await WithdrawalRequest.findById(id);
     

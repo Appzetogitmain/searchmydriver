@@ -16,6 +16,7 @@ import {
   Calendar,
   Car,
   Pencil,
+  IdCard,
 } from 'lucide-react';
 import Card from '../../../../components/Card';
 import Button from '../../../../components/Button';
@@ -838,9 +839,17 @@ const DriverAssignedPage = () => {
                       {driver?.name || 'Assigning driver…'}
                     </p>
                     {driver?.driverId && (
-                      <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
-                        {driver.driverId}
-                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSheetExpanded(true);
+                        }}
+                        className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 hover:bg-emerald-100"
+                      >
+                        <IdCard className="w-3 h-3" />
+                        View ID Card
+                      </button>
                     )}
                   </div>
                   <p className="text-xs text-gray-500 truncate">
@@ -926,15 +935,9 @@ const DriverAssignedPage = () => {
                 {/* Driver profile — large photo + rating + call/message */}
                 {booking.status !== BOOKING_STATUS.PENDING_ASSIGNMENT && driver && (
                   <DriverIdCard 
+                    driver={driver}
                     src={driverPhotoUrl}
-                    name={driver?.name}
-                    driverId={driver?.driverId}
-                    rating={driver?.rating}
-                    experienceYears={driver?.experienceYears}
-                    licenseNumber={driver?.drivingLicense?.number}
-                    languages={driver?.languages}
                     phone={driver?.phone_no || driver?.phone}
-                    online={!!liveDriver}
                     onCallClick={handleCallClick}
                     onMessageClick={() => setChatOpen(true)}
                   />

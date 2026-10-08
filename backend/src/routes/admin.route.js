@@ -1,6 +1,6 @@
 import express from 'express';
 import notificationRouter from './notification.route.js';
-import { getUserProfile } from '../controllers/user.controller.js';
+import { getAdminUserProfile } from '../controllers/admin.controller.js';
 import {
   loginAdmin,
   getStaffMe,
@@ -213,8 +213,8 @@ router.get('/broadcasts/search-drivers', restrictTo(...ALL_STAFF), requirePermis
 
 router.get('/service-cities', restrictTo(...ALL_STAFF), getActiveServiceCities);
 router.get('/users', restrictTo(...ALL_STAFF), requirePermission(PERMISSIONS.USERS), getCustomers);
-router.get('/users/:userId/profile', restrictTo(...ALL_STAFF), requirePermission(PERMISSIONS.USERS), getUserProfile);
-router.get('/users/:userId', restrictTo(...ALL_STAFF), requirePermission(PERMISSIONS.USERS), getUserProfile);
+router.get('/users/:userId/profile', restrictTo(...ALL_STAFF), requirePermission(PERMISSIONS.USERS), getAdminUserProfile);
+router.get('/users/:userId', restrictTo(...ALL_STAFF), requirePermission(PERMISSIONS.USERS), getAdminUserProfile);
 router.patch('/users/:id/suspend', restrictTo(...ALL_STAFF), requirePermission(PERMISSIONS.USERS), suspendUser);
 router.patch('/users/:id/unsuspend', restrictTo(...ALL_STAFF), requirePermission(PERMISSIONS.USERS), unsuspendUser);
 router.patch('/users/:id/toggle-active', restrictTo(...ALL_STAFF), requirePermission(PERMISSIONS.USERS), toggleUserActive);

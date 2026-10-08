@@ -166,7 +166,7 @@ const OutstationOptInCard = ({ initial, initialZones = [] }) => {
               <div className="mt-3 pt-3 border-t border-border-light">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-[10px] uppercase tracking-wide text-text-muted font-semibold">
-                    Pickup zones
+                    Pickup Zone
                   </p>
                   <button
                     type="button"
@@ -175,16 +175,16 @@ const OutstationOptInCard = ({ initial, initialZones = [] }) => {
                     className="text-[11px] font-semibold text-primary inline-flex items-center gap-0.5 disabled:opacity-50"
                   >
                     <Pencil className="w-3 h-3" />
-                    Edit
+                    Change
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {zoneChips.map((z) => (
                     <span
                       key={z.id}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-[11px] font-semibold text-slate-700"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100/70 border border-amber-200/60 text-xs font-bold text-amber-950 shadow-2xs"
                     >
-                      <MapPin className="w-3 h-3 text-primary" />
+                      <MapPin className="w-3.5 h-3.5 text-amber-600" />
                       <span>
                         {z.name}{z.city && z.city.toLowerCase() !== z.name.toLowerCase() ? ` \u00b7 ${z.city}` : ''}
                       </span>
@@ -203,7 +203,7 @@ const OutstationOptInCard = ({ initial, initialZones = [] }) => {
               >
                 <MapPin className="w-3.5 h-3.5" />
                 <span className="flex-1 text-left">
-                  Pick the zones you want outstation pickups from
+                  Pick the zone you want outstation pickups from
                 </span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>

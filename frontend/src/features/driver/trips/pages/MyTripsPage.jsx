@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { Loader2, AlertCircle, Inbox, RefreshCw, Car, Sparkles } from 'lucide-react';
 import Card from '../../../../components/Card';
 import Button from '../../../../components/Button';
@@ -21,6 +22,7 @@ import {
 import DriverScreenShell from '../../components/DriverScreenShell';
 import DriverTripCard from '../components/DriverTripCard';
 import DriverTripRequestCard from '../components/DriverTripRequestCard';
+import ConfirmDialog from '../../../../components/ConfirmDialog';
 import api from '../../../../utils/api';
 
 const MAIN_TABS = [
@@ -205,6 +207,25 @@ const MyTripsPage = () => {
       refetchRequestsRef.current?.().catch(() => {});
     } finally {
       setAcceptingId(null);
+    }
+  };
+
+  const [tripToDelete, setTripToDelete] = useState(null);
+  const [deletingTrip, setDeletingTrip] = useState(false);
+
+  const handleDeleteTrip = async () => {
+    if (!tripToDelete) return;
+    setDeletingTrip(true);
+    try {
+      await api.delete(`/driver/trips/${tripToDelete._id}`);
+      toast.success('Trip deleted');
+      setTripToDelete(null);
+      useDriverTripsListStore.getState().invalidate();
+      await refetchTrips?.();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Could not delete trip');
+    } finally {
+      setDeletingTrip(false);
     }
   };
 
@@ -451,6 +472,7 @@ const MyTripsPage = () => {
               key={trip._id}
               trip={trip}
               onClick={() => handleSelectHistoryTrip(trip)}
+              onDelete={setTripToDelete}
               className="animate-fade-in-up"
               style={{ animationDelay: `${idx * 0.04}s` }}
             />
@@ -467,6 +489,17 @@ const MyTripsPage = () => {
           )}
         </>
       )}
+
+      <ConfirmDialog
+        open={Boolean(tripToDelete)}
+        onClose={() => !deletingTrip && setTripToDelete(null)}
+        onConfirm={handleDeleteTrip}
+        title="Delete this trip?"
+        description={`${tripToDelete?.bookingNumber ? `Trip ${tripToDelete.bookingNumber}` : 'This trip'} will be removed from your trip list. Your earnings and wallet history are not affected.`}
+        confirmLabel="Delete trip"
+        variant="danger"
+        loading={deletingTrip}
+      />
     </DriverScreenShell>
   );
 };

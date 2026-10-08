@@ -248,6 +248,7 @@ const ConfirmAndPayPage = () => {
   }, [isOutstation, draft.pickup, dropPoint]);
 
   const isHourly = draft.serviceType === SERVICE_TYPES.HOURLY;
+  const isMonthly = draft.serviceType === SERVICE_TYPES.MONTHLY;
 
   const isOutOfCityHourlyBlocked = useMemo(() => {
     if (!isHourly) return false;
@@ -445,12 +446,16 @@ const ConfirmAndPayPage = () => {
       toast.error('Please confirm you\u2019ll arrange the driver\u2019s meal');
       return;
     }
+    if (isMonthly && paymentMethod === 'cash') {
+      toast.error('Cash payment is not available for Monthly bookings. Please pay via Wallet or Online.');
+      return;
+    }
     if (isOutstation) {
       setTollAckOpen(true);
       return;
     }
     submitBooking();
-  }, [submitting, total, isInCityOutstationBlocked, isOutOfCityHourlyBlocked, pickupCityName, foodGateUnmet, isOutstation, submitBooking]);
+  }, [submitting, total, isInCityOutstationBlocked, isOutOfCityHourlyBlocked, pickupCityName, foodGateUnmet, isMonthly, paymentMethod, isOutstation, submitBooking]);
 
   // Outstation toll/parking ack flow → user accepted, run the create.
   const handleTollAcknowledged = useCallback(() => {
@@ -624,12 +629,14 @@ const ConfirmAndPayPage = () => {
         )}
         <div className="rounded-3xl border border-border-light bg-white p-4 shadow-sm">
           <p className="text-sm font-bold text-text mb-3">Payment Method</p>
-          <div className="grid grid-cols-3 gap-2">
+          <div className={`grid ${isMonthly ? 'grid-cols-2' : 'grid-cols-3'} gap-2`}>
             {[
               { id: 'wallet', label: 'Wallet', icon: WalletIcon },
               { id: 'cash', label: 'Cash', icon: HandCoins },
               { id: 'online', label: 'Online', icon: CreditCard },
-            ].map(({ id, label, icon: Icon }) => (
+            ]
+              .filter(({ id }) => !(isMonthly && id === 'cash'))
+              .map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 type="button"

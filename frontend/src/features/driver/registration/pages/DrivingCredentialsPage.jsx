@@ -219,7 +219,16 @@ const DrivingCredentialsPage = () => {
           License, experience & up to {MAX_DRIVER_VEHICLES} vehicles you can drive for customers
         </p>
       </div>
-      <form className="flex-1 flex flex-col px-6 pb-8 overflow-y-auto">
+      {/* onSubmit + preventDefault: without it, CONTINUE (or Enter in a field)
+          natively submitted the form and reloaded the page, cancelling the
+          save request and wiping every uploaded document. */}
+      <form
+        className="flex-1 flex flex-col px-6 pb-8 overflow-y-auto"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!continueDisabled) handleContinue();
+        }}
+      >
         <div className="flex-1 space-y-5 animate-fade-in-up">
           <Input
             label="License number"
@@ -284,8 +293,8 @@ const DrivingCredentialsPage = () => {
 
         <div className="pt-5">
           <Button
+            type="submit"
             fullWidth
-            onClick={handleContinue}
             disabled={continueDisabled}
             loading={isSubmitting}
             className="mt-6 rounded-full py-4 text-base font-bold shadow-lg shadow-primary/20"

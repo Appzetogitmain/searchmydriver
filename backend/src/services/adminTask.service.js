@@ -13,6 +13,7 @@ import { USER_ROLES } from '../constants/roles.js';
 import {
   STAFF_ROLES,
   hasOperationalStaffAccess,
+  hasCityScope,
   canManageTaskAssignment,
 } from '../constants/staffPermissions.js';
 import { ApiError } from '../utils/apiError.js';
@@ -360,6 +361,8 @@ export async function claimTaskService(staff, taskId, note = '') {
 
 export async function assertStaffCanActOnResource(staff, taskType, resourceId) {
   if (hasOperationalStaffAccess(staff)) return null;
+  // City admins act on anything in their city; callers enforce the city check.
+  if (hasCityScope(staff)) return null;
 
   const task = await AdminTask.findOne({
     taskType,

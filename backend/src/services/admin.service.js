@@ -35,10 +35,13 @@ import {
 } from './adminTask.service.js';
 import { TASK_TYPE } from '../constants/adminTask.js';
 import AdminTask from '../models/adminTask.model.js';
+import { purgeUserAccount } from './user.service.js';
 
 import {
   getStaffScope,
   assertStaffCanAccessDriver,
+  assertStaffCanAccessUser,
+  buildUserScopeFilter,
 } from '../utils/staffScope.util.js';
 
 export const loginStaffService = async (email, password) => {
@@ -60,7 +63,7 @@ export const loginStaffService = async (email, password) => {
   const isMatch = await bcrypt.compare(password, staff.password);
   if (!isMatch) {
     console.log("password did not match");
-    throw new ApiError(401, 'Invalid credentials');
+    throw new ApiError(401, 'Wrong password');
   }
 
   staff.password = undefined;
@@ -100,32 +103,12 @@ export const getCustomersService = async (staff, query = {}) => {
 
   const filter = { role: USER_ROLES.USER, isDeleted: { $ne: true } };
 
-  if (staffScope.isScoped) {
-    const matchingBookingsUserIds = staffScope.zoneObjectIds.length > 0
-      ? await Booking.distinct('userId', { zoneIds: { $in: staffScope.zoneObjectIds } })
-      : [];
-
-    const userScopeConditions = [];
-    if (staffScope.cityRegexes.length > 0) {
-      userScopeConditions.push({ city: { $in: staffScope.cityRegexes } });
-    }
-    if (matchingBookingsUserIds.length > 0) {
-      userScopeConditions.push({ _id: { $in: matchingBookingsUserIds } });
-    }
-
-    if (userScopeConditions.length > 0) {
-      filter.$and = filter.$and || [];
-      filter.$and.push({ $or: userScopeConditions });
-    } else {
-      return {
-        data: [],
-        pagination: {
-          total: 0,
-          page: parseInt(page, 10) || 1,
-          pages: 1,
-        },
-      };
-    }
+  // City staff see only customers whose profile city is theirs — not every
+  // customer who ever took a ride in their city (see buildUserScopeFilter).
+  const userScopeFilter = await buildUserScopeFilter(staffScope);
+  if (userScopeFilter) {
+    filter.$and = filter.$and || [];
+    filter.$and.push(userScopeFilter);
   }
 
   // Location filter (via City Dropdown)
@@ -476,7 +459,7 @@ export const unsuspendDriverService = async (staffOrId, driverId) => {
 };
 
 export const updateDriverDocumentService = async (staff, driverId, docData) => {
-  const { docId, type, fileUrl, status = 'approved', verificationStatus = 'approved' } = docData;
+  const { docId, type, fileUrl, status, verificationStatus, cloudinaryPublicId } = docData;
   if (!type || !fileUrl) {
     throw new ApiError(400, 'Document type and fileUrl are required');
   }
@@ -496,21 +479,31 @@ export const updateDriverDocumentService = async (staff, driverId, docData) => {
     existingIndex = driver.documents.findIndex(d => d.type === type);
   }
 
-  const docStatus = status || verificationStatus || 'approved';
+  let docStatus = verificationStatus || status || 'verified';
+  if (docStatus === 'approved') docStatus = 'verified';
+  if (!['pending', 'verified', 'approved', 'rejected'].includes(docStatus)) {
+    docStatus = 'verified';
+  }
 
   if (existingIndex > -1) {
     driver.documents[existingIndex].type = type;
     driver.documents[existingIndex].fileUrl = fileUrl;
+    if (cloudinaryPublicId) {
+      driver.documents[existingIndex].cloudinaryPublicId = cloudinaryPublicId;
+    }
     driver.documents[existingIndex].verificationStatus = docStatus;
-    driver.documents[existingIndex].status = docStatus;
     driver.documents[existingIndex].uploadedAt = new Date();
+    if (docStatus === 'verified' || docStatus === 'approved') {
+      driver.documents[existingIndex].verifiedAt = new Date();
+    }
   } else {
     driver.documents.push({
       type,
       fileUrl,
+      cloudinaryPublicId: cloudinaryPublicId || '',
       verificationStatus: docStatus,
-      status: docStatus,
       uploadedAt: new Date(),
+      verifiedAt: (docStatus === 'verified' || docStatus === 'approved') ? new Date() : null,
     });
   }
 
@@ -627,7 +620,7 @@ export const updateDriverProfileByAdminService = async (staff, driverId, payload
 async function assertSingleSuperAdmin(role, excludeUserId = null) {
   if (role !== USER_ROLES.ADMIN) return;
 
-  const filter = { role: USER_ROLES.ADMIN, isDeleted: false };
+  const filter = { role: USER_ROLES.ADMIN, isDeleted: { $ne: true } };
   if (excludeUserId) filter._id = { $ne: excludeUserId };
 
   const count = await User.countDocuments(filter);
@@ -706,6 +699,7 @@ export const getAdminTeamService = async (query) => {
   
   const filter = {
     role: { $in: [USER_ROLES.ADMIN, USER_ROLES.SUB_ADMIN, USER_ROLES.TEAM_MEMBER] },
+    isDeleted: { $ne: true },
   };
 
   if (search) {
@@ -779,14 +773,32 @@ export const updateAdminMemberService = async (id, data) => {
   return staff;
 };
 
-export const deleteAdminMemberService = async (id) => {
+export const deleteAdminMemberService = async (actingStaff, id) => {
   const staff = await User.findById(id);
-  if (!staff || !STAFF_ROLES.includes(staff.role)) {
+  if (!staff || staff.isDeleted || !STAFF_ROLES.includes(staff.role)) {
     throw new ApiError(404, 'Staff member not found');
   }
 
   if (staff.role === USER_ROLES.ADMIN) {
-    throw new ApiError(400, 'The super admin account cannot be deleted');
+    // Never let a super admin delete the account they're logged in with.
+    if (String(actingStaff?._id) === String(staff._id)) {
+      throw new ApiError(
+        400,
+        'You cannot delete the Super Admin account you are currently logged in with. If you wish to delete this account, log in using your other Super Admin account first.',
+      );
+    }
+
+    // Duplicate super admins may go, but at least one must always remain.
+    const superAdminCount = await User.countDocuments({
+      role: USER_ROLES.ADMIN,
+      isDeleted: { $ne: true },
+    });
+    if (superAdminCount <= 1) {
+      throw new ApiError(
+        400,
+        'Cannot delete the only Super Admin account. At least one Super Admin must remain.',
+      );
+    }
   }
 
   await User.findByIdAndDelete(id);
@@ -993,9 +1005,10 @@ export const getDriverWalletHistoryService = async (staff, query = {}) => {
   };
 };
 
-export const adjustDriverWalletService = async (driverId, amount, action, reason) => {
+export const adjustDriverWalletService = async (staff, driverId, amount, action, reason) => {
   const driver = await Driver.findById(driverId);
   if (!driver) throw new ApiError(404, 'Driver not found');
+  await assertStaffCanAccessDriver(staff, driver);
 
   const adjustAmount = Math.abs(Number(amount));
   if (isNaN(adjustAmount) || adjustAmount <= 0) {
@@ -1128,6 +1141,7 @@ export const getUserWalletHistoryService = async (staff, query = {}) => {
 export const adjustUserWalletService = async (staff, userId, amount, action, reason) => {
   const user = await User.findById(userId);
   if (!user) throw new ApiError(404, 'User not found');
+  await assertStaffCanAccessUser(staff, user);
 
   const adjustAmount = Math.abs(Number(amount));
   if (isNaN(adjustAmount) || adjustAmount <= 0) {
@@ -1260,8 +1274,18 @@ const findUserByIdOrCustomId = async (id) => {
   return await User.findOne({ userId: id });
 };
 
-export const suspendUserService = async (adminId, userId, reason) => {
+/** Throws unless this staff member may view the given customer (by _id or custom userId). */
+export const assertStaffCanViewUserService = async (staff, userId) => {
   const user = await findUserByIdOrCustomId(userId);
+  if (!user || user.isDeleted || user.role !== USER_ROLES.USER) {
+    throw new ApiError(404, 'User not found');
+  }
+  await assertStaffCanAccessUser(staff, user);
+};
+
+export const suspendUserService = async (staff, userId, reason) => {
+  const user = await findUserByIdOrCustomId(userId);
+  if (user) await assertStaffCanAccessUser(staff, user);
   if (!user) {
     throw new ApiError(404, 'User not found');
   }
@@ -1278,8 +1302,9 @@ export const suspendUserService = async (adminId, userId, reason) => {
   return user;
 };
 
-export const unsuspendUserService = async (adminId, userId) => {
+export const unsuspendUserService = async (staff, userId) => {
   const user = await findUserByIdOrCustomId(userId);
+  if (user) await assertStaffCanAccessUser(staff, user);
   if (!user) {
     throw new ApiError(404, 'User not found');
   }
@@ -1296,8 +1321,9 @@ export const unsuspendUserService = async (adminId, userId) => {
   return user;
 };
 
-export const toggleUserActiveService = async (adminId, userId, isActive) => {
+export const toggleUserActiveService = async (staff, userId, isActive) => {
   const user = await findUserByIdOrCustomId(userId);
+  if (user) await assertStaffCanAccessUser(staff, user);
   if (!user || user.isDeleted) {
     throw new ApiError(404, 'User not found');
   }
@@ -1307,18 +1333,16 @@ export const toggleUserActiveService = async (adminId, userId, isActive) => {
   return user;
 };
 
-export const deleteUserService = async (adminId, userId) => {
+export const deleteUserService = async (staff, userId) => {
   const user = await findUserByIdOrCustomId(userId);
+  if (user) await assertStaffCanAccessUser(staff, user);
   if (!user) {
     throw new ApiError(404, 'User not found');
   }
 
-  if (!user.isDeleted) {
-    user.isDeleted = true;
-    user.deletedAt = new Date();
-    user.isActive = false;
-    await user.save();
-  }
+  // Same full purge as self-delete so the number can sign up fresh.
+  // Safe to re-run on an already soft-deleted row (cleans legacy data).
+  await purgeUserAccount(user);
 
   return { id: user._id, message: 'User account deleted successfully' };
 };

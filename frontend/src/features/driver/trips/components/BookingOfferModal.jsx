@@ -74,6 +74,13 @@ const OFFER_THEMES = {
 /** The asset that rings when a new offer arrives. Reused across the app. */
 const OFFER_ALERT_SRC = '/audio/alert_.mp3';
 
+const PAYMENT_METHOD_LABELS = { cash: 'Cash', wallet: 'Wallet', online: 'Online' };
+
+/** Customer chose cash. `paymentMode` is kept only for offers sent before `paymentMethod` existed. */
+function isCashOffer(offer) {
+  return offer?.paymentMethod === 'cash' || offer?.paymentMode === 'cash';
+}
+
 function CountdownBar({ expiresAt, barColorClass = 'bg-primary' }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -200,9 +207,7 @@ function buildOfferDetails(offer) {
     },
     {
       label: 'Payment',
-      value: offer.paymentMode
-        ? offer.paymentMode.charAt(0).toUpperCase() + offer.paymentMode.slice(1).replace(/_/g, ' ')
-        : null,
+      value: PAYMENT_METHOD_LABELS[offer.paymentMethod] || null,
     },
   ].filter((d) => d.value);
 }
@@ -481,7 +486,7 @@ const BookingOfferModal = () => {
             </div>
           </div>
           
-          {offer.serviceType === SERVICE_TYPES.MONTHLY && offer.paymentMode === 'cash' && (
+          {offer.serviceType === SERVICE_TYPES.MONTHLY && isCashOffer(offer) && (
             <div className="flex items-start gap-3 rounded-2xl bg-amber-50 p-3 mt-4 border border-amber-200">
               <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <div className="min-w-0 flex-1">
@@ -496,7 +501,7 @@ const BookingOfferModal = () => {
             </div>
           )}
 
-          {offer.paymentMode === 'cash' && Number(driver?.wallet?.balance || 0) < 0 && (
+          {isCashOffer(offer) && Number(driver?.wallet?.balance || 0) < 0 && (
             <div className="flex items-start gap-3 rounded-2xl bg-rose-50 p-3 mt-4 border border-rose-200 animate-fade-in">
               <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
               <div className="min-w-0 flex-1">
@@ -558,7 +563,7 @@ const BookingOfferModal = () => {
               onClick={handleAccept}
               disabled={
                 busy === 'reject' ||
-                (offer.paymentMode === 'cash' && Number(driver?.wallet?.balance || 0) < 0)
+                (isCashOffer(offer) && Number(driver?.wallet?.balance || 0) < 0)
               }
               loading={busy === 'accept'}
             >

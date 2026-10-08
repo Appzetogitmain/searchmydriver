@@ -1,11 +1,13 @@
-import { MapPin, Clock, Navigation, Calendar } from 'lucide-react';
+import { MapPin, Clock, Navigation, Calendar, Trash2 } from 'lucide-react';
 import Card from '../../../../components/Card';
 import Badge from '../../../../components/Badge';
 import { formatCurrency } from '../../../../utils/formatters';
 import { SERVICE_TYPES, SERVICE_TYPE_LABELS } from '../../../../constants/serviceTypes';
 import {
   BOOKING_STATUS,
+  BOOKING_TYPE,
   ACTIVE_BOOKING_STATUSES,
+  TERMINAL_BOOKING_STATUSES,
 } from '../../../../constants/bookingStatus';
 
 /**
@@ -34,11 +36,19 @@ function statusBadge(status) {
   return STATUS_VARIANTS[status] || { variant: 'default', label: status || '—' };
 }
 
+/** The customer's requested pickup time for each service type. */
 function pickDate(trip) {
+  // Instant hourly rides start right away; their stored `scheduledStartAt`
+  // is only a placeholder (tap time + 15 min). Use the real start, or the
+  // request time if the trip hasn't started.
+  if (trip?.serviceType === SERVICE_TYPES.HOURLY && trip?.bookingType !== BOOKING_TYPE.SCHEDULED) {
+    return trip?.timeline?.startedAt || trip?.createdAt || null;
+  }
   return (
-    trip?.timeline?.completedAt ||
-    trip?.timeline?.startedAt ||
-    trip?.timeline?.driverAssignedAt ||
+    trip?.hourly?.scheduledStartAt ||
+    trip?.outstation?.pickupAt ||
+    trip?.outstation?.startDate ||
+    trip?.monthly?.startDate ||
     trip?.createdAt ||
     null
   );
@@ -55,8 +65,9 @@ function formatTripDate(trip) {
       year: 'numeric',
     }),
     secondary: d.toLocaleTimeString('en-IN', {
-      hour: '2-digit',
+      hour: 'numeric',
       minute: '2-digit',
+      hour12: true,
     }),
   };
 }
@@ -76,7 +87,7 @@ function formatDurationLabel(trip) {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
-const DriverTripCard = ({ trip, onClick, className = '', style }) => {
+const DriverTripCard = ({ trip, onClick, onDelete, className = '', style }) => {
   if (!trip) return null;
   const badge = statusBadge(trip.status);
   const dateInfo = formatTripDate(trip);
@@ -88,6 +99,8 @@ const DriverTripCard = ({ trip, onClick, className = '', style }) => {
   const pickupLabel = trip?.pickup?.address || 'Pickup pending';
   const dropoffLabel = trip?.dropoff?.address;
   const isOngoing = ACTIVE_BOOKING_STATUSES.includes(trip.status);
+  // Only finished trips can be removed from the list.
+  const canDelete = Boolean(onDelete) && TERMINAL_BOOKING_STATUSES.includes(trip.status);
 
   return (
     <Card
@@ -100,6 +113,7 @@ const DriverTripCard = ({ trip, onClick, className = '', style }) => {
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-xs text-text-muted">
             <Calendar className="w-3.5 h-3.5" />
+            <span>Pickup:</span>
             <span className="font-semibold text-text">{dateInfo.primary}</span>
             {dateInfo.secondary && <span>· {dateInfo.secondary}</span>}
           </div>
@@ -143,7 +157,7 @@ const DriverTripCard = ({ trip, onClick, className = '', style }) => {
         </div>
       )}
 
-      {(duration || isOngoing || onClick) && (
+      {(duration || isOngoing || onClick || canDelete) && (
         <div className="flex items-center justify-between gap-3 mt-2 text-xs text-text-muted border-t border-slate-50 pt-2">
           <div className="flex items-center gap-3">
             {duration && (
@@ -151,6 +165,20 @@ const DriverTripCard = ({ trip, onClick, className = '', style }) => {
                 <Clock className="w-3 h-3" />
                 {duration}
               </span>
+            )}
+            {canDelete && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(trip);
+                }}
+                aria-label="Delete trip"
+                className="inline-flex items-center gap-1 px-2 py-1 -my-1 rounded-lg text-rose-600 hover:bg-rose-50 font-medium"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete
+              </button>
             )}
           </div>
           {isOngoing ? (

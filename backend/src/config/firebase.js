@@ -149,8 +149,14 @@ export async function sendFcmNotification(token, payload) {
           Urgency: 'high',
         },
         notification: {
-          icon: '/logo.png',
-          badge: '/logo.png',
+          icon: '/favicon.png',
+          // Same tag as the in-app copy of this notification, so the phone
+          // never shows it twice.
+          ...(payload.data?.notificationId
+            ? { tag: `notif-${payload.data.notificationId}` }
+            : payload.data?.bookingId
+              ? { tag: `booking-${payload.data.bookingId}`, renotify: true }
+              : {}),
         }
       }
     });
@@ -158,6 +164,12 @@ export async function sendFcmNotification(token, payload) {
     return { success: true };
   } catch (err) {
     console.error('[firebase] FCM send failed:', err.message);
-    return { success: false, error: err.message };
+    // Token belongs to an uninstalled app / revoked permission — callers
+    // should clear it so we stop retrying a dead token.
+    const invalidToken = [
+      'messaging/registration-token-not-registered',
+      'messaging/invalid-registration-token',
+    ].includes(err?.code);
+    return { success: false, error: err.message, invalidToken };
   }
 }
