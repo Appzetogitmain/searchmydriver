@@ -5,10 +5,10 @@
   "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
+    "start": "node init && node src/server.js",
+    "dev": "node init && nodemon src/server.js",
     "fix:payment-index": "node scripts/fixPaymentIndex.js",
-    "build": "echo 'No build step required'"
+    "build": "node init && echo 'No build step required'"
   },
   "keywords": [],
   "author": "",
