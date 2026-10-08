@@ -5,6 +5,8 @@ const DEFAULT_DEV_ORIGINS = [
   'http://127.0.0.1:5174',
   'http://localhost:5180',
   'http://127.0.0.1:5180',
+  'http://localhost:5190',
+  'http://127.0.0.1:5190',
   'https://searchmydriver.vercel.app',
   'https://searchmydrivers.com',
   'https://www.searchmydrivers.com',
