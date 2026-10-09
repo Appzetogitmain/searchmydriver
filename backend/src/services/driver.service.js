@@ -58,7 +58,7 @@ export const sendOtpService = async (phone, referralCode) => {
 };
 
 export const verifyOtpAndRegisterService = async (data) => {
-  const { phone, otp, name, password, referralCode, city, zoneId, languages } = data;
+  const { phone, otp, name, password, referralCode, city, zoneId, languages, dateOfBirth, gender } = data;
 
   if (!phone || !otp || !name || !password) {
     throw new ApiError(400, 'Missing required fields');
@@ -94,6 +94,8 @@ export const verifyOtpAndRegisterService = async (data) => {
     driver.city = resolvedCity;
     if (zoneId) driver.homeZone = zoneId;
     if (languages && Array.isArray(languages)) driver.languages = languages;
+    if (dateOfBirth) driver.dateOfBirth = new Date(dateOfBirth);
+    if (gender) driver.gender = gender;
     // Don't set onboardingStep to 1 here anymore, let them complete step 1 by clicking CONTINUE
     await driver.save();
   } else {
@@ -111,6 +113,8 @@ export const verifyOtpAndRegisterService = async (data) => {
       city: resolvedCity,
       homeZone: zoneId || null,
       languages: Array.isArray(languages) ? languages : ['English', 'Hindi'],
+      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+      gender: gender || '',
     });
     await driver.save();
 
@@ -182,6 +186,15 @@ export const verifyOtpAndRegisterService = async (data) => {
       name: driver.name,
       phone: driver.phone,
       email: driver.email,
+      dateOfBirth: driver.dateOfBirth,
+      gender: driver.gender,
+      profilePicture: driver.profilePicture,
+      driverId: driver.driverId,
+      city: driver.city,
+      drivingLicense: driver.drivingLicense,
+      experienceYears: driver.experienceYears,
+      languages: driver.languages,
+      bankDetails: driver.bankDetails,
       onboardingStep: driver.onboardingStep,
       approvalStatus: driver.approvalStatus,
     },
@@ -221,6 +234,15 @@ export const loginDriverService = async (phone, password) => {
       name: driver.name,
       phone: driver.phone,
       email: driver.email,
+      dateOfBirth: driver.dateOfBirth,
+      gender: driver.gender,
+      profilePicture: driver.profilePicture,
+      driverId: driver.driverId,
+      city: driver.city,
+      drivingLicense: driver.drivingLicense,
+      experienceYears: driver.experienceYears,
+      languages: driver.languages,
+      bankDetails: driver.bankDetails,
       onboardingStep: driver.onboardingStep,
       approvalStatus: driver.approvalStatus,
       approvalNote: driver.approvalNote || '',
@@ -244,8 +266,14 @@ export const updateOnboardingStepService = async (driverId, data) => {
   }
 
   if (stepNumber === 1) {
-    const { name, password, zoneId, languages } = stepData;
+    const { name, password, zoneId, languages, dateOfBirth, gender } = stepData;
     if (name) driver.name = name;
+    if (dateOfBirth !== undefined) {
+      driver.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
+    }
+    if (gender !== undefined) {
+      driver.gender = gender;
+    }
     if (password) {
       const salt = await bcrypt.genSalt(10);
       driver.password = await bcrypt.hash(password, salt);
@@ -261,12 +289,16 @@ export const updateOnboardingStepService = async (driverId, data) => {
       driver.languages = languages;
     }
     if (driver.onboardingStep < 1) driver.onboardingStep = 1;
+    await driver.save();
   } else if (stepNumber === 2) {
     const {
       normalizeDriverVehicleExperience,
       syncCarTypeExperienceFromVehicles,
     } = await import('../utils/driverVehicleExperience.util.js');
 
+    if (stepData.dateOfBirth !== undefined) {
+      driver.dateOfBirth = stepData.dateOfBirth ? new Date(stepData.dateOfBirth) : null;
+    }
     driver.drivingLicense = stepData.drivingLicense;
     driver.experienceYears = stepData.experienceYears;
     driver.availability = stepData.availability;

@@ -4,7 +4,7 @@ import Button from '../../../../components/Button';
 import Input from '../../../../components/Input';
 import StepIndicator from '../../../../components/StepIndicator';
 import Modal from '../../../../components/Modal';
-import { ArrowLeft, User, Phone, Lock, MapPin, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, User, Phone, Lock, MapPin, CheckCircle2, Calendar } from 'lucide-react';
 import api from '../../../../utils/api';
 import useDriverAuthStore from '../../../../store/useDriverAuthStore';
 
@@ -41,6 +41,7 @@ const IdentityDetailsPage = () => {
   const [form, setForm] = useState({
     name: driver?.name || '',
     phone: driver?.phone || '',
+    dateOfBirth: driver?.dateOfBirth ? new Date(driver.dateOfBirth).toISOString().split('T')[0] : '',
     password: '',
     referralCode: driver?.referralCode || queryRef || '',
     zoneId: driver?.homeZone?._id || driver?.homeZone || '',
@@ -59,6 +60,7 @@ const IdentityDetailsPage = () => {
       setForm({
         name: driver.name || '',
         phone: driver.phone || '',
+        dateOfBirth: driver.dateOfBirth ? new Date(driver.dateOfBirth).toISOString().split('T')[0] : '',
         password: '',
         referralCode: driver.referralCode || '',
         zoneId: driver.homeZone?._id || driver.homeZone || '',
@@ -103,6 +105,7 @@ const IdentityDetailsPage = () => {
         phone: form.phone,
         otp,
         name: form.name,
+        dateOfBirth: form.dateOfBirth || null,
         password: form.password,
         referralCode: form.referralCode,
         zoneId: form.zoneId,
@@ -147,6 +150,7 @@ const IdentityDetailsPage = () => {
             stepNumber: 1,
             stepData: {
               name: form.name,
+              dateOfBirth: form.dateOfBirth || null,
               password: form.password || undefined,
               zoneId: form.zoneId,
               languages: form.languages.split(',').map(l => l.trim()).filter(Boolean),
@@ -185,6 +189,16 @@ const IdentityDetailsPage = () => {
         <div className="flex-1 space-y-4 animate-fade-in-up">
 
           <Input label="Full name" placeholder="As per Govt. ID" value={form.name} onChange={handleChange('name')} icon={User} />
+          
+          <Input 
+            label="Date of Birth" 
+            type="date" 
+            value={form.dateOfBirth} 
+            onChange={handleChange('dateOfBirth')} 
+            icon={Calendar} 
+            disabled={loading} 
+          />
+
           <Input label="Password" type="password" placeholder="Min 6 characters" value={form.password} onChange={handleChange('password')} icon={Lock} />
           
           <div>
