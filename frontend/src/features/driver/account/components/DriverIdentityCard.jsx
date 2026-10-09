@@ -14,7 +14,7 @@ import {
 import Avatar from '../../../../components/Avatar';
 import { formatDate, formatPhone } from '../../../../utils/formatters';
 
-const DriverIdentityCard = ({ driver }) => {
+const DriverIdentityCard = ({ driver, className = '' }) => {
   if (!driver) return null;
 
   const displayName = driver?.name || 'Driver';
@@ -40,9 +40,12 @@ const DriverIdentityCard = ({ driver }) => {
   const isVerified = driver?.approvalStatus === 'approved';
 
   return (
-    <div className="w-full bg-white rounded-3xl shadow-sm border border-slate-200/80 overflow-hidden transition-all hover:shadow-md">
+    <div className={`w-full bg-white rounded-3xl shadow-sm border border-slate-200/90 overflow-hidden transition-all print:shadow-none print:border-slate-300 print:max-w-[380px] print:mx-auto ${className}`}>
       {/* Top Header Strip */}
-      <div className="relative bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white px-4 sm:px-5 pt-4 pb-11 sm:pb-12 overflow-hidden">
+      <div
+        className="relative bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white px-4 sm:px-5 pt-3.5 pb-10 sm:pb-11 overflow-hidden print:bg-slate-900"
+        style={{ WebkitPrintColorAdjust: 'exact', colorAdjust: 'exact' }}
+      >
         {/* Subtle decorative background pattern */}
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:12px_12px] pointer-events-none" />
 
@@ -52,7 +55,7 @@ const DriverIdentityCard = ({ driver }) => {
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
             </div>
             <div className="min-w-0">
-              <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-300 truncate">
+              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-300 truncate">
                 Official Identity Card
               </p>
               <p className="text-xs font-black tracking-wide text-white truncate">
@@ -62,44 +65,44 @@ const DriverIdentityCard = ({ driver }) => {
           </div>
 
           <div className="inline-flex items-center gap-1.5 bg-white/10 backdrop-blur-sm px-2.5 py-1 rounded-full border border-white/15 text-[11px] font-mono font-bold tracking-wider text-blue-200 shrink-0">
-            <span className="text-[9px] sm:text-[10px] text-white/60 font-sans uppercase">ID:</span>
+            <span className="text-[9px] text-white/60 font-sans uppercase">ID:</span>
             <span>{driverId}</span>
           </div>
         </div>
       </div>
 
       {/* Floating Photo & Profile Summary */}
-      <div className="relative px-4 sm:px-5 pb-4 sm:pb-5 pt-2">
+      <div className="relative px-4 sm:px-5 pb-4 sm:pb-5 pt-1.5">
         <div className="flex items-start gap-3 sm:gap-4 mb-3.5">
           {/* Avatar floating into the header banner */}
-          <div className="relative -mt-10 sm:-mt-11 shrink-0 z-10">
+          <div className="relative -mt-9 sm:-mt-10 shrink-0 z-10">
             <div className="p-1 bg-white rounded-2xl shadow-md inline-block">
               <Avatar
                 src={driver?.profilePicture || undefined}
                 name={displayName}
                 size="xl"
-                className="w-18 h-18 sm:w-20 sm:h-20 rounded-xl object-cover ring-2 ring-slate-100"
+                className="w-16 h-16 sm:w-18 sm:h-18 rounded-xl object-cover ring-2 ring-slate-100"
               />
             </div>
             {isVerified && (
-              <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 bg-emerald-600 text-white text-[8px] sm:text-[9px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full flex items-center gap-0.5 sm:gap-1 shadow-sm border-2 border-white whitespace-nowrap">
+              <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 bg-emerald-600 text-white text-[8px] sm:text-[9px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full flex items-center gap-0.5 shadow-sm border-2 border-white whitespace-nowrap">
                 <CheckCircle2 className="w-2.5 h-2.5" />
                 VERIFIED
               </div>
             )}
           </div>
 
-          {/* Name, Title & Status Badges - positioned cleanly in the white body */}
+          {/* Name, Title & Status Badges */}
           <div className="flex-1 min-w-0 pt-0.5">
-            <h2 className="text-base sm:text-lg font-black text-slate-900 leading-tight truncate">
+            <h2 className="text-base sm:text-lg font-black text-slate-900 leading-snug truncate">
               {displayName}
             </h2>
-            <p className="text-[11px] sm:text-xs font-medium text-slate-500 mt-0.5 truncate">
+            <p className="text-[11px] font-medium text-slate-500 truncate">
               Professional Partner Driver
             </p>
 
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-2">
-              <span className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-semibold">
+            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+              <span className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full text-[10px] font-semibold">
                 <span
                   className={`w-1.5 h-1.5 rounded-full ${
                     driver?.isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
@@ -109,7 +112,7 @@ const DriverIdentityCard = ({ driver }) => {
               </span>
 
               {driver?.rating && (
-                <div className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200/60 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold">
+                <div className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200/60 px-2 py-0.5 rounded-full text-[10px] font-bold">
                   <span className="text-amber-500">★</span>
                   <span>{Number(driver.rating).toFixed(1)}</span>
                   {driver.ratingCount > 0 && (
@@ -123,10 +126,10 @@ const DriverIdentityCard = ({ driver }) => {
           </div>
         </div>
 
-        {/* Details Grid (Mobile-friendly 2 columns) */}
+        {/* Details Grid (Responsive 2 columns with uniform tile heights) */}
         <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
           {/* DL Number */}
-          <div className="bg-slate-50/90 p-2.5 rounded-xl border border-slate-100/90">
+          <div className="bg-slate-50/90 p-2.5 rounded-2xl border border-slate-100 flex flex-col justify-between min-h-[58px]">
             <div className="flex items-center gap-1.5 text-slate-400 mb-0.5">
               <Award className="w-3.5 h-3.5 text-blue-600 shrink-0" />
               <span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider truncate">
@@ -139,7 +142,7 @@ const DriverIdentityCard = ({ driver }) => {
           </div>
 
           {/* DL Expiry */}
-          <div className="bg-slate-50/90 p-2.5 rounded-xl border border-slate-100/90">
+          <div className="bg-slate-50/90 p-2.5 rounded-2xl border border-slate-100 flex flex-col justify-between min-h-[58px]">
             <div className="flex items-center gap-1.5 text-slate-400 mb-0.5">
               <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
               <span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider truncate">
@@ -152,7 +155,7 @@ const DriverIdentityCard = ({ driver }) => {
           </div>
 
           {/* Date of Birth */}
-          <div className="bg-slate-50/90 p-2.5 rounded-xl border border-slate-100/90">
+          <div className="bg-slate-50/90 p-2.5 rounded-2xl border border-slate-100 flex flex-col justify-between min-h-[58px]">
             <div className="flex items-center gap-1.5 text-slate-400 mb-0.5">
               <User className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
               <span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider truncate">
@@ -163,7 +166,7 @@ const DriverIdentityCard = ({ driver }) => {
           </div>
 
           {/* Driving Experience */}
-          <div className="bg-slate-50/90 p-2.5 rounded-xl border border-slate-100/90">
+          <div className="bg-slate-50/90 p-2.5 rounded-2xl border border-slate-100 flex flex-col justify-between min-h-[58px]">
             <div className="flex items-center gap-1.5 text-slate-400 mb-0.5">
               <Car className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
               <span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider truncate">
@@ -176,7 +179,7 @@ const DriverIdentityCard = ({ driver }) => {
           </div>
 
           {/* Work Location */}
-          <div className="bg-slate-50/90 p-2.5 rounded-xl border border-slate-100/90">
+          <div className="bg-slate-50/90 p-2.5 rounded-2xl border border-slate-100 flex flex-col justify-between min-h-[58px]">
             <div className="flex items-center gap-1.5 text-slate-400 mb-0.5">
               <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               <span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider truncate">
@@ -189,7 +192,7 @@ const DriverIdentityCard = ({ driver }) => {
           </div>
 
           {/* Spoken Languages */}
-          <div className="bg-slate-50/90 p-2.5 rounded-xl border border-slate-100/90">
+          <div className="bg-slate-50/90 p-2.5 rounded-2xl border border-slate-100 flex flex-col justify-between min-h-[58px]">
             <div className="flex items-center gap-1.5 text-slate-400 mb-0.5">
               <Languages className="w-3.5 h-3.5 text-violet-600 shrink-0" />
               <span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider truncate">
@@ -211,17 +214,17 @@ const DriverIdentityCard = ({ driver }) => {
 
         {/* Contact Information Footer Row */}
         {(phone || email) && (
-          <div className="mt-3 pt-2.5 border-t border-slate-100 flex flex-col gap-1.5 text-xs text-slate-600">
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex flex-col gap-1 text-xs text-slate-600">
             {phone && (
               <div className="flex items-center gap-1.5 min-w-0">
                 <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span className="font-semibold text-slate-800 text-[11px] sm:text-xs truncate">{phone}</span>
+                <span className="font-semibold text-slate-800 text-[11px] truncate">{phone}</span>
               </div>
             )}
             {email && (
               <div className="flex items-center gap-1.5 min-w-0">
                 <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span className="text-slate-600 text-[11px] sm:text-xs truncate">{email}</span>
+                <span className="text-slate-600 text-[11px] truncate break-all">{email}</span>
               </div>
             )}
           </div>

@@ -38,8 +38,6 @@ import { useCachedQuery } from '../../../../hooks/useCachedQuery';
 import { buildCacheKey } from '../../../../store/lib/buildCacheKey';
 import { formatCurrency, formatPhone, formatDate } from '../../../../utils/formatters';
 import DriverScreenShell from '../../components/DriverScreenShell';
-import DriverIdentityCard from '../components/DriverIdentityCard';
-import DriverBankDetailsCard from '../components/DriverBankDetailsCard';
 
 /* ------------------------------------------------------------------ */
 /* Menu config                                                         */
@@ -67,6 +65,7 @@ const MENU_GROUPS = [
     title: 'Account',
     items: [
       { icon: IdCard, label: 'ID Card', path: '/driver/account/id-card' },
+      { icon: Building2, label: 'Bank Details', path: '/driver/account/bank-details' },
       { icon: User, label: 'My Profile', path: '/driver/account/profile' },
       { icon: FileText, label: 'Documents', path: '/driver/account/documents' },
       { icon: Users, label: 'Refer & Earn', path: '/driver/refer' },
@@ -223,10 +222,6 @@ const DriverAccountPage = () => {
       bodyClassName="p-4 -mt-3 pb-8 space-y-4"
     >
       <StatsRow today={today} wallet={wallet} />
-
-      <DriverIdentityCard driver={driver} />
-
-      <DriverBankDetailsCard bankDetails={driver?.bankDetails} />
 
       {MENU_GROUPS.map((group) => (
         <div key={group.title}>
