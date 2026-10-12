@@ -47,6 +47,7 @@ import {
   markDriverArrivedService,
   startTripService,
   calculateAndRequestPaymentService,
+  userEndTripService,
   completeTripService,
   cancelBookingByDriverService,
 } from '../services/bookingTrip.service.js';
@@ -145,6 +146,12 @@ export const cancelBooking = asyncHandler(async (req, res) => {
   await withdrawCurrentOfferService(req.params.id, 'cancelled_by_user');
   const booking = await cancelBookingByUserService(req.user._id, req.params.id, req.body?.reason);
   return res.status(200).json(new ApiResponse(200, { booking }, 'Booking cancelled'));
+});
+
+/** Customer ends the ride at the drop — final fare is calculated for payment. */
+export const userEndTrip = asyncHandler(async (req, res) => {
+  const booking = await userEndTripService(req.user._id, req.params.id);
+  return res.status(200).json(new ApiResponse(200, { booking }, 'Trip ended'));
 });
 
 export const createBookingPayment = asyncHandler(async (req, res) => {

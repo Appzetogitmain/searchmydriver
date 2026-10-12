@@ -41,6 +41,7 @@ import { C2S_EVENTS, S2C_EVENTS } from '../../../../constants/socketEvents';
 import useUserActiveBookingStore from '../../../../store/user/useUserActiveBookingStore';
 import { getCarBrandName, getCarModelName } from '../../../../utils/vehicleCatalog';
 import { formatPickupDateTime } from '../../../../utils/datetime';
+import { getDriverPhotoUrl } from '../../../../utils/documents';
 
 /**
  * Per-booking detail screen, reachable from any card on /user/activity.
@@ -254,13 +255,7 @@ const TripDetailsPage = () => {
   const isLive = status && ACTIVE_BOOKING_STATUSES.includes(status);
   const liveRoute = liveRouteForStatus(status, booking?._id);
 
-  const driverPhotoUrl = useMemo(() => {
-    const driver = booking?.driverId;
-    if (!driver) return null;
-    const docs = Array.isArray(driver.documents) ? driver.documents : [];
-    const selfie = docs.find((d) => d?.type === 'selfie' && d?.fileUrl);
-    return selfie?.fileUrl || driver.profilePicture || null;
-  }, [booking?.driverId]);
+  const driverPhotoUrl = useMemo(() => getDriverPhotoUrl(booking?.driverId), [booking?.driverId]);
 
   const driver = booking?.driverId && typeof booking.driverId === 'object'
     ? booking.driverId

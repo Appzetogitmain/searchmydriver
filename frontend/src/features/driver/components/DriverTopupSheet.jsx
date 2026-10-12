@@ -3,6 +3,8 @@ import toast from 'react-hot-toast';
 import { X, Wallet as WalletIcon, Loader2, ShieldCheck } from 'lucide-react';
 import Button from '../../../components/Button';
 import useDriverAuthStore from '../../../store/useDriverAuthStore';
+import { useDriverProfileStore } from '../../../store/driver/useDriverProfileStore';
+import { buildCacheKey } from '../../../store/lib/buildCacheKey';
 import { useRazorpayCheckout } from '../../../hooks/useRazorpayCheckout';
 import api from '../../../utils/api';
 
@@ -87,6 +89,10 @@ const DriverTopupSheet = ({
               ? 'Wallet already credited.'
               : `₹${Number(amount)} added to wallet.`,
           );
+          if (result?.wallet) {
+            useDriverAuthStore.getState().updateDriver({ wallet: result.wallet });
+          }
+          useDriverProfileStore.getState().refresh(buildCacheKey('driver-profile', {}), {}).catch(() => {});
           await onSuccess?.(result?.wallet);
           onClose?.();
         },

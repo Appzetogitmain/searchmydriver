@@ -1,7 +1,7 @@
 import PDFDocument from 'pdfkit';
 import { Driver } from '../models/driverModels/driver.model.js';
 import { ApiError } from '../utils/apiError.js';
-import { dedupeDocumentsByType } from '../utils/driverDocuments.util.js';
+import { dedupeDocumentsByType, getSelfieUrl } from '../utils/driverDocuments.util.js';
 
 const PALETTE = {
   text: '#0F172A',
@@ -269,8 +269,7 @@ export async function buildDriverProfilePdf(driverId, { res } = {}) {
   if (!driver) throw new ApiError(404, 'Driver not found');
 
   const documents = dedupeDocumentsByType(driver.documents || []);
-  const selfieDoc = documents.find((d) => d.type === 'selfie');
-  const profilePicUrl = selfieDoc?.fileUrl || driver.profilePicture || '';
+  const profilePicUrl = getSelfieUrl(documents) || driver.profilePicture || '';
   const profilePicBuffer = await fetchAsBuffer(profilePicUrl);
   const displayEmail = driver.email || null;
 

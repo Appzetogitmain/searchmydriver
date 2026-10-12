@@ -1,4 +1,5 @@
 import Booking from '../models/booking.model.js';
+import { SERVICE_TYPES } from '../constants/serviceTypes.js';
 import {
   ACTIVE_BOOKING_STATUSES,
   BOOKING_STATUS,
@@ -96,6 +97,41 @@ export function applyBuffer(window, bufferMinutes) {
   };
 }
 
+/** Statuses in which a driver is committed to a ride and can't take another. */
+const DRIVER_COMMITTED_STATUSES = [
+  BOOKING_STATUS.DRIVER_ASSIGNED,
+  BOOKING_STATUS.AWAITING_PAYMENT,
+  BOOKING_STATUS.EN_ROUTE,
+  BOOKING_STATUS.ARRIVED,
+  BOOKING_STATUS.STARTED,
+];
+
+/**
+ * The ride (if any) this driver is currently committed to — one driver, one
+ * ride at a time. Far-future scheduled rides still waiting at DRIVER_ASSIGNED
+ * don't count; those are protected by the time-window overlap check instead.
+ *
+ * @param {string} driverId
+ * @param {string|null} [excludeBookingId]  the booking being accepted
+ * @returns {Promise<{ _id: any, bookingNumber?: string, status: string }|null>}
+ */
+export async function findDriverActiveBooking(driverId, excludeBookingId = null) {
+  if (!driverId) return null;
+  const query = {
+    isDeleted: false,
+    driverId,
+    status: { $in: DRIVER_COMMITTED_STATUSES },
+    // Monthly rides and not-yet-started scheduled rides don't make a driver
+    // "busy" — they can hold those alongside an ongoing ride.
+    serviceType: { $ne: SERVICE_TYPES.MONTHLY },
+    $nor: [
+      { bookingType: BOOKING_TYPE.SCHEDULED, status: BOOKING_STATUS.DRIVER_ASSIGNED },
+    ],
+  };
+  if (excludeBookingId) query._id = { $ne: excludeBookingId };
+  return Booking.findOne(query).select('bookingNumber status').lean();
+}
+
 /**
  * Returns the list of driver IDs (as strings) currently assigned to a
  * booking whose time window overlaps `window` (after applying the
@@ -119,6 +155,10 @@ export async function findConflictingDriverIds({
   window,
   excludeBookingId = null,
   bufferMinutes = SCHEDULED_BOOKING.RIDE_BUFFER_MINUTES,
+  // True when the NEW booking is instant. Then a driver on an ongoing ride is
+  // out regardless of time windows. Scheduled / monthly offers pass false: a
+  // driver on a ride can still take them, as long as the time windows don't clash.
+  excludeBusyDrivers = true,
 } = {}) {
   if (!window || !Number.isFinite(window.startMs) || !Number.isFinite(window.endMs)) {
     return [];
@@ -150,7 +190,7 @@ export async function findConflictingDriverIds({
 
   const candidates = await Booking.find(query)
     .select(
-      'bookingType driverId hourly outstation timeline status',
+      'bookingType serviceType driverId hourly outstation timeline status',
     )
     .lean();
   if (!candidates.length) return [];
@@ -170,7 +210,20 @@ export async function findConflictingDriverIds({
   for (const candidate of candidates) {
     // 1. If the driver is physically busy right now, they cannot take new instant trips,
     // regardless of mathematical time window overlaps.
-    if (BUSY_STATUSES.includes(candidate.status)) {
+    if (excludeBusyDrivers && BUSY_STATUSES.includes(candidate.status)) {
+      conflicted.add(String(candidate.driverId));
+      continue;
+    }
+
+    // 1b. A driver holding an assigned INSTANT ride is committed until it is
+    // completed, however long it ends up running — a time window can't say
+    // when that is. (Scheduled ones fall through to the window overlap check.)
+    if (
+      excludeBusyDrivers &&
+      candidate.status === BOOKING_STATUS.DRIVER_ASSIGNED &&
+      candidate.bookingType !== BOOKING_TYPE.SCHEDULED &&
+      candidate.serviceType !== SERVICE_TYPES.MONTHLY
+    ) {
       conflicted.add(String(candidate.driverId));
       continue;
     }

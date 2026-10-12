@@ -7,13 +7,13 @@ import useLocationStatusStore, { LOCATION_STATUS } from '../../store/useLocation
  * permission / turn-on prompt) and opens the guided sheet if that fails.
  */
 export default function EnableLocationButton({ className = '', label = 'Enable location' }) {
-  const checking = useLocationStatusStore((s) => s.checking);
-  const check = useLocationStatusStore((s) => s.check);
+  const checking = useLocationStatusStore((s) => s.checking || s.turningOn);
+  const enableLocation = useLocationStatusStore((s) => s.enableLocation);
   const openSheet = useLocationStatusStore((s) => s.openSheet);
 
   const handleClick = async (e) => {
     e.stopPropagation();
-    const next = await check({ request: true });
+    const next = await enableLocation();
     if (next !== LOCATION_STATUS.OK) openSheet();
   };
 

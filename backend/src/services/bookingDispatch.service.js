@@ -26,6 +26,7 @@ import {
 import {
   estimateBookingWindow,
   findConflictingDriverIds,
+  findDriverActiveBooking,
 } from './driverConflict.service.js';
 import { S2C_EVENTS } from '../constants/socketEvents.js';
 import {
@@ -33,6 +34,7 @@ import {
   emitToUser,
   emitToAdmins,
   emitToBooking,
+  emitNotification,
 } from '../utils/socketEmitters.js';
 import { sendFcmNotification } from '../config/firebase.js';
 import { updateDriverTripStatusLive } from './driverLocation.service.js';
@@ -403,6 +405,29 @@ function notifyWaveWithdrawn(driverIds, bookingId, reason) {
   }
 }
 
+/**
+ * Remove a driver from every other booking's live wave and tell their app to
+ * drop those offers. Called once they accept a ride so nothing else reaches
+ * them until it's completed.
+ */
+async function withdrawDriverOtherOffers(driverId, exceptBookingId) {
+  const others = await Booking.find({
+    _id: { $ne: exceptBookingId },
+    status: BOOKING_STATUS.SEARCHING,
+    'dispatch.pendingOfferIds': driverId,
+    // Scheduled and monthly offers stay visible while on a ride.
+    bookingType: { $ne: BOOKING_TYPE.SCHEDULED },
+    serviceType: { $ne: SERVICE_TYPES.MONTHLY },
+  }).select('_id');
+  for (const other of others) {
+    await Booking.updateOne(
+      { _id: other._id },
+      { $pull: { 'dispatch.pendingOfferIds': driverId } },
+    );
+    notifyWaveWithdrawn([driverId], other._id, 'driver_busy');
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Public API                                                          */
 /* ------------------------------------------------------------------ */
@@ -475,12 +500,19 @@ export async function dispatchNextDriverService(bookingId) {
   // The buffer is applied EXACTLY ONCE — on the existing booking side
   // inside `findConflictingDriverIds` — so admins reading the modal as
   // "30 min between rides" get exactly 30 min, not 60.
+  // Future scheduled rides and monthly rides can still be offered to a driver
+  // who is on an ongoing ride (time-window overlap still applies); only
+  // instant requests wait until the driver's current ride is completed.
+  const isScheduledOrMonthly =
+    booking.bookingType === BOOKING_TYPE.SCHEDULED ||
+    booking.serviceType === SERVICE_TYPES.MONTHLY;
   const newWindow = estimateBookingWindow(booking);
   const conflictedDriverIds = newWindow
     ? await findConflictingDriverIds({
         window: newWindow,
         excludeBookingId: booking._id,
         bufferMinutes,
+        excludeBusyDrivers: !isScheduledOrMonthly,
       })
     : [];
 
@@ -515,7 +547,7 @@ export async function dispatchNextDriverService(bookingId) {
     requireAvailableForMonthlyRide: false,
     requirePositiveWalletBalance: isCashBooking,
     minWalletBalance,
-    includeOnTrip: booking.serviceType === SERVICE_TYPES.MONTHLY,
+    includeOnTrip: isScheduledOrMonthly,
   });
 
   // Distance is informational now (shown on the driver's offer card), not a
@@ -609,14 +641,16 @@ export async function dispatchNextDriverService(bookingId) {
       buildOfferPayload(booking, driver, { customer, car, upcomingScheduledTripStartMs }),
     );
 
-    // Push notification to wake the driver's phone
-    if (driver.fcmToken) {
-      sendFcmNotification(driver.fcmToken, {
+    // In-app alert notification (socket toast + audio + DB record + FCM push)
+    emitNotification(
+      { driverId: driver._id },
+      {
         title: 'New Ride Request',
         body: `A passenger requested a ${booking.serviceType} ride near you. Tap to view.`,
+        severity: 'info',
         data: { type: 'BOOKING_OFFERED', bookingId: String(booking._id) },
-      }).catch(err => console.error('[FCM] Dispatch notification failed:', err?.message));
-    }
+      },
+    ).catch(err => console.error('[Notification] Dispatch alert failed:', err?.message));
   }
   emitUserDispatchUpdate(booking);
 
@@ -748,6 +782,23 @@ export async function acceptBookingService(bookingId, driverId) {
   if (!driver) return { ok: false, reason: 'driver_not_found' };
   if (driver.approvalStatus === 'suspended') {
     return { ok: false, reason: 'driver_suspended' };
+  }
+
+  // One ride at a time: a driver already committed to another booking can't
+  // accept a second one (e.g. two offers open on their screen at once).
+  // Scheduled and monthly offers are deliberately open to drivers on a trip.
+  if (
+    booking.serviceType !== SERVICE_TYPES.MONTHLY &&
+    booking.bookingType !== BOOKING_TYPE.SCHEDULED
+  ) {
+    const activeBooking = await findDriverActiveBooking(driverId, booking._id);
+    if (activeBooking) {
+      return {
+        ok: false,
+        reason: 'driver_busy',
+        message: 'You already have an ongoing ride. Complete it to accept new requests.',
+      };
+    }
   }
 
   const isCash = booking.paymentMethod === 'cash';
@@ -899,6 +950,17 @@ export async function acceptBookingService(bookingId, driverId) {
 
   // Notify the losing drivers that the offer is gone.
   notifyWaveWithdrawn(losers, booking._id, 'awarded_to_other_driver');
+
+  // The driver is now committed — pull every other open offer off their screen.
+  if (
+    shouldLockDriver &&
+    booking.bookingType !== BOOKING_TYPE.SCHEDULED &&
+    booking.serviceType !== SERVICE_TYPES.MONTHLY
+  ) {
+    withdrawDriverOtherOffers(driverId, booking._id).catch((err) =>
+      console.warn('[dispatch] failed to withdraw other offers:', err?.message),
+    );
+  }
 
   // We split the payload by audience so the driver never sees the
   // customer's `paymentMode`/`paymentStatus`. They only need to know the
@@ -1059,8 +1121,16 @@ export async function getDriverPendingOffersService(driverId) {
   const activeBookings = await Booking.find({
     status: { $in: [BOOKING_STATUS.SEARCHING, BOOKING_STATUS.PENDING_ASSIGNMENT] },
     'dispatch.pendingOfferIds': driverId
-  }).populate('userId', 'name phone rating')
-    .populate('carId', 'brand model year registrationNumber color')
+  }).populate('userId', 'name phone_no profilePicture')
+    .populate({
+      path: 'carId',
+      populate: [
+        { path: 'carTypeId', select: 'name' },
+        { path: 'brandId', select: 'name' },
+        { path: 'modelId', select: 'name' },
+        { path: 'fuelTypeId', select: 'name' },
+      ],
+    })
     .lean();
 
   const offers = [];
@@ -1077,11 +1147,18 @@ export async function getDriverPendingOffersService(driverId) {
     let customer = booking.userId;
     let car = booking.carId;
 
-    if (!customer) {
-      customer = await User.findById(booking.userId).lean();
+    if (!customer || !customer.phone_no) {
+      customer = await User.findById(booking.userId).select('name phone_no profilePicture').lean();
     }
-    if (!car && booking.carId) {
-      car = await Car.findById(booking.carId).lean();
+    if (!car || !car.carTypeId) {
+      car = booking.carId
+        ? await Car.findById(booking.carId)
+            .populate('carTypeId', 'name')
+            .populate('brandId', 'name')
+            .populate('modelId', 'name')
+            .populate('fuelTypeId', 'name')
+            .lean()
+        : null;
     }
 
     const payload = buildOfferPayload(booking, driver, { customer, car });

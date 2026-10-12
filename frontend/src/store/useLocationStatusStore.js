@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { primeGeolocationCache } from '../hooks/useGeolocation';
+import { requestNativeLocationOn } from '../utils/nativeLocation';
 
 /**
  * Single source of truth for "can this device give us a location right now?".
@@ -41,6 +42,8 @@ async function queryPermission() {
 
 let inflight = null;
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 const useLocationStatusStore = create((set, get) => ({
   status: LOCATION_STATUS.UNKNOWN,
   checking: false,
@@ -49,6 +52,8 @@ const useLocationStatusStore = create((set, get) => ({
   // True once the user pressed "Enable" and it still failed — the sheet then
   // shows manual steps instead of only the button.
   attempted: false,
+  // True while waiting for the user to answer the native turn-on dialog.
+  turningOn: false,
 
   /**
    * Re-evaluate location. `request: true` actually asks for a position even
@@ -105,6 +110,26 @@ const useLocationStatusStore = create((set, get) => ({
       inflight = null;
     });
     return inflight;
+  },
+
+  /**
+   * "Turn on location" tap. Inside the native app with GPS off, ask the app to
+   * show Android's one-tap turn-on dialog, then keep re-checking while the
+   * user answers it. Everywhere else, request a position (Chrome shows its
+   * own turn-on dialog for GPS-off; other browsers show the permission prompt).
+   */
+  enableLocation: async () => {
+    if (get().status !== LOCATION_STATUS.GPS_OFF || !requestNativeLocationOn()) {
+      return get().check({ request: true });
+    }
+    set({ turningOn: true });
+    let next = get().status;
+    for (let i = 0; i < 10 && next !== LOCATION_STATUS.OK; i += 1) {
+      await sleep(1500);
+      next = await get().check();
+    }
+    set({ turningOn: false, ...(next !== LOCATION_STATUS.OK ? { attempted: true } : {}) });
+    return next;
   },
 
   /** Open the "enable location" sheet (e.g. from an in-page chip). */

@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { X, Building2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
+import { useDriverProfileStore } from '../store/driver/useDriverProfileStore';
+import { buildCacheKey } from '../store/lib/buildCacheKey';
 
 const WithdrawFundsModal = ({ isOpen, onClose, maxAmount, isDriver = false, onWithdrawSuccess, bankDetails }) => {
   const [amount, setAmount] = useState('');
@@ -35,7 +37,10 @@ const WithdrawFundsModal = ({ isOpen, onClose, maxAmount, isDriver = false, onWi
       });
       
       toast.success('Withdrawal request submitted');
-      onWithdrawSuccess();
+      if (isDriver) {
+        useDriverProfileStore.getState().refresh(buildCacheKey('driver-profile', {}), {}).catch(() => {});
+      }
+      onWithdrawSuccess?.();
       onClose();
       setAmount('');
     } catch (error) {

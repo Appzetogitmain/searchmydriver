@@ -13,7 +13,12 @@ import { ApiError } from '../utils/apiError.js';
 import { USER_ROLES } from '../constants/roles.js';
 import { STAFF_ROLES } from '../constants/staffPermissions.js';
 import { DRIVER_ONBOARDING_STEP } from '../constants/driverOnboarding.js';
-import { dedupeDocumentsByType } from '../utils/driverDocuments.util.js';
+import {
+  dedupeDocumentsByType,
+  getSelfieUrl,
+  SELFIE_DOCUMENT_TYPES,
+  syncProfilePictureFromSelfie,
+} from '../utils/driverDocuments.util.js';
 import { emitNotification } from '../utils/socketEmitters.js';
 import {
   getActiveTrainingVideos,
@@ -507,6 +512,8 @@ export const updateDriverDocumentService = async (staff, driverId, docData) => {
     });
   }
 
+  if (SELFIE_DOCUMENT_TYPES.includes(type)) syncProfilePictureFromSelfie(driver);
+
   await driver.save();
   return driver;
 };
@@ -523,13 +530,23 @@ export const deleteDriverDocumentService = async (staff, driverId, docId) => {
 
   await assertStaffCanAccessDriver(staff, driver);
 
-  const initialLength = driver.documents.length;
+  const initialDocs = [...driver.documents];
+  const initialLength = initialDocs.length;
   driver.documents = driver.documents.filter(
     (d) => d._id?.toString() !== docId && d.type !== docId
   );
 
   if (driver.documents.length === initialLength) {
     throw new ApiError(404, 'Document not found');
+  }
+
+  // Deleted the selfie the profile photo came from — fall back to any
+  // remaining selfie, or clear it so customers don't see a removed photo.
+  const removedSelfieUrls = initialDocs
+    .filter((d) => (d._id?.toString() === docId || d.type === docId) && SELFIE_DOCUMENT_TYPES.includes(d.type))
+    .map((d) => d.fileUrl);
+  if (removedSelfieUrls.includes(driver.profilePicture)) {
+    driver.profilePicture = getSelfieUrl(driver.documents);
   }
 
   await driver.save();

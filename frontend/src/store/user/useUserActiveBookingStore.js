@@ -112,6 +112,9 @@ const useUserActiveBookingStore = create((set, get) => ({
     if (Array.isArray(patch.extensions)) {
       merged.extensions = patch.extensions;
     }
+    // Final fare once the trip is ended (by either side).
+    if (patch.fareSnapshot) merged.fareSnapshot = patch.fareSnapshot;
+    if (patch.invoiceNumber) merged.invoiceNumber = patch.invoiceNumber;
     // Rating patches flow back via BOOKING_UPDATED after either side
     // submits their post-trip stars. We merge so a customer-only patch
     // doesn't clobber the driver-side rating (and vice versa) when it
@@ -231,6 +234,29 @@ const useUserActiveBookingStore = create((set, get) => ({
     const booking = res?.data?.data?.booking || null;
     set({ booking });
     return booking;
+  },
+
+  /**
+   * Customer ends the ride at the drop. The backend calculates the final fare
+   * (shown in the post-ride payment sheet); the driver then confirms payment.
+   * Merged via applyUpdate so the populated driver object isn't replaced.
+   */
+  async endTrip() {
+    const id = get().booking?._id;
+    if (!id) throw new Error('No active booking');
+    const res = await api.post(`/auth/bookings/${id}/end-trip`);
+    const b = res?.data?.data?.booking;
+    if (b) {
+      get().applyUpdate({
+        bookingId: b._id,
+        status: b.status,
+        paymentStatus: b.paymentStatus,
+        fareSnapshot: b.fareSnapshot,
+        invoiceNumber: b.invoiceNumber,
+        timeline: b.timeline,
+      });
+    }
+    return b;
   },
 
   async createPaymentOrder() {

@@ -173,6 +173,14 @@ const TripCompletedPage = () => {
     }
   };
 
+  // Hourly trips are billed for the booked hours (plus overtime), not the time driven.
+  const billedHours = useMemo(() => {
+    if (!booking?.hourly) return null;
+    const bd = booking.fareSnapshot?.breakdown || {};
+    const total = (Number(bd.bookedHours || booking.hourly.durationHours) || 0) + (Number(bd.extraHours) || 0);
+    return total > 0 ? total : null;
+  }, [booking]);
+
   const durationMinutes = useMemo(() => {
     if (!booking) return null;
     const started = booking.timeline?.startedAt;
@@ -256,6 +264,11 @@ const TripCompletedPage = () => {
               {loading && !booking ? '...' : durationMinutes != null ? `${durationMinutes} min` : '—'}
             </p>
             <p className="text-[10px] text-text-muted">Duration</p>
+            {billedHours != null && (
+              <p className="text-[10px] text-text-muted mt-0.5">
+                Billed for {billedHours} hr{billedHours === 1 ? '' : 's'}
+              </p>
+            )}
           </div>
           <div className="text-center p-3 bg-bg rounded-xl">
             <MapPin className="w-5 h-5 text-text-muted mx-auto mb-1" />

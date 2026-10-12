@@ -13,6 +13,7 @@ import TaskAssigneeBadge from '../components/ManageTasks/TaskAssigneeBadge';
 import { getCarTypeLabel } from '../components/ManageDrivers/driverProfileUtils';
 import UploadDriverDocModal from '../components/ManageDrivers/UploadDriverDocModal';
 import { FilePlus } from 'lucide-react';
+import { getDriverPhotoUrl, SELFIE_DOCUMENT_TYPES } from '../../../utils/documents';
 
 const ManageDrivers = () => {
   const navigate = useNavigate();
@@ -58,7 +59,7 @@ const ManageDrivers = () => {
         label: 'Driver',
         width: '20%',
         render: (val, row) => {
-          const selfie = row.documents?.find((d) => d.type === 'selfie')?.fileUrl;
+          const selfie = getDriverPhotoUrl(row);
           return (
             <div className="flex items-center gap-4 py-1">
               <Avatar name={val} size="sm" src={selfie} className="ring-2 ring-white shadow-md" />
@@ -167,7 +168,9 @@ const ManageDrivers = () => {
             <div className="flex flex-col gap-1.5" onClick={(e) => e.stopPropagation()}>
               <div className="flex flex-wrap gap-1">
                 {docTypes.map(t => {
-                  const isUploaded = uploadedTypes.includes(t);
+                  const isUploaded = t === 'selfie'
+                    ? SELFIE_DOCUMENT_TYPES.some((st) => uploadedTypes.includes(st))
+                    : uploadedTypes.includes(t);
                   return (
                     <span key={t} className={`text-[9px] px-1.5 py-0.5 rounded font-semibold uppercase ${isUploaded ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`} title={t.replace('_', ' ')}>
                       {t.split('_')[0].substring(0, 3)}

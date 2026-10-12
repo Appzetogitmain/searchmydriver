@@ -356,9 +356,10 @@ export async function markDriverEnRouteService(driverId, bookingId) {
  * the booking pickup at which we accept an "I have arrived" tap. Keeps
  * drivers honest — they can't flip the booking to ARRIVED from across
  * town to harvest the post-arrival cancellation fee. Tuned generously
- * enough to swallow GPS jitter on phones with a fix.
+ * enough to swallow GPS jitter on phones with a fix (1 km — drivers can
+ * mark arrival as soon as they are close, e.g. waiting at the gate/lane).
  */
-export const ARRIVAL_PROXIMITY_METERS = 100;
+export const ARRIVAL_PROXIMITY_METERS = 1000;
 
 const EARTH_RADIUS_METERS = 6371000;
 
@@ -441,7 +442,7 @@ export async function markDriverArrivedService(driverId, bookingId, { driverCoor
   if (distance > ARRIVAL_PROXIMITY_METERS) {
     throw new ApiError(
       409,
-      `You're too far from the pickup (${Math.round(distance)} m). Move within ${ARRIVAL_PROXIMITY_METERS} m to mark arrival.`,
+      `You're too far from the pickup (${Math.round(distance)} m). Move within ${ARRIVAL_PROXIMITY_METERS / 1000} km to mark arrival.`,
       { distanceMeters: Math.round(distance), maxDistanceMeters: ARRIVAL_PROXIMITY_METERS },
     );
   }
@@ -718,11 +719,42 @@ async function applyWaitingChargeOnStart(booking, startedAt, flags = {}) {
  */
 export async function calculateAndRequestPaymentService(driverId, bookingId, { actualKm = 0 } = {}) {
   const booking = await loadDriverBooking(driverId, bookingId);
-  assertStatus(booking, [BOOKING_STATUS.STARTED], 'request payment for the ride');
+  // Only the customer ends the trip; the driver can just re-open the fare
+  // once they have (the fare stays frozen at the customer's end time).
+  if (booking.status === BOOKING_STATUS.STARTED && !booking.timeline?.tripEndedAt) {
+    throw new ApiError(409, 'Waiting for the customer to end the trip.');
+  }
+  return endTripAndRequestPayment(booking, { actualKm, endedBy: 'driver' });
+}
+
+/**
+ * started → trip ended, by the customer.
+ *
+ * The user taps "End trip" once they've reached the drop. Same effect as the
+ * driver's Complete trip: the final fare is calculated and shown to both
+ * sides, and the driver then confirms the online / cash payment, which
+ * completes the trip (`completeTripService`).
+ */
+export async function userEndTripService(userId, bookingId) {
+  const booking = await Booking.findOne({ _id: bookingId, userId, isDeleted: false });
+  if (!booking) throw new ApiError(404, 'Booking not found');
+  return endTripAndRequestPayment(booking, { endedBy: 'user' });
+}
+
+async function endTripAndRequestPayment(booking, { actualKm = 0, endedBy }) {
+  assertStatus(booking, [BOOKING_STATUS.STARTED], 'end the trip');
 
   const now = new Date();
+  // Freeze the end of the ride on the first End-trip tap, so a second tap (or
+  // the driver confirming payment later) doesn't bill the time spent paying.
+  booking.timeline = booking.timeline || {};
+  if (!booking.timeline.tripEndedAt) {
+    booking.timeline.tripEndedAt = now;
+    booking.timeline.tripEndedBy = endedBy || null;
+  }
+  const endedAt = new Date(booking.timeline.tripEndedAt);
   const startedAt = booking.timeline?.startedAt ? new Date(booking.timeline.startedAt) : null;
-  const actualDurationMin = startedAt ? Math.ceil((now.getTime() - startedAt.getTime()) / (1000 * 60)) : 0;
+  const actualDurationMin = startedAt ? Math.ceil((endedAt.getTime() - startedAt.getTime()) / (1000 * 60)) : 0;
 
   // Dynamically recalculate final trip fare (Time + KM for One-Way, Hours base for Round Trip)
   try {
@@ -774,6 +806,7 @@ export async function calculateAndRequestPaymentService(driverId, bookingId, { a
     paymentMode: booking.paymentMode,
     fareSnapshot: booking.fareSnapshot,
     invoiceNumber: booking.invoiceNumber,
+    timeline: booking.timeline?.toObject?.() || booking.timeline,
   };
   emitToUser(booking.userId, S2C_EVENTS.BOOKING_UPDATED, userPayload);
   emitToBooking(booking._id, S2C_EVENTS.BOOKING_UPDATED, userPayload);
@@ -794,10 +827,15 @@ export async function calculateAndRequestPaymentService(driverId, bookingId, { a
 export async function completeTripService(driverId, bookingId, { actualKm = 0, paymentMethod } = {}) {
   const booking = await loadDriverBooking(driverId, bookingId);
   assertStatus(booking, [BOOKING_STATUS.STARTED], 'complete the ride');
+  if (!booking.timeline?.tripEndedAt) {
+    throw new ApiError(409, 'Waiting for the customer to end the trip.');
+  }
 
   const completedAt = new Date();
   const startedAt = booking.timeline?.startedAt ? new Date(booking.timeline.startedAt) : null;
-  const actualDurationMin = startedAt ? Math.ceil((completedAt.getTime() - startedAt.getTime()) / (1000 * 60)) : 0;
+  // Bill up to when the ride ended, not when payment was confirmed.
+  const rideEndedAt = booking.timeline?.tripEndedAt ? new Date(booking.timeline.tripEndedAt) : completedAt;
+  const actualDurationMin = startedAt ? Math.ceil((rideEndedAt.getTime() - startedAt.getTime()) / (1000 * 60)) : 0;
 
   // Dynamically recalculate final trip fare (Time + KM for One-Way, Hours base for Round Trip)
   try {

@@ -35,7 +35,7 @@ import {
   ONBOARDING_STEP_LABELS,
 } from '../components/ManageDrivers/driverProfileUtils';
 import { formatVehicleExperienceLabel } from '../../../utils/vehicleCatalog';
-import { DOCUMENT_LABELS } from '../../../utils/documents';
+import { DOCUMENT_LABELS, getDriverPhotoUrl } from '../../../utils/documents';
 
 const DriverProfilePage = () => {
   const { driverId } = useParams();
@@ -136,7 +136,7 @@ const DriverProfilePage = () => {
 
   const { driver, training, trainingComplete } = profile;
   const isDeleted = Boolean(driver.isDeleted);
-  const selfie = driver.documents?.find((d) => d.type === 'selfie')?.fileUrl;
+  const selfie = getDriverPhotoUrl(driver);
   const carLabels = (driver.carTypeExperience || []).map(getCarTypeLabel).filter(Boolean);
   const vehicleExperience = driver.vehicleExperience || [];
   const displayEmail = driver.email && !driver.email.endsWith('@driver.searchmydriver.local') ? driver.email : null;

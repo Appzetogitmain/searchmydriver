@@ -23,6 +23,7 @@ import { formatDistance } from '../../../../utils/geo';
 import { formatCurrency } from '../../../../utils/formatters';
 import useDriverAuthStore from '../../../../store/useDriverAuthStore';
 import Button from '../../../../components/Button';
+import { showSystemNotification } from '../../../../utils/systemNotification';
 
 /**
  * Visual themes for the three offer flavours: instant (amber), scheduled
@@ -287,6 +288,11 @@ const BookingOfferModal = () => {
   // Inbound offer from server → push into the store.
   useSocketEvent(S2C_EVENTS.BOOKING_OFFERED, (payload) => {
     setOffer(payload);
+    showSystemNotification({
+      title: 'New Ride Request',
+      body: `A passenger requested a ${payload?.serviceType || 'ride'} near you. Tap to view.`,
+      data: { type: 'BOOKING_OFFERED', bookingId: payload?.bookingId },
+    });
   });
 
   // Fetch all pending offers on initial mount to catch any we missed while offline/reloading.

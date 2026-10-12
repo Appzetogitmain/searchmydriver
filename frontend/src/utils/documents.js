@@ -12,6 +12,25 @@ export const DOCUMENT_LABELS = {
   live_selfie: 'Live Selfie',
 };
 
+/**
+ * Document types that hold the driver's face photo: `live_selfie` is captured
+ * by the camera during registration, `selfie` is the older / admin-uploaded type.
+ */
+export const SELFIE_DOCUMENT_TYPES = ['live_selfie', 'selfie'];
+
+/**
+ * Best photo of a driver for avatars and ID cards: the latest selfie taken at
+ * registration, then `profilePicture`. Returns null when there is none.
+ */
+export function getDriverPhotoUrl(driver) {
+  if (!driver || typeof driver !== 'object') return null;
+  const docs = Array.isArray(driver.documents) ? driver.documents : [];
+  const selfie = docs
+    .filter((d) => SELFIE_DOCUMENT_TYPES.includes(d?.type) && d?.fileUrl)
+    .sort((a, b) => new Date(b.uploadedAt || 0) - new Date(a.uploadedAt || 0))[0];
+  return selfie?.fileUrl || driver.profilePicture || driver.avatar || null;
+}
+
 export const EMPTY_DOCUMENT = Object.freeze({
   url: null,
   publicId: null,

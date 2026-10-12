@@ -1,8 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import Button from '../../../components/Button';
 import Input from '../../../components/Input';
-import Select from '../../../components/Select';
 import Modal from '../../../components/Modal';
 import { User, Phone, Lock, ArrowLeft, Headset, MapPin } from 'lucide-react';
 import HelpDeskModal from '../../../components/HelpDeskModal';
@@ -36,8 +35,8 @@ const RegisterPage = () => {
     city: '',
   });
 
-  const [cities, setCities] = useState([]);
-  const [loadingCities, setLoadingCities] = useState(false);
+  const [zones, setZones] = useState([]);
+  const [loadingZones, setLoadingZones] = useState(false);
   const [otp, setOtp] = useState('');
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [isPhoneVerified, setIsPhoneVerified] = useState(false);
@@ -46,66 +45,14 @@ const RegisterPage = () => {
   const [isHelpDeskOpen, setIsHelpDeskOpen] = useState(false);
 
   useEffect(() => {
-    let isMounted = true;
-    setLoadingCities(true);
-
-    Promise.allSettled([
-      api.get('/common/service-cities'),
-      api.get('/common/zones'),
-    ])
-      .then(([serviceCitiesRes, zonesRes]) => {
-        if (!isMounted) return;
-        const citySet = new Set();
-
-        if (serviceCitiesRes.status === 'fulfilled' && serviceCitiesRes.value?.data?.data) {
-          const list = serviceCitiesRes.value.data.data;
-          if (Array.isArray(list)) {
-            list.forEach((item) => {
-              if (typeof item === 'string' && item.trim()) {
-                citySet.add(item.trim());
-              } else if (item && typeof item === 'object') {
-                const name = item.city || item.name;
-                if (name && typeof name === 'string' && name.trim()) {
-                  citySet.add(name.trim());
-                }
-              }
-            });
-          }
-        }
-
-        if (zonesRes.status === 'fulfilled' && zonesRes.value?.data?.data) {
-          const list = zonesRes.value.data.data;
-          if (Array.isArray(list)) {
-            list.forEach((z) => {
-              if (z.city && typeof z.city === 'string' && z.city.trim()) {
-                citySet.add(z.city.trim());
-              }
-            });
-          }
-        }
-
-        const sorted = Array.from(citySet).sort((a, b) => a.localeCompare(b));
-        setCities(sorted);
+    setLoadingZones(true);
+    api.get('/common/zones')
+      .then((res) => {
+        setZones(res.data?.data || []);
       })
-      .catch((err) => {
-        console.error('Failed to load service cities:', err);
-      })
-      .finally(() => {
-        if (isMounted) setLoadingCities(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
+      .catch((err) => console.error('Failed to fetch zones:', err))
+      .finally(() => setLoadingZones(false));
   }, []);
-
-  const cityOptions = useMemo(() => {
-    const opts = cities.map((c) => ({ label: c, value: c }));
-    if (formData.city && !cities.includes(formData.city)) {
-      opts.unshift({ label: formData.city, value: formData.city });
-    }
-    return opts;
-  }, [cities, formData.city]);
 
   const handleChange = (field) => (e) => {
     let value = e.target.value;
@@ -225,26 +172,32 @@ const RegisterPage = () => {
             </div>
           </div>
 
-          <Select
-            label="City/Location"
-            placeholder={
-              loadingCities
-                ? 'Loading service cities...'
-                : cityOptions.length > 0
-                ? 'Select your city'
-                : 'Select your city'
-            }
-            options={cityOptions}
-            value={formData.city}
-            onChange={(val) => {
-              setFormData((prev) => ({ ...prev, city: val }));
-              if (error) setError('');
-            }}
-            icon={MapPin}
-            searchable
-            className="h-12"
-            disabled={loadingCities}
-          />
+          <div>
+            <label className="text-sm font-medium text-text mb-1.5 block">City/Location</label>
+            <div className="relative">
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none">
+                <MapPin className="w-5 h-5" />
+              </div>
+              <select
+                className="w-full h-12 pl-11 pr-4 bg-gray-50 border border-border rounded-xl text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-60 appearance-none text-text"
+                value={formData.city}
+                onChange={handleChange('city')}
+                disabled={loadingZones}
+                required
+              >
+                <option value="">Select a zone</option>
+                {zones.map((z) => {
+                  const val = z.city || z.name;
+                  const label = `${z.name}${z.city ? ` (${z.city})` : ''}`;
+                  return (
+                    <option key={z._id || val} value={val}>
+                      {label}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          </div>
 
           <Input
             label="Referral Code (Optional)"

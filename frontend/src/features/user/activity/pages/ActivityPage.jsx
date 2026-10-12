@@ -31,6 +31,7 @@ import { SERVICE_CATALOG } from '../../home/constants/serviceCatalog';
 import { SERVICE_TYPES, SERVICE_TYPE_LABELS } from '../../../../constants/serviceTypes';
 import { useSocketEvent } from '../../../../hooks/useSocket';
 import { S2C_EVENTS } from '../../../../constants/socketEvents';
+import { getDriverPhotoUrl } from '../../../../utils/documents';
 
 /**
  * /user/activity — the user's "My Trips" rail.
@@ -487,12 +488,7 @@ function TripHistoryCard({ booking, onOpen, indexInList = 0 }) {
   const driver = booking.driverId && typeof booking.driverId === 'object'
     ? booking.driverId
     : null;
-  const driverPhoto = (() => {
-    if (!driver) return null;
-    const docs = Array.isArray(driver.documents) ? driver.documents : [];
-    const selfie = docs.find((d) => d?.type === 'selfie' && d?.fileUrl);
-    return selfie?.fileUrl || driver.profilePicture || null;
-  })();
+  const driverPhoto = getDriverPhotoUrl(driver);
 
   return (
     <div

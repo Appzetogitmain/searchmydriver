@@ -38,6 +38,7 @@ import {
   getMyActiveBookings,
   getBookingById,
   cancelBooking,
+  userEndTrip,
   createBookingPayment,
   verifyBookingPayment,
   payBookingWithWallet,
@@ -112,6 +113,7 @@ router.get('/bookings/active-list', getMyActiveBookings);
 router.get('/bookings/:id', getBookingById);
 router.get('/bookings/:id/invoice', downloadBookingInvoice);
 router.post('/bookings/:id/cancel', cancelBooking);
+router.post('/bookings/:id/end-trip', userEndTrip);
 router.post('/bookings/:id/pay', createBookingPayment);
 router.post('/bookings/:id/verify-payment', verifyBookingPayment);
 router.post('/bookings/:id/pay-wallet', payBookingWithWallet);

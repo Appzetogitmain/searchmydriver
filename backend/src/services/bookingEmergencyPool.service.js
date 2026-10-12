@@ -19,6 +19,7 @@ import {
   emitNotification,
 } from '../utils/socketEmitters.js';
 import { withdrawCurrentOfferService } from './bookingDispatch.service.js';
+import { findDriverActiveBooking } from './driverConflict.service.js';
 import { updateDriverTripStatusLive } from './driverLocation.service.js';
 import {
   cancelScheduledBookingJobs,
@@ -320,7 +321,7 @@ export async function adminAssignDriverToEmergencyPoolService(
     approvalStatus: 'approved',
   });
   if (!driver) throw new ApiError(404, 'Driver not found or not approved');
-  if (driver.isOnTrip) {
+  if (driver.isOnTrip || (await findDriverActiveBooking(driver._id, booking._id))) {
     throw new ApiError(409, 'Driver is already on another trip');
   }
 

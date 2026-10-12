@@ -1,6 +1,7 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import useDriverAuthStore from '../store/useDriverAuthStore';
 import { isApplicationSubmitted } from '../utils/driverOnboarding';
+import BookingOfferModal from '../features/driver/trips/components/BookingOfferModal';
 
 const DriverGuard = () => {
   const { isAuthenticated, driver } = useDriverAuthStore();
@@ -29,7 +30,12 @@ const DriverGuard = () => {
     return <Navigate to="/driver/register/approval" replace />;
   }
 
-  return <Outlet />;
+  return (
+    <>
+      <Outlet />
+      <BookingOfferModal />
+    </>
+  );
 };
 
 export default DriverGuard;

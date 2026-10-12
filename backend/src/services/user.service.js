@@ -76,7 +76,7 @@ export const verifyUserOtpAndRegisterService = async ({ name, phone, password, o
   const salt = await bcrypt.genSalt(10);
   const hashedPassword = await bcrypt.hash(password, salt);
 
-  const myReferralCode = (name.substring(0, 3).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase()).replace(/[^A-Z0-9]/g, '');
+  const myReferralCode = ('U' + name.substring(0, 3).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase()).replace(/[^A-Z0-9]/g, '');
 
   const user = await User.create({
     name,

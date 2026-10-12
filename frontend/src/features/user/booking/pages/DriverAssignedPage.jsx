@@ -50,6 +50,7 @@ import {
   OUTSTATION_USER_CANCEL_TIER,
   previewUserCancellation,
 } from '../utils/cancellationPreview';
+import { getDriverPhotoUrl } from '../../../../utils/documents';
 
 /** How long the full-size map is shown before it auto-shrinks to the
  * floating preview card. Tuned for "long enough to glance at the driver,
@@ -124,7 +125,7 @@ const DriverAssignedPage = () => {
     if (e?.stopPropagation) e.stopPropagation();
     const driverObj = typeof booking?.driverId === 'object' ? booking.driverId : null;
     const name = driverObj?.name || driverObj?.fullName || 'Driver';
-    const photo = driverObj?.profilePicture || driverObj?.avatar || null;
+    const photo = getDriverPhotoUrl(driverObj);
     if (startCall && booking?._id) {
       startCall(booking._id, name, photo);
       return;
@@ -138,6 +139,22 @@ const DriverAssignedPage = () => {
   };
 
   const [cancelling, setCancelling] = useState(false);
+  const [endTripConfirmOpen, setEndTripConfirmOpen] = useState(false);
+  const [endingTrip, setEndingTrip] = useState(false);
+  const endTrip = useUserActiveBookingStore((s) => s.endTrip);
+
+  const handleEndTripConfirm = async () => {
+    setEndingTrip(true);
+    try {
+      await endTrip();
+      setEndTripConfirmOpen(false);
+      toast.success('Trip ended — here is your final fare');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || 'Could not end the trip');
+    } finally {
+      setEndingTrip(false);
+    }
+  };
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   // Whether the user has already dismissed the extension prompt for the
   // current "you're past the booked time" window. Reset every time a new
@@ -413,17 +430,8 @@ const DriverAssignedPage = () => {
     return [...new Set([...fromVehicles, ...fromTypes])].slice(0, 3);
   }, [driver]);
 
-  // Drivers in this app store their face photo on the `selfie` document
-  // captured during onboarding, not in `profilePicture` (which is left
-  // blank by the registration flow). We pick the selfie URL first and
-  // fall back to `profilePicture` only when present, so the avatars
-  // actually render a face instead of grey initials.
-  const driverPhotoUrl = useMemo(() => {
-    if (!driver) return null;
-    const docs = Array.isArray(driver.documents) ? driver.documents : [];
-    const selfie = docs.find((d) => d?.type === 'selfie' && d?.fileUrl);
-    return selfie?.fileUrl || driver.profilePicture || null;
-  }, [driver]);
+  // The driver's face photo is the selfie captured during registration.
+  const driverPhotoUrl = useMemo(() => getDriverPhotoUrl(driver), [driver]);
 
 
   // Ride duration timer + extension prompt (only active once STARTED).
@@ -912,6 +920,26 @@ const DriverAssignedPage = () => {
                 </Button>
               </div>
             )}
+
+            {/* Customer ends the ride at the drop → final fare + payment. */}
+            {booking.status === BOOKING_STATUS.STARTED && !booking.timeline?.tripEndedAt && (
+              <div className="w-full pt-1">
+                <Button
+                  size="sm"
+                  onClick={() => setEndTripConfirmOpen(true)}
+                  className="w-full text-xs font-semibold py-2 rounded-xl"
+                >
+                  End trip
+                </Button>
+              </div>
+            )}
+            {booking.status === BOOKING_STATUS.STARTED
+              && booking.timeline?.tripEndedAt
+              && booking.paymentStatus === BOOKING_PAYMENT_STATUS.PAID && (
+              <p className="w-full pt-1 text-center text-[11px] text-text-muted">
+                Trip ended. Waiting for your driver to confirm and complete the trip.
+              </p>
+            )}
           </div>
 
           {/* Zone 2: scrollable body — only rendered (and takes up space) when expanded */}
@@ -1042,6 +1070,17 @@ const DriverAssignedPage = () => {
         cancelLabel="Keep booking"
         variant="danger"
         loading={cancelling}
+      />
+
+      <ConfirmDialog
+        open={endTripConfirmOpen}
+        onClose={() => !endingTrip && setEndTripConfirmOpen(false)}
+        onConfirm={handleEndTripConfirm}
+        title="End this trip?"
+        description="Only end the trip once you've reached your drop location. Your final fare will be calculated and shown for payment."
+        confirmLabel="Yes, end trip"
+        cancelLabel="Not yet"
+        loading={endingTrip}
       />
 
       <PaymentChoiceSheet

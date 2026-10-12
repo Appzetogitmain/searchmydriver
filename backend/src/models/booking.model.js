@@ -493,6 +493,10 @@ const bookingSchema = new mongoose.Schema(
       enRouteAt: { type: Date, default: null },
       arrivedAt: { type: Date, default: null },
       startedAt: { type: Date, default: null },
+      // When the ride itself ended (user or driver tapped End trip). The fare
+      // is frozen at this moment; completedAt follows once payment is confirmed.
+      tripEndedAt: { type: Date, default: null },
+      tripEndedBy: { type: String, enum: ['user', 'driver', null], default: null },
       completedAt: { type: Date, default: null },
       cancelledAt: { type: Date, default: null },
     },

@@ -28,6 +28,32 @@ export const connectDB = async () => {
       console.error("[migration] Failed to run driverId migration:", migErr);
     }
 
+    // Migration: Use the registration selfie as the profile photo for drivers
+    // who have none (or only a Google avatar), so customers see the driver's face.
+    try {
+      const { Driver } = await import('../models/driverModels/driver.model.js');
+      const { SELFIE_DOCUMENT_TYPES, getSelfieUrl } = await import('../utils/driverDocuments.util.js');
+      const drivers = await Driver.find({
+        'documents.type': { $in: SELFIE_DOCUMENT_TYPES },
+        $or: [
+          { profilePicture: { $exists: false } },
+          { profilePicture: { $in: ['', null] } },
+          { profilePicture: /googleusercontent\.com/ },
+        ],
+      }).select('documents profilePicture').lean();
+      let updated = 0;
+      for (const driver of drivers) {
+        const url = getSelfieUrl(driver.documents);
+        if (url && url !== driver.profilePicture) {
+          await Driver.updateOne({ _id: driver._id }, { $set: { profilePicture: url } });
+          updated += 1;
+        }
+      }
+      if (updated > 0) console.log(`[migration] Set profile photo from selfie for ${updated} drivers.`);
+    } catch (selfieErr) {
+      console.error('[migration] Failed to backfill driver selfie photos:', selfieErr.message);
+    }
+
     // Migration: Fully purge users deleted before purgeUserAccount existed, so
     // their phone number / Google account can sign up again.
     try {

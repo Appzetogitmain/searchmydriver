@@ -12,7 +12,7 @@ import {
   generateRefreshToken,
   tokenPayloadFromDriver,
 } from '../utils/jwt.util.js';
-import { mergeDocumentsByType, dedupeDocumentsByType } from '../utils/driverDocuments.util.js';
+import { mergeDocumentsByType, dedupeDocumentsByType, syncProfilePictureFromSelfie } from '../utils/driverDocuments.util.js';
 import TrainingVideo from '../models/trainingVideo.model.js';
 import {
   getActiveTrainingVideos,
@@ -313,7 +313,10 @@ export const updateOnboardingStepService = async (driverId, data) => {
       throw new ApiError(400, 'Add at least one vehicle you have experience driving');
     }
 
-    if (stepData.documents) mergeDocumentsByType(driver.documents, stepData.documents);
+    if (stepData.documents) {
+      mergeDocumentsByType(driver.documents, stepData.documents);
+      syncProfilePictureFromSelfie(driver);
+    }
     if (driver.onboardingStep < 2) driver.onboardingStep = 2;
   } else if (stepNumber === 3) {
     if (driver.bankDetails?.accountNumber) {
@@ -325,7 +328,10 @@ export const updateOnboardingStepService = async (driverId, data) => {
     driver.bankDetails = stepData.bankDetails;
     if (driver.onboardingStep < 3) driver.onboardingStep = 3;
   } else if (stepNumber === 4) {
-    if (stepData?.documents) mergeDocumentsByType(driver.documents, stepData.documents);
+    if (stepData?.documents) {
+      mergeDocumentsByType(driver.documents, stepData.documents);
+      syncProfilePictureFromSelfie(driver);
+    }
     if (driver.onboardingStep < 4) driver.onboardingStep = 4;
   } else {
     throw new ApiError(400, 'Invalid step number');

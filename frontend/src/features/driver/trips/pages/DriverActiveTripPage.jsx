@@ -27,6 +27,7 @@ import {
   Maximize2,
   Minimize2,
   MessageSquare,
+  Navigation,
 } from 'lucide-react';
 import {
   BOOKING_TYPE,
@@ -69,7 +70,7 @@ import useCallStore from '../../../../store/useCallStore';
  * the "I have arrived" CTA is enabled. Mirrors `ARRIVAL_PROXIMITY_METERS`
  * on the backend (kept in sync by hand).
  */
-const ARRIVAL_PROXIMITY_METERS = 100;
+const ARRIVAL_PROXIMITY_METERS = 1000;
 
 /**
  * Per-status header + CTA. Drivers never see anything payment-related;
@@ -77,6 +78,18 @@ const ARRIVAL_PROXIMITY_METERS = 100;
  * line so the driver can't deduce whether the customer is paying upfront
  * or after the ride.
  */
+/** Open Google Maps turn-by-turn directions to a booking point. */
+function openNavigation(location, address) {
+  const c = location?.coordinates;
+  const dest = Array.isArray(c) && c.length === 2 && (c[0] || c[1]) ? `${c[1]},${c[0]}` : address;
+  if (!dest) return;
+  window.open(
+    `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}&travelmode=driving`,
+    '_blank',
+    'noopener',
+  );
+}
+
 const NEXT_ACTION_BY_STATUS = {
   [BOOKING_STATUS.DRIVER_ASSIGNED]: {
     title: 'Driver assigned',
@@ -105,7 +118,7 @@ const NEXT_ACTION_BY_STATUS = {
   },
   [BOOKING_STATUS.STARTED]: {
     title: 'Trip in progress',
-    subtitle: 'Drive safe. Mark complete when the booked duration is over.',
+    subtitle: 'Drive safe. The customer will end the trip once they reach the drop.',
     cta: { label: 'Complete trip', icon: CheckCircle2, action: 'completeTrip' },
     // Driver-side cancel after STARTED is allowed but the admin-configured
     // penalty is debited from the driver's wallet (see backend
@@ -338,6 +351,24 @@ const DriverActiveTripPage = () => {
   const [otpOpen, setOtpOpen] = useState(false);
   const [fullscreenMapOpen, setFullscreenMapOpen] = useState(false);
   const [settlementModalOpen, setSettlementModalOpen] = useState(false);
+
+  // The customer can end the trip from their app — bring up the fare and
+  // payment confirmation for the driver as soon as that lands.
+  const tripEndedAt = booking?.timeline?.tripEndedAt;
+  const tripEndedBy = booking?.timeline?.tripEndedBy;
+  const [settlementDismissedFor, setSettlementDismissedFor] = useState(null);
+  const settlementOpen =
+    settlementModalOpen ||
+    (status === BOOKING_STATUS.STARTED && Boolean(tripEndedAt) && settlementDismissedFor !== tripEndedAt);
+  const closeSettlement = () => {
+    closeSettlement();
+    setSettlementDismissedFor(tripEndedAt || null);
+  };
+  useEffect(() => {
+    if (status === BOOKING_STATUS.STARTED && tripEndedAt && tripEndedBy === 'user') {
+      toast('Customer ended the trip. Confirm the payment to complete it.', { id: 'trip-ended', icon: '🏁' });
+    }
+  }, [status, tripEndedAt, tripEndedBy]);
   const [collectCashConfirmOpen, setCollectCashConfirmOpen] = useState(false);
   const [completeConfirmOpen, setCompleteConfirmOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -374,10 +405,23 @@ const DriverActiveTripPage = () => {
 
   // Resolve the next-action descriptor every render so it tracks the
   // current status without us juggling an effect.
-  const config = useMemo(
-    () => (status ? NEXT_ACTION_BY_STATUS[status] : null),
-    [status],
-  );
+  const config = useMemo(() => {
+    if (!status) return null;
+    const base = NEXT_ACTION_BY_STATUS[status];
+    // Only the customer ends the trip. Until they do, the driver has no
+    // action; afterwards the CTA re-opens the fare / payment confirmation.
+    if (status === BOOKING_STATUS.STARTED) {
+      return tripEndedAt
+        ? {
+            ...base,
+            title: 'Trip ended',
+            subtitle: 'Collect or confirm the payment to complete the trip.',
+            cta: { label: 'Confirm payment', icon: CheckCircle2, action: 'completeTrip' },
+          }
+        : { ...base, cta: null };
+    }
+    return base;
+  }, [status, tripEndedAt]);
 
   // Distance from the driver's live position to the pickup. Used to
   // gate the "I've arrived" CTA — both as a UX hint and to feed the
@@ -482,7 +526,7 @@ const DriverActiveTripPage = () => {
       }
       if (distanceToPickup == null || distanceToPickup > ARRIVAL_PROXIMITY_METERS) {
         toast.error(
-          `You're too far from the pickup (${formatDistance(distanceToPickup || 0)}). Move within ${ARRIVAL_PROXIMITY_METERS} m to mark arrival.`,
+          `You're too far from the pickup (${formatDistance(distanceToPickup || 0)}). Move within ${ARRIVAL_PROXIMITY_METERS / 1000} km to mark arrival.`,
         );
         return;
       }
@@ -840,6 +884,16 @@ const DriverActiveTripPage = () => {
               <p className="text-sm font-medium text-text break-words">
                 {booking.pickup?.address}
               </p>
+              {[BOOKING_STATUS.DRIVER_ASSIGNED, BOOKING_STATUS.EN_ROUTE, BOOKING_STATUS.ARRIVED].includes(status) && (
+                <button
+                  type="button"
+                  onClick={() => openNavigation(booking.pickup?.location, booking.pickup?.address)}
+                  className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold"
+                >
+                  <Navigation className="w-3.5 h-3.5" />
+                  Navigate to pickup
+                </button>
+              )}
             </div>
           </div>
           {((booking.dropoff?.address && booking.dropoff.address !== booking.pickup?.address) || booking.outstation?.destinationAddress) && (
@@ -850,6 +904,21 @@ const DriverActiveTripPage = () => {
                 <p className="text-sm font-medium text-text break-words">
                   {booking.dropoff?.address || booking.outstation?.destinationAddress}
                 </p>
+                {status === BOOKING_STATUS.STARTED && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openNavigation(
+                        booking.dropoff?.address ? booking.dropoff?.location : null,
+                        booking.dropoff?.address || booking.outstation?.destinationAddress,
+                      )
+                    }
+                    className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-bold"
+                  >
+                    <Navigation className="w-3.5 h-3.5" />
+                    Navigate to drop
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -955,10 +1024,10 @@ const DriverActiveTripPage = () => {
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-amber-900">
-                  Collect cash before completing
+                  Collect cash before confirming payment
                 </p>
                 <p className="text-[12px] text-amber-800 mt-1 leading-snug">
-                  Please collect ₹{((isCashBooking ? cashDueRupees : 0) + (booking?.fareSnapshot?.offlineTip || 0)).toLocaleString('en-IN')} from the customer before tapping Complete trip.
+                  Please collect ₹{((isCashBooking ? cashDueRupees : 0) + (booking?.fareSnapshot?.offlineTip || 0)).toLocaleString('en-IN')} from the customer before tapping Confirm payment.
                 </p>
               </div>
             </div>
@@ -990,7 +1059,7 @@ const DriverActiveTripPage = () => {
                 {arrivalReady
                   ? `Tap "I have arrived" to start the trip with the customer.`
                   : driverPoint
-                    ? `You need to be within ${ARRIVAL_PROXIMITY_METERS} m of the pickup before you can mark arrival.`
+                    ? `You need to be within ${ARRIVAL_PROXIMITY_METERS / 1000} km of the pickup before you can mark arrival.`
                     : 'Enable GPS so we can confirm you have reached the pickup.'}
               </p>
             </div>
@@ -1120,7 +1189,7 @@ const DriverActiveTripPage = () => {
       </div>
 
       {/* Settlement & Post-Ride Payment Modal */}
-      {settlementModalOpen && (
+      {settlementOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
           <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
             {/* Header */}
@@ -1134,7 +1203,7 @@ const DriverActiveTripPage = () => {
               </div>
               <button
                 type="button"
-                onClick={() => setSettlementModalOpen(false)}
+                onClick={closeSettlement}
                 className="p-1 rounded-full hover:bg-white/10 text-white/80 hover:text-white"
               >
                 <XCircle className="w-5 h-5" />
@@ -1221,7 +1290,7 @@ const DriverActiveTripPage = () => {
                     onClick={async () => {
                       try {
                         await useDriverActiveTripStore.getState().completeTrip();
-                        setSettlementModalOpen(false);
+                        closeSettlement();
                       } catch (err) {
                         toast.error(err?.response?.data?.message || err?.message || 'Could not complete trip');
                       }
@@ -1283,7 +1352,7 @@ const DriverActiveTripPage = () => {
           }
           try {
             await useDriverActiveTripStore.getState().completeTrip({ paymentMethod: 'cash' });
-            setSettlementModalOpen(false);
+            closeSettlement();
           } catch (err) {
             toast.error(err?.response?.data?.message || err?.message || 'Could not record cash payment');
           }

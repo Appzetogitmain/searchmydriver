@@ -1,6 +1,7 @@
 import { ShieldCheck, Phone, Award, Calendar, CheckCircle2, User, Car, Globe, Languages } from 'lucide-react';
 import { formatPhone, formatDate } from '../utils/formatters';
 import Avatar from './Avatar';
+import { getDriverPhotoUrl } from '../utils/documents';
 
 // Mask the licence for customer-facing views (e.g. MH12 **** 4567).
 const maskLicense = (lic) => {
@@ -71,7 +72,7 @@ const DriverOfficialIdCard = ({ driver = {}, photoUrl, forCustomer = false, clas
         <div className="p-1 bg-white rounded-2xl shadow-xl print:shadow-none print:border-2 print:border-slate-300">
           <div className="relative">
             <Avatar
-              src={photoUrl || driver?.profilePicture || undefined}
+              src={photoUrl || getDriverPhotoUrl(driver) || undefined}
               name={displayName}
               size="xl"
               className="w-24 h-24 sm:w-28 sm:h-28 text-3xl rounded-xl object-cover ring-2 ring-blue-500/20"

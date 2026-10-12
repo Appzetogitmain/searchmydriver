@@ -154,7 +154,11 @@ const EarningsPage = () => {
   );
 
   const profileKey = buildCacheKey('driver-profile', {});
-  const { data: profile } = useCachedQuery(useDriverProfileStore, profileKey, {});
+  const { data: profile, refetch: refetchProfile } = useCachedQuery(
+    useDriverProfileStore,
+    profileKey,
+    {},
+  );
   const wallet = profile?.wallet || {};
   const walletBalance = Number(wallet.balance) || 0;
   const lifetimeEarnings = Number(wallet.totalEarnings) || 0;
@@ -175,8 +179,10 @@ const EarningsPage = () => {
   const setCategory = useDriverEarningsLedgerStore((s) => s.setCategory);
 
   useEffect(() => {
+    refetchProfile();
+    refetch();
     fetchLedger({ page: 1, limit: 20, category: 'all' }).catch(() => {});
-  }, [fetchLedger]);
+  }, [refetchProfile, refetch, fetchLedger]);
 
   const summary = data?.summary || {};
   const today = summary.today || EMPTY;
@@ -488,6 +494,7 @@ const EarningsPage = () => {
         onClose={() => setTopupOpen(false)}
         onSuccess={() => {
           refetch();
+          refetchProfile();
           fetchLedger({ page: 1, limit: 20, category: activeCategory }).catch(() => {});
         }}
       />
@@ -501,6 +508,7 @@ const EarningsPage = () => {
         bankDetails={profile?.bankDetails}
         onWithdrawSuccess={() => {
           refetch();
+          refetchProfile();
           fetchLedger({ page: 1, limit: 20, category: activeCategory }).catch(() => {});
         }}
       />

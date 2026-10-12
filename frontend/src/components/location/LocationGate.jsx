@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { MapPin, Loader2, X } from 'lucide-react';
+import toast from 'react-hot-toast';
 import useUserAuthStore from '../../store/useUserAuthStore';
 import useDriverAuthStore from '../../store/useDriverAuthStore';
 import useLocationStatusStore, { LOCATION_STATUS } from '../../store/useLocationStatusStore';
@@ -77,8 +78,10 @@ export default function LocationGate() {
   const { pathname } = useLocation();
   const isUser = useUserAuthStore((s) => s.isAuthenticated);
   const isDriver = useDriverAuthStore((s) => s.isAuthenticated);
-  const { status, checking, sheetOpen, attempted, check, dismissSheet, maybeAutoOpen } =
+  const { status, checking, turningOn, sheetOpen, attempted, check, enableLocation, dismissSheet, maybeAutoOpen } =
     useLocationStatusStore();
+  const busy = checking || turningOn;
+  const prevStatus = useRef(status);
 
   const active =
     (isUser && pathname.startsWith('/user')) ||
@@ -115,6 +118,20 @@ export default function LocationGate() {
       .catch(() => {});
     return () => permStatus?.removeEventListener?.('change', onChange);
   }, [active, check]);
+
+  // Toast whenever the phone's location goes off, and when it comes back on.
+  useEffect(() => {
+    const prev = prevStatus.current;
+    prevStatus.current = status;
+    if (!active || prev === status) return;
+    if (status === LOCATION_STATUS.GPS_OFF) {
+      toast.error('Your phone’s location is off. Please turn it on.', { id: 'location-status' });
+    } else if (status === LOCATION_STATUS.PERMISSION_BLOCKED) {
+      toast.error('Location access is blocked. Please allow it.', { id: 'location-status' });
+    } else if (status === LOCATION_STATUS.OK && prev !== LOCATION_STATUS.UNKNOWN) {
+      toast.success('Location is on', { id: 'location-status' });
+    }
+  }, [active, status]);
 
   const copy = COPY[status];
   if (!active || !sheetOpen || !copy) return null;
@@ -165,12 +182,12 @@ export default function LocationGate() {
 
         <button
           type="button"
-          disabled={checking}
-          onClick={() => check({ request: true })}
+          disabled={busy}
+          onClick={() => enableLocation()}
           className="mt-6 w-full py-3.5 rounded-2xl bg-primary text-white font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-70"
         >
-          {checking ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
-          {checking ? 'Checking location…' : copy.cta}
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
+          {turningOn ? 'Waiting for location…' : checking ? 'Checking location…' : copy.cta}
         </button>
         <button
           type="button"

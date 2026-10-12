@@ -97,7 +97,16 @@ const InvoicePage = () => {
     );
     const total = base + extensions || null;
 
-    return { id, date, service, distance, duration, total };
+    // Hourly trips are billed for the booked hours (plus any overtime), not the
+    // time actually driven — say so, so a short trip doesn't look under-billed.
+    const bd = booking.fareSnapshot?.breakdown || {};
+    const billedHours = Number(bd.bookedHours || booking.hourly?.durationHours) || 0;
+    const extraHours = Number(bd.extraHours) || 0;
+    const billed = booking.hourly && billedHours > 0
+      ? `${billedHours + extraHours} hr${billedHours + extraHours === 1 ? '' : 's'}`
+      : null;
+
+    return { id, date, service, distance, duration, billed, total };
   }, [booking]);
 
   const handleDownload = async () => {
@@ -226,6 +235,7 @@ const InvoicePage = () => {
               ['Service', invoice.service],
               ['Distance', invoice.distance],
               ['Duration', invoice.duration],
+              ...(invoice.billed ? [['Billed for', invoice.billed]] : []),
             ].map(([label, value]) => (
               <div key={label} className="flex justify-between">
                 <span className="text-sm text-text-secondary">{label}</span>

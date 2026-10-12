@@ -5,10 +5,11 @@
   "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "start": "node api.js && node src/server.js",
-    "dev": "node api.js && nodemon src/server.js",
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
     "fix:payment-index": "node scripts/fixPaymentIndex.js",
-    "build": "node api.js && echo 'No build step required'"
+    "build": "echo 'No build step required'",
+    "test:flow": "node tests/tripFlow.test.mjs"
   },
   "keywords": [],
   "author": "",
@@ -37,6 +38,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "mongodb-memory-server": "^10.1.4",
     "nodemon": "^3.1.9"
   }
 }
