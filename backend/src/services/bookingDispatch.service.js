@@ -273,7 +273,8 @@ function buildOfferPayload(booking, driver, { customer, car, upcomingScheduledTr
     customer: customer
       ? {
           name: customer.name || '',
-          phone: customer.phone_no ? String(customer.phone_no) : '',
+          // No phone number in offers: the driver only gets the customer's
+          // number once they've accepted (via the assigned booking).
           profilePicture: customer.profilePicture || '',
         }
       : null,

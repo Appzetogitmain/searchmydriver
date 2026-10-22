@@ -274,7 +274,7 @@ export async function getDriverEligibleTripRequestsService(driverId, filters = {
     .sort({ createdAt: -1 })
     .limit(50)
     .populate('carId')
-    .populate('userId', 'name phone rating')
+    .populate('userId', 'name rating')
     .lean();
 
   if (!candidateBookings.length) {

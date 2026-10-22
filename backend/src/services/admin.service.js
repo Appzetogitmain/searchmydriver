@@ -41,6 +41,8 @@ import {
 import { TASK_TYPE } from '../constants/adminTask.js';
 import AdminTask from '../models/adminTask.model.js';
 import { purgeUserAccount } from './user.service.js';
+import { purgeDriverAccount } from './driver.service.js';
+import { ACTIVE_BOOKING_STATUSES } from '../constants/bookingStatus.js';
 
 import {
   getStaffScope,
@@ -587,8 +589,41 @@ export const updateDriverProfileByAdminService = async (staff, driverId, payload
   if (gender !== undefined) driver.gender = gender;
   if (dateOfBirth !== undefined) driver.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
   if (Array.isArray(languages)) driver.languages = languages;
-  if (city !== undefined) driver.city = city.trim();
-  if (homeZone !== undefined) driver.homeZone = homeZone || null;
+  if (city !== undefined) driver.city = (city || '').trim();
+
+  if (homeZone !== undefined) {
+    const nextZoneId = homeZone ? String(homeZone._id || homeZone) : null;
+    const currentZoneId = driver.homeZone ? String(driver.homeZone) : null;
+
+    if (nextZoneId !== currentZoneId) {
+      if (nextZoneId) {
+        if (!mongoose.Types.ObjectId.isValid(nextZoneId)) {
+          throw new ApiError(400, 'Invalid service zone');
+        }
+        const zone = await Zone.findById(nextZoneId).select('city isActive').lean();
+        if (!zone) throw new ApiError(404, 'Service zone not found');
+        if (!zone.isActive) throw new ApiError(400, 'Cannot assign an inactive service zone');
+
+        driver.homeZone = zone._id;
+        // Keep city in step with the zone, same as driver signup does —
+        // unless the admin typed a city of their own in this same request.
+        if (city === undefined && zone.city) driver.city = zone.city;
+      } else {
+        driver.homeZone = null;
+      }
+    }
+  }
+
+  // A scoped admin must not move a driver (by zone or city) out of their
+  // own area — they'd lose access to the driver they just edited.
+  if (homeZone !== undefined || city !== undefined) {
+    try {
+      await assertStaffCanAccessDriver(staff, driver);
+    } catch {
+      throw new ApiError(403, 'You can only assign drivers to zones/cities within your assigned area');
+    }
+  }
+
   if (profilePicture !== undefined) driver.profilePicture = profilePicture;
 
   if (drivingLicense && typeof drivingLicense === 'object') {
@@ -1384,13 +1419,20 @@ export const deleteDriverService = async (staffOrId, driverId) => {
     : await User.findById(staffOrId);
   await assertStaffCanAccessDriver(staff, driver);
 
-  if (!driver.isDeleted) {
-    driver.isDeleted = true;
-    driver.deletedAt = new Date();
-    driver.isOnline = false;
-    driver.approvalStatus = 'rejected';
-    await driver.save();
+  const activeBookings = await Booking.countDocuments({
+    driverId: driver._id,
+    isDeleted: false,
+    status: { $in: ACTIVE_BOOKING_STATUSES },
+  });
+  if (activeBookings > 0) {
+    throw new ApiError(409, 'Driver has active trips. Finish or reassign them before deleting.');
   }
+
+  // Same full purge as self-delete so the number can sign up fresh.
+  // Safe to re-run on an already soft-deleted row (cleans legacy data).
+  driver.approvalStatus = 'rejected';
+  await driver.save();
+  await purgeDriverAccount(driver);
 
   return { id: driver._id, message: 'Driver account deleted successfully' };
 };

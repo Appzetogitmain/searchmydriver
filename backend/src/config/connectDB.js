@@ -79,6 +79,30 @@ export const connectDB = async () => {
       console.error('[migration] Failed to purge deleted user accounts:', purgeErr.message);
     }
 
+    // Migration: Fully purge drivers deleted before purgeDriverAccount existed,
+    // so their phone number / Google account can sign up again.
+    try {
+      const { Driver } = await import('../models/driverModels/driver.model.js');
+      const { purgeDriverAccount } = await import('../services/driver.service.js');
+      const staleDeleted = await Driver.find({
+        isDeleted: true,
+        $or: [
+          { phone: { $exists: true } },
+          { googleId: { $exists: true } },
+          { referralCode: { $exists: true } },
+        ],
+      });
+      if (staleDeleted.length > 0) {
+        console.log(`[migration] Purging ${staleDeleted.length} previously deleted driver accounts...`);
+        for (const driver of staleDeleted) {
+          await purgeDriverAccount(driver);
+        }
+        console.log(`[migration] Purged ${staleDeleted.length} deleted driver accounts.`);
+      }
+    } catch (purgeErr) {
+      console.error('[migration] Failed to purge deleted driver accounts:', purgeErr.message);
+    }
+
     // Migration: Drop legacy vehicleNumber_1 unique index from cars collection if present
     try {
       const carsCollection = conn.connection.collection('cars');

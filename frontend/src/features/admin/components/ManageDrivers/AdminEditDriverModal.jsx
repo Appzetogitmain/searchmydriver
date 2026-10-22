@@ -6,6 +6,30 @@ import api from '../../../../utils/api';
 const AdminEditDriverModal = ({ open, onClose, driver, onSuccess }) => {
   const [activeTab, setActiveTab] = useState('personal');
   const [saving, setSaving] = useState(false);
+  // Active zones from the public list — `/admin/zones` needs the zones
+  // settings permission, which staff who only manage drivers may lack.
+  const [zones, setZones] = useState([]);
+  const [zonesLoaded, setZonesLoaded] = useState(false);
+  const zonesLoading = !zonesLoaded;
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    api
+      .get('/common/zones')
+      .then((res) => {
+        if (!cancelled) setZones(Array.isArray(res.data?.data) ? res.data.data : []);
+      })
+      .catch(() => {
+        if (!cancelled) toast.error('Could not load service zones');
+      })
+      .finally(() => {
+        if (!cancelled) setZonesLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -14,6 +38,7 @@ const AdminEditDriverModal = ({ open, onClose, driver, onSuccess }) => {
     gender: '',
     dateOfBirth: '',
     city: '',
+    homeZone: '',
     languages: 'Hindi, English',
     experienceYears: 0,
     availability: '',
@@ -46,6 +71,7 @@ const AdminEditDriverModal = ({ open, onClose, driver, onSuccess }) => {
         gender: driver.gender || '',
         dateOfBirth: dobStr,
         city: driver.city || '',
+        homeZone: driver.homeZone?._id || driver.homeZone || '',
         languages: langs,
         experienceYears: driver.experienceYears ?? 0,
         availability: driver.availability || '',
@@ -67,6 +93,25 @@ const AdminEditDriverModal = ({ open, onClose, driver, onSuccess }) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  // Picking a zone also fills the city from it (still editable after).
+  const handleZoneChange = (e) => {
+    const zoneId = e.target.value;
+    const zone = zones.find((z) => String(z._id) === zoneId);
+    setFormData((prev) => ({
+      ...prev,
+      homeZone: zoneId,
+      city: zone?.city || prev.city,
+    }));
+  };
+
+  // The driver's current zone may since have been deactivated, so it won't
+  // be in the active list — keep it selectable so the form doesn't blank it.
+  const currentZone = driver?.homeZone && typeof driver.homeZone === 'object' ? driver.homeZone : null;
+  const zoneOptions =
+    currentZone && !zones.some((z) => String(z._id) === String(currentZone._id))
+      ? [...zones, { ...currentZone, inactive: zonesLoaded }]
+      : zones;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (saving) return;
@@ -80,6 +125,7 @@ const AdminEditDriverModal = ({ open, onClose, driver, onSuccess }) => {
         gender: formData.gender,
         dateOfBirth: formData.dateOfBirth ? new Date(formData.dateOfBirth) : null,
         city: formData.city,
+        homeZone: formData.homeZone || null,
         languages: formData.languages
           .split(',')
           .map((s) => s.trim())
@@ -241,6 +287,26 @@ const AdminEditDriverModal = ({ open, onClose, driver, onSuccess }) => {
                   <option value="male">Male</option>
                   <option value="female">Female</option>
                   <option value="other">Other</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700">Service Zone</label>
+                <select
+                  name="homeZone"
+                  value={formData.homeZone}
+                  onChange={handleZoneChange}
+                  disabled={zonesLoading && zones.length === 0}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-60"
+                >
+                  <option value="">{zonesLoading && zones.length === 0 ? 'Loading zones…' : 'No zone assigned'}</option>
+                  {zoneOptions.map((z) => (
+                    <option key={z._id} value={z._id}>
+                      {z.name}
+                      {z.city ? ` (${z.city})` : ''}
+                      {z.inactive ? ' — inactive' : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
 

@@ -7,7 +7,6 @@ import {
   IndianRupee,
   Navigation,
   User as UserIcon,
-  Phone as PhoneIcon,
   Car as CarIcon,
   CalendarClock,
   Zap,
@@ -403,7 +402,7 @@ const BookingOfferModal = () => {
         </div>
 
         <div className="p-5 space-y-4">
-          {offer.customer && (offer.customer.name || offer.customer.phone) && (
+          {offer.customer && offer.customer.name && (
             <div className="flex items-start gap-3 rounded-2xl bg-bg/60 p-3">
               {offer.customer.profilePicture ? (
                 <img
@@ -421,12 +420,6 @@ const BookingOfferModal = () => {
                 <p className="text-sm font-semibold text-text truncate">
                   {offer.customer.name || 'Customer'}
                 </p>
-                {offer.customer.phone && (
-                  <p className="text-[11px] text-text-secondary inline-flex items-center gap-1 mt-0.5">
-                    <PhoneIcon className="w-3 h-3" />
-                    {offer.customer.phone}
-                  </p>
-                )}
               </div>
             </div>
           )}

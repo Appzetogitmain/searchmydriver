@@ -18,6 +18,7 @@ import {
 import Avatar from '../../../components/Avatar';
 import AdminDocumentUploadModal from '../components/ManageDrivers/AdminDocumentUploadModal';
 import AdminEditDriverModal from '../components/ManageDrivers/AdminEditDriverModal';
+import ServiceZoneEditor from '../components/ManageDrivers/ServiceZoneEditor';
 import api from '../../../utils/api';
 import { useCachedQuery } from '../../../hooks/useCachedQuery';
 import { buildCacheKey } from '../../../store/lib/buildCacheKey';
@@ -307,9 +308,7 @@ const DriverProfilePage = () => {
               },
               {
                 label: 'Service zone',
-                value: driver.homeZone?.name
-                  ? `${driver.homeZone.name}${driver.homeZone.city ? ` (${driver.homeZone.city})` : ''}`
-                  : (driver.city || '—'),
+                value: <ServiceZoneEditor driver={driver} onSaved={handleStatusUpdated} />,
               },
             ]}
           />

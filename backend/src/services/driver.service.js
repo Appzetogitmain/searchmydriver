@@ -4,6 +4,10 @@ import { OTP } from '../models/otp.model.js';
 import { Driver } from '../models/driverModels/driver.model.js';
 import Booking from '../models/booking.model.js';
 import Zone from '../models/zone.model.js';
+import Referral from '../models/referral.model.js';
+import SupportTicket from '../models/supportTicket.model.js';
+import WithdrawalRequest from '../models/withdrawalRequest.model.js';
+import { Notification } from '../models/notification.model.js';
 import { ApiError } from '../utils/apiError.js';
 import { sendSmsOtp } from '../utils/otpService.js';
 import { ACTIVE_BOOKING_STATUSES } from '../constants/bookingStatus.js';
@@ -33,7 +37,7 @@ export const sendOtpService = async (phone, referralCode) => {
 
   if (referralCode) {
     const code = referralCode.trim().toUpperCase();
-    let referrer = await Driver.findOne({ referralCode: code });
+    let referrer = await Driver.findOne({ referralCode: code, isDeleted: false });
     if (!referrer) {
       const User = (await import('../models/user.model.js')).default;
       referrer = await User.findOne({ referralCode: code });
@@ -43,7 +47,7 @@ export const sendOtpService = async (phone, referralCode) => {
     }
   }
 
-  const existingDriver = await Driver.findOne({ phone });
+  const existingDriver = await Driver.findOne({ phone, isDeleted: false });
   if (existingDriver) {
     throw new ApiError(400, 'Number already exists, please login');
   }
@@ -83,7 +87,14 @@ export const verifyOtpAndRegisterService = async (data) => {
     }
   }
 
-  let driver = await Driver.findOne({ phone });
+  // Accounts deleted before the full purge existed still hold the phone,
+  // which trips the unique index on signup — purge them first.
+  const staleDeleted = await Driver.find({ phone, isDeleted: true });
+  for (const stale of staleDeleted) {
+    await purgeDriverAccount(stale);
+  }
+
+  let driver = await Driver.findOne({ phone, isDeleted: false });
   const salt = await bcrypt.genSalt(10);
   const hashedPassword = await bcrypt.hash(password, salt);
 
@@ -121,7 +132,7 @@ export const verifyOtpAndRegisterService = async (data) => {
     // Handle incoming referral code
     if (referralCode) {
       const code = referralCode.trim().toUpperCase();
-      let referrer = await Driver.findOne({ referralCode: code });
+      let referrer = await Driver.findOne({ referralCode: code, isDeleted: false });
       let referrerType = 'Driver';
 
       if (!referrer) {
@@ -206,12 +217,10 @@ export const loginDriverService = async (phone, password) => {
     throw new ApiError(400, 'Phone and password required');
   }
 
-  const driver = await Driver.findOne({ phone }).select('+password');
+  const driver = await Driver.findOne({ phone, isDeleted: false }).select('+password');
   if (!driver) {
-    throw new ApiError(404, 'Wrong phone number');
-  }
-  if (driver.isDeleted) {
-    throw new ApiError(401, 'Account deactivated. Please contact support.');
+    // Also hit after an account is deleted — the number is freed for signup.
+    throw new ApiError(404, 'No account found with this number. Please register to continue.');
   }
 
   if (driver.authProvider === 'google') {
@@ -716,23 +725,83 @@ export const deleteDriverAccountService = async (driverId) => {
     throw new ApiError(409, 'Finish or cancel your active trips before deleting your account');
   }
 
-  driver.isDeleted = true;
-  driver.deletedAt = new Date();
-  driver.isOnline = false;
-  driver.isOnTrip = false;
-  driver.currentBookingId = null;
-  driver.socketId = null;
-  driver.fcmToken = '';
-  driver.canGoOnline = false;
-  driver.availableForOutstation = false;
-  driver.availableForMonthlyRide = false;
-  driver.preferredOutstationZones = [];
-  await driver.save();
+  const { deletedAt } = await purgeDriverAccount(driver);
 
   return {
     id: driver._id,
-    deletedAt: driver.deletedAt,
+    deletedAt,
   };
+};
+
+/**
+ * Permanently remove a driver's personal data so the same phone / Google
+ * account can sign up again as a brand-new driver.
+ *
+ * Personal data (notifications, support tickets, referrals, pending
+ * withdrawals, OTPs, uploaded documents) is deleted outright. The Driver row
+ * itself is kept but anonymized, because bookings, payments, wallet
+ * transactions, kit orders and platform revenue reference it. Unique
+ * identifiers (phone, googleId, referralCode) are $unset so the sparse
+ * unique indexes release them for a fresh signup.
+ */
+export const purgeDriverAccount = async (driver) => {
+  const driverId = driver._id;
+  const phone = driver.phone;
+  const deletedAt = driver.deletedAt || new Date();
+
+  const publicIds = (driver.documents || [])
+    .map((doc) => doc.cloudinaryPublicId)
+    .filter(Boolean);
+  const videoPublicId = driver.liveVerificationVideo?.cloudinaryPublicId;
+
+  await Promise.all([
+    Notification.deleteMany({ recipientId: driverId, recipientModel: 'Driver' }),
+    SupportTicket.deleteMany({ driverId }),
+    Referral.deleteMany({
+      $or: [
+        { referredId: driverId, referredType: 'Driver' },
+        { referrerId: driverId, referrerType: 'Driver' },
+      ],
+    }),
+    WithdrawalRequest.deleteMany({ driverId, status: 'pending' }),
+    phone ? OTP.deleteMany({ phone }) : null,
+    ...publicIds.map((id) => deleteFromCloudinary(id)),
+    videoPublicId ? deleteFromCloudinary(videoPublicId, 'video') : null,
+  ]);
+
+  await Driver.updateOne(
+    { _id: driverId },
+    {
+      $set: {
+        name: 'Deleted Driver',
+        email: '',
+        city: '',
+        homeZone: null,
+        profilePicture: '',
+        gender: '',
+        dateOfBirth: null,
+        drivingLicense: { number: '', expiryDate: null },
+        bankDetails: null,
+        documents: [],
+        liveVerificationVideo: { videoUrl: '', cloudinaryPublicId: '', recordedAt: null, durationSeconds: 0 },
+        fcmToken: '',
+        socketId: null,
+        isOnline: false,
+        isOnTrip: false,
+        currentBookingId: null,
+        canGoOnline: false,
+        availableForOutstation: false,
+        availableForMonthlyRide: false,
+        preferredOutstationZones: [],
+        isDeleted: true,
+        deletedAt,
+      },
+      $unset: { phone: 1, googleId: 1, referralCode: 1, password: 1 },
+    },
+    { strict: false },
+  );
+
+  return { deletedAt };
 };
 
 // force restart nodemon
