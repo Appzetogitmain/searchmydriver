@@ -5,11 +5,13 @@
   "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "start": "node api.js && node src/server.js",
-    "dev": "node api.js && nodemon src/server.js",
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
     "fix:payment-index": "node scripts/fixPaymentIndex.js",
-    "build": "node api.js && echo 'No build step required'",
-    "test:flow": "node tests/tripFlow.test.mjs"
+    "build": "echo 'No build step required'",
+    "test:flow": "node tests/tripFlow.test.mjs",
+    "test:sweep": "node tests/lifecycleSweep.test.mjs",
+    "test": "npm run test:flow && npm run test:sweep"
   },
   "keywords": [],
   "author": "",

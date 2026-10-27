@@ -213,11 +213,45 @@ export async function verifyBookingPaymentService(userId, bookingId, { orderId, 
     throw new ApiError(400, 'Payment signature verification failed');
   }
 
-  const chargedRupees = (booking.razorpay?.amountPaise || 0) / 100;
+  return applyCapturedBookingPayment(booking, {
+    paymentId,
+    signature,
+    chargedRupees: (booking.razorpay?.amountPaise || 0) / 100,
+  });
+}
+
+/**
+ * Credit a captured Razorpay payment onto the booking and advance the state
+ * machine. Shared by two callers with different notions of authority:
+ *
+ *   - `verifyBookingPaymentService` — the checkout callback, authorised by the
+ *     client-supplied HMAC signature.
+ *   - the reconciler (`paymentReconciliation.service.js`) — authorised by
+ *     Razorpay's own API, fetched server-side, so there is no signature.
+ *
+ * Both must settle identically, which is why this lives in one place: a
+ * divergence here would mean a reconciled payment leaves the booking in a
+ * different shape than a normally-paid one.
+ *
+ * Idempotent on `razorpay.paymentId`: re-applying the same capture returns the
+ * booking untouched, so a webhook and a sweep racing on the same payment is safe.
+ */
+export async function applyCapturedBookingPayment(
+  booking,
+  { paymentId, signature = null, chargedRupees },
+) {
+  if (paymentId && booking.razorpay?.paymentId === paymentId) {
+    return booking.toObject();
+  }
+
   const wasPrePay =
     booking.paymentMode === PAYMENT_MODE.PRE_RIDE &&
     booking.status === BOOKING_STATUS.AWAITING_PAYMENT;
 
+  // `razorpay` is always present on the checkout path (the order-id match
+  // above proves it), but this is a shared entry point now — the reconciler
+  // can reach a booking whose sub-document was never initialised.
+  if (!booking.razorpay) booking.razorpay = {};
   booking.razorpay.paymentId = paymentId;
   booking.razorpay.signature = signature;
   booking.paymentMethod = 'online';
