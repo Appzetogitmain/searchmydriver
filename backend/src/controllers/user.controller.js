@@ -4,6 +4,7 @@ import { AUDIENCES, setAuthCookies, clearAuthCookies } from '../utils/cookie.uti
 import * as userService from '../services/user.service.js';
 import { sendFcmNotification } from '../config/firebase.js';
 import { emitNotification } from '../utils/socketEmitters.js';
+import { claimFcmTokenExclusively } from '../utils/fcmToken.util.js';
 
 export const sendUserOtp = asyncHandler(async (req, res) => {
   const result = await userService.sendUserOtpService(req.body.phone, req.body.referralCode);
@@ -114,6 +115,14 @@ export const updateUserFcmToken = asyncHandler(async (req, res) => {
   const { token } = req.body;
   req.user.fcmToken = token || '';
   await req.user.save();
+  // One token, one account. The same device token can already be stored on
+  // another customer or driver (shared phone, a driver testing the rider app),
+  // and leaving it there would deliver this account's notifications — pickup
+  // address, OTP, fare — to that other person's device too.
+  await claimFcmTokenExclusively(req.user.fcmToken, {
+    ownerId: req.user._id,
+    ownerModel: 'User',
+  });
   return res.status(200).json(new ApiResponse(200, null, 'FCM token updated successfully'));
 });
 

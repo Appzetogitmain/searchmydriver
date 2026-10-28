@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import { logoutOnServer } from '../utils/logoutDevice';
 
 const useDriverAuthStore = create(
   persist(
@@ -14,7 +15,7 @@ const useDriverAuthStore = create(
           try {
             localStorage.removeItem('user-session');
             localStorage.removeItem('admin-session');
-          } catch (e) {
+          } catch {
             // ignore localStorage errors
           }
         }
@@ -26,7 +27,13 @@ const useDriverAuthStore = create(
         }));
       },
       updateDriver: (updates) => set((state) => ({ driver: { ...state.driver, ...updates } })),
-      logout: () => set({ driver: null, accessToken: null, refreshToken: null, isAuthenticated: false }),
+      // Clear local state immediately so the UI signs out without waiting on
+      // the network, and tell the API in the background to drop the refresh
+      // cookie and deregister this device from push.
+      logout: () => {
+        logoutOnServer('driver');
+        set({ driver: null, accessToken: null, refreshToken: null, isAuthenticated: false });
+      },
     }),
     {
       name: 'driver-session',

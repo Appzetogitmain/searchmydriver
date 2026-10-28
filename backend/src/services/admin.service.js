@@ -19,7 +19,8 @@ import {
   SELFIE_DOCUMENT_TYPES,
   syncProfilePictureFromSelfie,
 } from '../utils/driverDocuments.util.js';
-import { emitNotification } from '../utils/socketEmitters.js';
+import { emitNotification, emitToDriver } from '../utils/socketEmitters.js';
+import { S2C_EVENTS } from '../constants/socketEvents.js';
 import {
   getActiveTrainingVideos,
   mergeTrainingProgress,
@@ -583,6 +584,11 @@ export const updateDriverProfileByAdminService = async (staff, driverId, payload
     approvalNote,
   } = payload;
 
+  // Snapshot what the driver app currently believes, before we mutate the
+  // doc — `notifyDriverProfileChanged` diffs against these.
+  const cityBefore = driver.city || '';
+  let zoneChanged = false;
+
   if (name !== undefined) driver.name = name.trim();
   if (phone !== undefined) driver.phone = phone.trim();
   if (email !== undefined) driver.email = email.trim().toLowerCase();
@@ -596,6 +602,7 @@ export const updateDriverProfileByAdminService = async (staff, driverId, payload
     const currentZoneId = driver.homeZone ? String(driver.homeZone) : null;
 
     if (nextZoneId !== currentZoneId) {
+      zoneChanged = true;
       if (nextZoneId) {
         if (!mongoose.Types.ObjectId.isValid(nextZoneId)) {
           throw new ApiError(400, 'Invalid service zone');
@@ -666,8 +673,77 @@ export const updateDriverProfileByAdminService = async (staff, driverId, payload
   }
 
   await driver.save();
+
+  // Push the change down to the driver's app immediately. Without this the
+  // driver keeps showing the zone they were in when they signed in — their
+  // auth snapshot and the `/driver/profile` query cache are both frozen
+  // until something tells them to re-fetch.
+  await notifyDriverProfileChanged(driver, {
+    reason: 'admin_update',
+    zoneChanged,
+    cityChanged: (driver.city || '') !== cityBefore,
+  });
+
   return driver;
 };
+
+/**
+ * Tell a driver's app that their profile moved under them.
+ *
+ * Emits `DRIVER_PROFILE_UPDATED` into the driver's socket room (the app
+ * re-fetches `/driver/profile` on it) and, when the service zone itself
+ * changed, also raises a notification so the driver sees *why* their
+ * dispatch area moved — zone assignment decides which bookings reach them.
+ *
+ * Fire-and-forget: a socket/notification failure must never fail the
+ * admin's save, which has already been committed by this point.
+ */
+async function notifyDriverProfileChanged(driver, { reason, zoneChanged = false, cityChanged = false } = {}) {
+  try {
+    const zone = driver.homeZone
+      ? await Zone.findById(driver.homeZone).select('name code city isActive').lean()
+      : null;
+
+    const fields = [];
+    if (zoneChanged) fields.push('homeZone');
+    if (cityChanged) fields.push('city');
+
+    emitToDriver(driver._id, S2C_EVENTS.DRIVER_PROFILE_UPDATED, {
+      driverId: String(driver._id),
+      reason,
+      fields,
+      city: driver.city || '',
+      homeZone: zone
+        ? {
+            _id: String(zone._id),
+            name: zone.name,
+            code: zone.code,
+            city: zone.city || '',
+            isActive: zone.isActive,
+          }
+        : null,
+    });
+
+    if (zoneChanged) {
+      const label = zone
+        ? `${zone.name}${zone.city ? ` (${zone.city})` : ''}`
+        : null;
+      await emitNotification(
+        { driverId: String(driver._id) },
+        {
+          title: 'Service zone updated',
+          body: label
+            ? `Your service zone is now ${label}. New trip requests will come from this area.`
+            : 'Your service zone was removed. You may not receive trip requests until a new zone is assigned.',
+          severity: label ? 'info' : 'warn',
+          data: { type: 'driver_zone_updated', zoneId: zone ? String(zone._id) : null },
+        },
+      );
+    }
+  } catch (err) {
+    console.error('Failed to notify driver of profile change:', err);
+  }
+}
 
 async function assertSingleSuperAdmin(role, excludeUserId = null) {
   if (role !== USER_ROLES.ADMIN) return;

@@ -204,7 +204,15 @@ export const driverAcceptBooking = asyncHandler(async (req, res) => {
   }
   const result = await acceptBookingService(req.params.id, req.driver._id);
   if (!result.ok) {
-    throw new ApiError(400, result.message || result.reason || 'Cannot accept booking');
+    // Carry the machine-readable `reason` through in `data` (the global error
+    // handler forwards `err.data`). The driver app needs it to tell "someone
+    // else won the race" apart from "you can't take this one right now" —
+    // only the former means the booking is gone.
+    throw new ApiError(
+      400,
+      result.message || result.reason || 'Cannot accept booking',
+      { reason: result.reason || 'accept_failed' },
+    );
   }
   return res.status(200).json(new ApiResponse(200, result, 'Booking accepted'));
 });

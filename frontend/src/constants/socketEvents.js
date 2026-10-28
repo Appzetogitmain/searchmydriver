@@ -33,6 +33,13 @@ export const S2C_EVENTS = Object.freeze({
   CONNECTED: 'system:connected',
 
   DRIVER_STATUS_CHANGED: 'driver:status:changed',
+
+  /**
+   * The signed-in driver's profile changed outside their app (admin edit, or
+   * their service zone was renamed / re-drawn / deactivated). Handled
+   * globally by `DriverProfileSync`, which re-fetches `/driver/profile`.
+   */
+  DRIVER_PROFILE_UPDATED: 'driver:profile:updated',
   TRIP_LOCATION_UPDATED: 'trip:location:updated',
 
   BOOKING_OFFERED: 'booking:offered',

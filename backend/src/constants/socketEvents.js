@@ -72,6 +72,20 @@ export const S2C_EVENTS = Object.freeze({
   /** A driver's status (online/offline/on-trip) changed. Broadcast to admins. */
   DRIVER_STATUS_CHANGED: 'driver:status:changed',
 
+  /**
+   * A driver's own profile was changed from outside their app — an admin
+   * edited them, or the service zone they're assigned to was itself
+   * renamed / re-drawn / deactivated.
+   *
+   * Sent to the driver's room only. Payload:
+   *   `{ driverId, reason: 'admin_update' | 'zone_update', fields: string[],
+   *      city, homeZone: { _id, name, code, city, isActive } | null }`
+   *
+   * The driver app treats this as "re-fetch `GET /driver/profile`" — the
+   * payload is a hint for optimistic UI, never the source of truth.
+   */
+  DRIVER_PROFILE_UPDATED: 'driver:profile:updated',
+
   /** Driver's live location update mirrored to a booking room. */
   TRIP_LOCATION_UPDATED: 'trip:location:updated',
 

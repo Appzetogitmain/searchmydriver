@@ -15,6 +15,7 @@ import {
 import useDriverActiveTripStore from '../../../../store/driver/useDriverActiveTripStore';
 import { useSocketEvent } from '../../../../hooks/useSocket';
 import { S2C_EVENTS } from '../../../../constants/socketEvents';
+import { isBookingGoneReason, acceptErrorReason } from '../../../../utils/bookingOfferReasons';
 import {
   ACTIVE_BOOKING_STATUSES,
   BOOKING_STATUS,
@@ -169,7 +170,11 @@ const MyTripsPage = () => {
     S2C_EVENTS.BOOKING_OFFER_WITHDRAWN,
     useCallback(
       (payload) => {
-        if (payload?.bookingId) {
+        // An offer is withdrawn for several reasons — the wave timing out, the
+        // driver declining, or this driver going busy elsewhere. Only an
+        // actual award to someone else (or the booking being cancelled) means
+        // "booked by another driver"; the rest just end this wave.
+        if (payload?.bookingId && isBookingGoneReason(payload?.reason)) {
           markBookingTaken(payload.bookingId);
         }
         refetchRequestsRef.current?.().catch(() => {});
@@ -198,12 +203,19 @@ const MyTripsPage = () => {
         navigate(`/driver/trip/${targetId}`);
       }
     } catch (err) {
+      const reason = acceptErrorReason(err);
       const msg =
         err?.response?.data?.message ||
         err?.message ||
         'Could not accept booking. It may have been claimed by another driver.';
       setActionError(msg);
-      markBookingTaken(reqItem.bookingId);
+      // Only grey the card out when the booking is actually gone. A
+      // `driver_busy` / negative-wallet / city-mismatch refusal is about this
+      // driver — the booking is still SEARCHING and the customer is still
+      // waiting, so the card must stay actionable.
+      if (isBookingGoneReason(reason)) {
+        markBookingTaken(reqItem.bookingId);
+      }
       refetchRequestsRef.current?.().catch(() => {});
     } finally {
       setAcceptingId(null);

@@ -11,7 +11,12 @@
     "build": "echo 'No build step required'",
     "test:flow": "node tests/tripFlow.test.mjs",
     "test:sweep": "node tests/lifecycleSweep.test.mjs",
-    "test": "npm run test:flow && npm run test:sweep"
+    "test": "npm run test:flow && npm run test:sweep && npm run test:fcm && npm run test:billing && npm run test:postride",
+    "test:fcm": "node tests/fcmToken.test.mjs",
+    "fcm:audit": "node scripts/purgeStaleFcmTokens.js",
+    "fcm:purge": "node scripts/purgeStaleFcmTokens.js --apply",
+    "test:billing": "node tests/actualBilling.test.mjs",
+    "test:postride": "node tests/postRideFlow.test.mjs"
   },
   "keywords": [],
   "author": "",

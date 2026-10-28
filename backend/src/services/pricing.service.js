@@ -452,26 +452,62 @@ export function calculateHourlyFare({
 } = {}) {
   if (!pricing) throw new ApiError(400, 'Service pricing is required for fare calculation');
 
-  // Package price: slab → fixed, custom → hourly rate × bookedHours.
-  let packagePrice = 0;
-  let slabMaxHours = 0;
+  /**
+   * Time is billed on what the ride actually took, not on the window the
+   * customer booked.
+   *
+   * This used to be a package model: a 2h slab charged its full ₹300 whether
+   * the ride ran 30 minutes or the full two hours, and only overflow beyond
+   * the window added anything. Customers were paying for time nobody used.
+   *
+   * Now the booked package sets the *rate*, and the clock sets the amount:
+   *
+   *   hourlyRate = slab.price / slab.maxHours   (or customHours.ratePerHour)
+   *   within     = min(actual, bookedWindow) at hourlyRate, pro-rated
+   *   overflow   = anything beyond bookedWindow at extraHourCharge
+   *
+   * A full-length ride therefore costs exactly what it did before
+   * (2h × ₹150 = the ₹300 slab), and overtime is unchanged. Only the
+   * under-used ride gets cheaper — which is the whole point.
+   *
+   * `quotedPackagePrice` is retained in the breakdown so the invoice can show
+   * the customer what they were quoted next to what they were charged.
+   *
+   * When `actualDurationMin` is null we are quoting, not billing, so the full
+   * booked window is used — the estimate must still show the booked price.
+   */
+  let hourlyRate = 0;
+  let bookedWindowHours = 0;
+  let quotedPackagePrice = 0;
   if (isCustomDuration) {
-    const rate = pricing.customHours?.ratePerHour || 0;
-    const hours = Math.max(1, Math.ceil(bookedHours || 0));
-    packagePrice = rate * hours;
-    slabMaxHours = hours;
+    hourlyRate = pricing.customHours?.ratePerHour || 0;
+    bookedWindowHours = Math.max(1, Math.ceil(bookedHours || 0));
+    quotedPackagePrice = hourlyRate * bookedWindowHours;
   } else {
-    packagePrice = slab?.price ?? 0;
-    slabMaxHours = slab?.maxHours ?? bookedHours ?? 0;
+    quotedPackagePrice = slab?.price ?? 0;
+    bookedWindowHours = slab?.maxHours ?? bookedHours ?? 0;
+    // The slab's implied hourly rate. Falls back to the custom rate when a
+    // slab has no usable window, so a misconfigured slab can't bill ₹0/h.
+    hourlyRate =
+      bookedWindowHours > 0
+        ? quotedPackagePrice / bookedWindowHours
+        : pricing.customHours?.ratePerHour || 0;
   }
 
-  let extraHours = 0;
-  let extraHourCharge = 0;
-  if (actualDurationMin != null && slabMaxHours > 0) {
-    const overflowMin = Math.max(0, actualDurationMin - slabMaxHours * 60);
-    extraHours = Math.ceil(overflowMin / 60);
-    extraHourCharge = extraHours * (pricing.extraHourCharge || 0);
-  }
+  const isQuote = actualDurationMin == null;
+  const billedMinutes = isQuote
+    ? bookedWindowHours * 60
+    : Math.max(0, Math.round(actualDurationMin));
+  const withinWindowMin = Math.min(billedMinutes, bookedWindowHours * 60);
+  const overflowMin = Math.max(0, billedMinutes - bookedWindowHours * 60);
+
+  // Pro-rated per minute: 30 minutes of a ₹150/h package is ₹75.
+  const packagePrice = round2((withinWindowMin / 60) * hourlyRate);
+
+  // Overflow still bills in whole hours at the dedicated overtime rate —
+  // that rate is defined per hour and is a deterrent, not a meter.
+  const extraHours = Math.ceil(overflowMin / 60);
+  const extraHourCharge = extraHours * (pricing.extraHourCharge || 0);
 
   const freeWait = pricing.waitingCharge?.freeWaitingMinutes ?? 0;
   const perMin = pricing.waitingCharge?.chargePerMinute ?? 0;
@@ -562,6 +598,22 @@ export function calculateHourlyFare({
     isCustomDuration: !!isCustomDuration,
     bookedHours: bookedHours || 0,
     packagePrice: round2(packagePrice),
+    /**
+     * Billing transparency — what the invoice needs to show the customer
+     * why the final amount differs from the quote.
+     *
+     *   quotedPackagePrice : what the booked window would have cost
+     *   billedMinutes      : what the ride actually took
+     *   billedHours        : the same, in hours, for display
+     *   hourlyRate         : the rate the package implies
+     *   isProRated         : true when they were charged less than the quote
+     */
+    quotedPackagePrice: round2(quotedPackagePrice),
+    bookedWindowMinutes: bookedWindowHours * 60,
+    billedMinutes,
+    billedHours: Math.round((billedMinutes / 60) * 100) / 100,
+    hourlyRate: round2(hourlyRate),
+    isProRated: !isQuote && billedMinutes < bookedWindowHours * 60,
     extraHours,
     extraHourCharge: round2(extraHourCharge),
     waitingMinutes: waitingMinutes || 0,

@@ -50,6 +50,7 @@ const DriverTripRequestCard = ({
     carCategory = 'Standard',
     isTaken = false,
     takenByOther = false,
+    busyBlocked = false,
     canAccept = true,
   } = request;
 
@@ -231,6 +232,14 @@ const DriverTripRequestCard = ({
           <div className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-slate-100 text-slate-600 font-bold text-xs border border-slate-200">
             <AlertCircle className="w-3.5 h-3.5 text-slate-500" />
             <span>Booked by another driver</span>
+          </div>
+        ) : busyBlocked ? (
+          /* Still unclaimed — this driver just can't take it until their
+             current ride is closed. Deliberately worded so it isn't mistaken
+             for "someone else got it". */
+          <div className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-amber-50 text-amber-800 font-semibold text-xs border border-amber-200">
+            <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <span>Finish your ongoing ride to accept this</span>
           </div>
         ) : cashBlocked ? (
           <div className="w-full flex items-center justify-between gap-1.5 p-2 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 text-xs">

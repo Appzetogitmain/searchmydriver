@@ -2,6 +2,7 @@ import Booking from '../models/booking.model.js';
 import { Driver } from '../models/driverModels/driver.model.js';
 import ServicePricing from '../models/servicePricing.model.js';
 import { ApiError } from '../utils/apiError.js';
+import { tripKm, resetTripDistance } from './tripDistance.service.js';
 import { SERVICE_TYPES } from '../constants/serviceTypes.js';
 import { withdrawCurrentOfferService } from './bookingDispatch.service.js';
 import {
@@ -619,6 +620,13 @@ export async function startTripService(driverId, bookingId, { otp } = {}) {
     console.warn('[bookingTrip] failed to check kit status on start:', err?.message);
   }
 
+  // Zero the distance meter at the moment the ride begins. Without this the
+  // cursor still holds the driver's position from the drive to pickup, and
+  // the first measured leg would bill that approach as ride distance.
+  resetTripDistance(booking._id).catch((err) =>
+    console.warn('[bookingTrip] failed to reset trip distance:', err?.message),
+  );
+
   broadcastUpdate(booking);
   return booking.toObject();
 }
@@ -756,12 +764,26 @@ async function endTripAndRequestPayment(booking, { actualKm = 0, endedBy }) {
   const startedAt = booking.timeline?.startedAt ? new Date(booking.timeline.startedAt) : null;
   const actualDurationMin = startedAt ? Math.ceil((endedAt.getTime() - startedAt.getTime()) / (1000 * 60)) : 0;
 
+  // Distance comes from the server's own metering of the driver's GPS stream,
+  // never from the caller. The `actualKm` in the request body is the driver's
+  // app reporting a number that feeds the per-km charge and therefore their
+  // own earnings; it is accepted only as a fallback for rides that produced
+  // no usable GPS at all (permission denied, signal dead the whole trip).
+  const meteredKm = tripKm(booking);
+  const billableKm = meteredKm > 0 ? meteredKm : Math.max(0, Number(actualKm) || 0);
+  if (meteredKm === 0 && Number(actualKm) > 0) {
+    console.warn(
+      '[bookingTrip] booking', String(booking._id),
+      'had no metered distance — falling back to client-reported', actualKm, 'km',
+    );
+  }
+
   // Dynamically recalculate final trip fare (Time + KM for One-Way, Hours base for Round Trip)
   try {
     const finalTripFare = await calculateFinalTripFare({
       booking,
       actualDurationMin,
-      actualKm,
+      actualKm: billableKm,
     });
     if (finalTripFare?.fareBreakdown) {
       const bd = finalTripFare.fareBreakdown;
@@ -837,12 +859,26 @@ export async function completeTripService(driverId, bookingId, { actualKm = 0, p
   const rideEndedAt = booking.timeline?.tripEndedAt ? new Date(booking.timeline.tripEndedAt) : completedAt;
   const actualDurationMin = startedAt ? Math.ceil((rideEndedAt.getTime() - startedAt.getTime()) / (1000 * 60)) : 0;
 
+  // Distance comes from the server's own metering of the driver's GPS stream,
+  // never from the caller. The `actualKm` in the request body is the driver's
+  // app reporting a number that feeds the per-km charge and therefore their
+  // own earnings; it is accepted only as a fallback for rides that produced
+  // no usable GPS at all (permission denied, signal dead the whole trip).
+  const meteredKm = tripKm(booking);
+  const billableKm = meteredKm > 0 ? meteredKm : Math.max(0, Number(actualKm) || 0);
+  if (meteredKm === 0 && Number(actualKm) > 0) {
+    console.warn(
+      '[bookingTrip] booking', String(booking._id),
+      'had no metered distance — falling back to client-reported', actualKm, 'km',
+    );
+  }
+
   // Dynamically recalculate final trip fare (Time + KM for One-Way, Hours base for Round Trip)
   try {
     const finalTripFare = await calculateFinalTripFare({
       booking,
       actualDurationMin,
-      actualKm,
+      actualKm: billableKm,
     });
     if (finalTripFare?.fareBreakdown) {
       const bd = finalTripFare.fareBreakdown;

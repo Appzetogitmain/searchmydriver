@@ -2,6 +2,9 @@ import Zone from '../models/zone.model.js';
 import WebCity from '../models/webCity.model.js';
 import { ApiError } from '../utils/apiError.js';
 import { ZONE_SHAPE } from '../constants/zoneShapes.js';
+import { Driver } from '../models/driverModels/driver.model.js';
+import { emitToDriver } from '../utils/socketEmitters.js';
+import { S2C_EVENTS } from '../constants/socketEvents.js';
 import {
   slugifyZoneCode,
   parseCenterCoordinates,
@@ -131,6 +134,50 @@ export const getZoneByIdService = async (id) => {
   return serializeZone(zone);
 };
 
+/**
+ * Tell every driver assigned to a zone that the zone itself changed.
+ *
+ * Renaming a zone, re-drawing its boundary, moving its centre or
+ * deactivating it all change what the driver's panel should display and
+ * which pickups reach them — but nothing on the driver side polls for it,
+ * so the panel would keep rendering the pre-edit zone until the next
+ * sign-in. Same contract as the admin driver-edit emit: the payload is a
+ * hint, the app re-fetches `/driver/profile` for the truth.
+ *
+ * Fire-and-forget — a socket failure must not fail the admin's zone save.
+ */
+async function notifyZoneDriversOfZoneChange(zone) {
+  try {
+    const drivers = await Driver.find({
+      isDeleted: { $ne: true },
+      $or: [{ homeZone: zone._id }, { preferredOutstationZones: zone._id }],
+    })
+      .select('_id city homeZone')
+      .lean();
+
+    const summary = {
+      _id: String(zone._id),
+      name: zone.name,
+      code: zone.code,
+      city: zone.city || '',
+      isActive: zone.isActive,
+    };
+
+    for (const driver of drivers) {
+      const isHomeZone = String(driver.homeZone || '') === String(zone._id);
+      emitToDriver(driver._id, S2C_EVENTS.DRIVER_PROFILE_UPDATED, {
+        driverId: String(driver._id),
+        reason: 'zone_update',
+        fields: isHomeZone ? ['homeZone'] : ['preferredOutstationZones'],
+        city: driver.city || '',
+        homeZone: isHomeZone ? summary : null,
+      });
+    }
+  } catch (err) {
+    console.error('Failed to notify drivers of zone change:', err);
+  }
+}
+
 export const updateZoneService = async (id, data) => {
   const zone = await Zone.findById(id);
   if (!zone) throw new ApiError(404, 'Zone not found');
@@ -153,7 +200,9 @@ export const updateZoneService = async (id, data) => {
     await zone.save();
   }
 
-  return serializeZone(await Zone.findById(id));
+  const saved = await Zone.findById(id);
+  await notifyZoneDriversOfZoneChange(saved);
+  return serializeZone(saved);
 };
 
 export const deleteZoneService = async (id) => {
@@ -161,6 +210,11 @@ export const deleteZoneService = async (id) => {
   if (!zone) throw new ApiError(404, 'Zone not found');
 
   await Zone.deleteOne({ _id: zone._id });
+
+  // Drivers pointing at this zone now hold a dangling reference — tell their
+  // apps to re-fetch so the panel stops showing a zone that no longer exists.
+  await notifyZoneDriversOfZoneChange({ ...zone.toObject(), isActive: false });
+
   return { id: zone._id };
 };
 

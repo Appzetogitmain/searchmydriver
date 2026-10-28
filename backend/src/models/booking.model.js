@@ -547,6 +547,27 @@ const bookingSchema = new mongoose.Schema(
      * the same wallet ledger used elsewhere — `bufferRefundTxId` points
      * at the resulting WalletTransaction row.
      */
+    /**
+     * What actually happened on the road, measured server-side.
+     *
+     * `actualKm` is accumulated in `recordDriverLocation` from the driver's
+     * GPS stream while the booking is STARTED, never taken from the client:
+     * the request body used to carry an `actualKm` the driver's own app
+     * supplied, and that number feeds straight into their earnings.
+     *
+     * `lastPingAt` / `lastPingCoords` are the running cursor the accumulator
+     * measures the next leg from. They are reset when the trip starts so a
+     * stale position from the drive to pickup can't be billed as ride
+     * distance.
+     */
+    trip: {
+      actualKm: { type: Number, default: 0, min: 0 },
+      lastPingAt: { type: Date, default: null },
+      lastPingCoords: { type: [Number], default: undefined }, // [lng, lat]
+      /** GPS samples accepted into `actualKm` — a confidence signal for support. */
+      pingCount: { type: Number, default: 0, min: 0 },
+    },
+
     waiting: {
       waitedMinutes: { type: Number, default: 0, min: 0 },
       billableMinutes: { type: Number, default: 0, min: 0 },

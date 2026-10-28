@@ -565,6 +565,10 @@ const vehicleExperiencePopulate = [
   { path: 'vehicleExperience.fuelTypeId', select: 'name' },
   { path: 'carTypeExperience', select: 'name' },
   { path: 'preferredOutstationZones', select: 'name code city isActive' },
+  // The admin-assigned service zone. Populated so the driver app can show
+  // the live zone name/city instead of guessing from the stale `city`
+  // string it cached at login.
+  { path: 'homeZone', select: 'name code city isActive description shapeType center radiusKm boundary' },
 ];
 
 export const getProfileService = async (driverId) => {
