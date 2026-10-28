@@ -172,16 +172,30 @@ export function calculateHourlyFare({
 } = {}) {
   if (!pricing) return null;
 
-  const slabPrice = slab?.price ?? 0;
-  const slabMaxHours = slab?.maxHours ?? bookedHours ?? 0;
+  // Mirrors `calculateHourlyFare` in backend/src/services/pricing.service.js:
+  // time is billed on the clock, not on the booked window. The package sets
+  // the rate; the minutes actually used set the amount. Keep the two in sync —
+  // this one drives the admin pricing preview, so a divergence would show
+  // admins a number the platform will never actually charge.
+  const quotedPackagePrice = slab?.price ?? 0;
+  const bookedWindowHours = slab?.maxHours ?? bookedHours ?? 0;
+  const hourlyRate =
+    bookedWindowHours > 0
+      ? quotedPackagePrice / bookedWindowHours
+      : pricing.customHours?.ratePerHour || 0;
 
-  let extraHours = 0;
-  let extraHourCharge = 0;
-  if (actualDurationMin != null && slabMaxHours > 0) {
-    const overflowMin = Math.max(0, actualDurationMin - slabMaxHours * 60);
-    extraHours = Math.ceil(overflowMin / 60);
-    extraHourCharge = extraHours * (pricing.extraHourCharge || 0);
-  }
+  const isQuote = actualDurationMin == null;
+  const billedMinutes = isQuote
+    ? bookedWindowHours * 60
+    : Math.max(0, Math.round(actualDurationMin));
+  const withinWindowMin = Math.min(billedMinutes, bookedWindowHours * 60);
+  const overflowMin = Math.max(0, billedMinutes - bookedWindowHours * 60);
+
+  const slabPrice = round2((withinWindowMin / 60) * hourlyRate);
+  const slabMaxHours = bookedWindowHours;
+
+  const extraHours = Math.ceil(overflowMin / 60);
+  const extraHourCharge = extraHours * (pricing.extraHourCharge || 0);
 
   const freeWait = pricing.waitingCharge?.freeWaitingMinutes ?? 0;
   const perMin = pricing.waitingCharge?.chargePerMinute ?? 0;
@@ -218,6 +232,12 @@ export function calculateHourlyFare({
     estimatedKm: Math.max(0, Number(estimatedKm) || 0),
     oneWayPerKmRate: pricing.oneWayCharge?.perKmRate || 0,
     packagePrice: round2(slabPrice),
+    quotedPackagePrice: round2(quotedPackagePrice),
+    bookedWindowMinutes: bookedWindowHours * 60,
+    billedMinutes,
+    billedHours: Math.round((billedMinutes / 60) * 100) / 100,
+    hourlyRate: round2(hourlyRate),
+    isProRated: !isQuote && billedMinutes < bookedWindowHours * 60,
     extraHours,
     extraHourCharge: round2(extraHourCharge),
     waitingMinutes: waitingMinutes || 0,

@@ -25,13 +25,31 @@ function rupees(n) {
   return `${sign}\u20B9${Math.abs(v)}`;
 }
 
+/** "1 h 30 min", "45 min" \u2014 for showing what the customer is actually billed for. */
+function formatMinutes(mins) {
+  const m = Math.max(0, Math.round(Number(mins) || 0));
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  if (h && rem) return `${h} h ${rem} min`;
+  if (h) return `${h} h`;
+  return `${rem} min`;
+}
+
 function buildHourlyRows(bd) {
   const kmLabel = bd.estimatedKm
     ? `One-way distance (${bd.estimatedKm} km${bd.oneWayPerKmRate ? ` \u00d7 \u20B9${bd.oneWayPerKmRate}/km` : ''})`
     : 'One-way distance charge';
 
+  // Time is billed on the clock, not the booked window, so the base-fare row
+  // has to say which minutes it covers \u2014 otherwise a customer who booked 2 h
+  // and rode 30 min has no way to tell why the amount differs from the quote.
+  const timeLabel =
+    bd.billedMinutes != null && bd.hourlyRate
+      ? `Time (${formatMinutes(bd.billedMinutes)} \u00d7 \u20B9${bd.hourlyRate}/h)`
+      : 'Base fare';
+
   return [
-    ['Base fare', bd.packagePrice || 0],
+    [timeLabel, bd.packagePrice || 0],
     [kmLabel, bd.oneWayCharge, !(Number(bd.oneWayCharge) > 0)],
     [`Extra hours (${bd.extraHours || 0})`, bd.extraHourCharge, !(bd.extraHours > 0)],
     ['Waiting', bd.waitingCharge],
@@ -147,6 +165,18 @@ const FareCard = ({ estimate, estimating = false, error = null, dense = false, f
               <strong className="block mb-1 text-xs">Platform Registration Only</strong>
               The ₹{fareTotal} fee is paid to the platform to confirm your monthly booking. 
               <strong> You will negotiate the driver's actual monthly salary directly with them</strong> once they accept your request.
+            </div>
+          )}
+          {/* The ride used less than the window it reserved, so it was billed
+              on the clock instead of the package. Said plainly and up front \u2014
+              a final amount lower than the quote is otherwise just as
+              confusing as one that's higher. */}
+          {breakdown.isProRated && breakdown.quotedPackagePrice > breakdown.packagePrice && (
+            <div className="bg-success/10 text-success text-[11px] p-3 rounded-xl mb-3 border border-success/20 leading-snug">
+              <strong className="block mb-0.5 text-xs">You only paid for the time you used</strong>
+              You booked {formatMinutes(breakdown.bookedWindowMinutes)} (\u20b9{breakdown.quotedPackagePrice})
+              {' '}and used {formatMinutes(breakdown.billedMinutes)} \u2014 saving{' '}
+              {rupees(breakdown.quotedPackagePrice - breakdown.packagePrice)}.
             </div>
           )}
           {/* Per-line breakdown with explicit multipliers (\u00d7 days,

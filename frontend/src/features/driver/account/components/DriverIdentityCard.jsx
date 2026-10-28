@@ -31,7 +31,12 @@ const DriverIdentityCard = ({ driver, className = '' }) => {
     typeof driver?.experienceYears === 'number' && driver.experienceYears > 0
       ? `${driver.experienceYears} Year${driver.experienceYears === 1 ? '' : 's'}`
       : 'Experienced';
-  const workLocation = driver?.city || driver?.zone?.name || 'India';
+  // The admin-assigned service zone is the authoritative work area; `city`
+  // is only a denormalised copy of it, and `zone` never existed on the
+  // driver payload at all.
+  const homeZone =
+    driver?.homeZone && typeof driver.homeZone === 'object' ? driver.homeZone : null;
+  const workLocation = homeZone?.name || driver?.city || 'India';
   const languagesList =
     Array.isArray(driver?.languages) && driver.languages.length > 0
       ? driver.languages

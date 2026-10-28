@@ -4,6 +4,7 @@ import useUserAuthStore from '../store/useUserAuthStore';
 import useDriverAuthStore from '../store/useDriverAuthStore';
 import { requestFcmToken, onFcmMessage } from '../config/firebase';
 import api from '../utils/api';
+import { cacheFcmToken } from '../utils/logoutDevice';
 import { showSystemNotification } from '../utils/systemNotification';
 
 /**
@@ -18,6 +19,8 @@ export async function registerPushToken(role = 'user') {
   const token = await requestFcmToken();
   if (!token) return false;
   await api.post(role === 'driver' ? '/driver/fcm-token' : '/auth/fcm-token', { token });
+  // Remember it so logout can deregister this exact device.
+  cacheFcmToken(token);
   console.log(`[FCM] Registered token for ${role} successfully`);
   return true;
 }
@@ -48,9 +51,11 @@ export function useFcm() {
         const isDriverRoute = window.location.pathname.startsWith('/driver');
         if (isDriverRoute && isDriverAuthenticated) {
           await api.post('/driver/fcm-token', { token });
+          cacheFcmToken(token);
           console.log('[FCM] Registered token for driver successfully');
         } else if (!isDriverRoute && isUserAuthenticated) {
           await api.post('/auth/fcm-token', { token });
+          cacheFcmToken(token);
           console.log('[FCM] Registered token for user successfully');
         }
       } catch (err) {

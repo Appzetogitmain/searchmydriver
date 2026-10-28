@@ -7,6 +7,7 @@ import {
   clearAuthCookies,
 } from '../utils/cookie.util.js';
 import * as commonService from '../services/common.service.js';
+import { releaseFcmToken } from '../utils/fcmToken.util.js';
 
 export const uploadImage = asyncHandler(async (req, res) => {
   const result = await commonService.uploadImageService(req.file, req.body.oldPublicId);
@@ -34,10 +35,38 @@ export const makeRefreshAccessToken = (audience) =>
     return res.status(200).json(new ApiResponse(200, tokens, 'Token refreshed successfully'));
   });
 
-/** @param {string} audience — one of AUDIENCES */
+/**
+ * @param {string} audience — one of AUDIENCES
+ *
+ * Accepts an optional `fcmToken` in the body: the device deregistering itself
+ * for push. Without this a signed-out device keeps receiving the previous
+ * account's ride notifications, because the token stays on that account's
+ * record and `emitNotification` happily pushes to it.
+ *
+ * Intentionally still unauthenticated. Logout must work when the access token
+ * has already expired — requiring auth here would strand exactly the sessions
+ * most in need of clearing — and possessing a device token only ever lets you
+ * unsubscribe that same device.
+ */
 export const makeLogout = (audience) =>
   asyncHandler(async (req, res) => {
     clearAuthCookies(res, audience);
+
+    // Best-effort: a failure here must never stop the client signing out.
+    const { fcmToken } = req.body || {};
+    if (fcmToken) {
+      try {
+        const cleared = await releaseFcmToken(fcmToken);
+        if (cleared > 0) {
+          console.log(
+            `[fcm] logout released token ...${String(fcmToken).slice(-8)} from ${cleared} account(s)`,
+          );
+        }
+      } catch (err) {
+        console.warn('[fcm] logout token release failed:', err?.message);
+      }
+    }
+
     return res.status(200).json(new ApiResponse(200, {}, 'Logged out successfully'));
   });
 

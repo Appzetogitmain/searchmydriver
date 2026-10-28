@@ -1,4 +1,5 @@
 import { Driver } from '../models/driverModels/driver.model.js';
+import { accumulateTripDistance } from './tripDistance.service.js';
 import { getRtdb, isFirebaseReady } from '../config/firebase.js';
 import { emitToAdmins } from '../utils/socketEmitters.js';
 import { S2C_EVENTS } from '../constants/socketEvents.js';
@@ -134,6 +135,11 @@ export async function recordDriverLocation(driverId, coords) {
   };
 
   const firebaseOk = await writeFirebaseLocation(driverId, fbPayload);
+
+  // Fold this fix into the driver's in-progress ride, if any. Fire-and-forget:
+  // metering must never delay or break the location broadcast that the live
+  // tracking map depends on.
+  accumulateTripDistance(driverId, { lat, lng, accuracy }).catch(() => {});
 
   let mongoSnapshot = false;
   const lastMongoAt = lastMongoWriteAt.get(String(driverId)) || 0;

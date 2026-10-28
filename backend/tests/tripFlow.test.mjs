@@ -93,8 +93,26 @@ await expectReject('another user cannot end this trip', () =>
 const ended = await trip.userEndTripService(user._id, b1._id);
 check('user ends trip → still STARTED, awaiting payment', ended.status === 'started', ended.status);
 check('tripEndedAt stamped, endedBy = user', !!ended.timeline.tripEndedAt && ended.timeline.tripEndedBy === 'user');
-check(`5h booked, ran 2h → billed full 5h package (₹${rate * 5})`, ended.fareSnapshot.baseFare === rate * 5,
-  `(baseFare ${ended.fareSnapshot.baseFare})`);
+// Time is billed on the clock, not the booked window. This booking reserved
+// 5h and used ~2h, so it pays for ~2h. (It previously charged the full 5h
+// package; that was the behaviour this assertion was written to lock in, and
+// it is deliberately inverted here.) The tolerance is one minute's worth of
+// fare: `actualDurationMin` is ceil()'d from timestamps, so a sub-second drift
+// at setup shows up as a 121st minute.
+const expectedBase = rate * 2;
+const oneMinute = rate / 60;
+check(
+  `5h booked, ran 2h → billed ~2h pro-rata (≈₹${expectedBase}), not the 5h package (₹${rate * 5})`,
+  Math.abs(ended.fareSnapshot.baseFare - expectedBase) <= oneMinute * 1.5 &&
+    ended.fareSnapshot.baseFare < rate * 5,
+  `(baseFare ${ended.fareSnapshot.baseFare})`,
+);
+check('under-used booking is flagged pro-rated for the invoice',
+  ended.fareSnapshot.breakdown?.isProRated === true,
+  String(ended.fareSnapshot.breakdown?.isProRated));
+check(`quoted package price still recorded (₹${rate * 5}) so the invoice can show both`,
+  ended.fareSnapshot.breakdown?.quotedPackagePrice === rate * 5,
+  String(ended.fareSnapshot.breakdown?.quotedPackagePrice));
 check('payment now pending', ended.paymentStatus === 'pending', ended.paymentStatus);
 const total1 = ended.fareSnapshot.total;
 console.log(`        final fare total ₹${total1}`);

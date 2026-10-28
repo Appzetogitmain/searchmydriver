@@ -4,6 +4,7 @@ import { AUDIENCES, setAuthCookies, clearAuthCookies } from '../utils/cookie.uti
 import * as driverService from '../services/driver.service.js';
 import { sendFcmNotification } from '../config/firebase.js';
 import { emitNotification } from '../utils/socketEmitters.js';
+import { claimFcmTokenExclusively } from '../utils/fcmToken.util.js';
 
 export const sendOtp = asyncHandler(async (req, res) => {
   const result = await driverService.sendOtpService(req.body.phone, req.body.referralCode);
@@ -125,6 +126,12 @@ export const updateDriverFcmToken = asyncHandler(async (req, res) => {
   const { token } = req.body;
   req.driver.fcmToken = token || '';
   await req.driver.save();
+  // One token, one account — see claimFcmTokenExclusively. Without this a
+  // shared device keeps receiving the other account's ride notifications.
+  await claimFcmTokenExclusively(req.driver.fcmToken, {
+    ownerId: req.driver._id,
+    ownerModel: 'Driver',
+  });
   return res.status(200).json(new ApiResponse(200, null, 'FCM token updated successfully'));
 });
 

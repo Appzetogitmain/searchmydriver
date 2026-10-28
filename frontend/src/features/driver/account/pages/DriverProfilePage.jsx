@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Briefcase, Calendar, Circle, IdCard, Mail, Phone, ShieldCheck, Star, Users, Car, Wallet } from 'lucide-react';
+import { ArrowLeft, Briefcase, Calendar, Circle, IdCard, Mail, Phone, MapPin, ShieldCheck, Star, Users, Car, Wallet } from 'lucide-react';
 import Avatar from '../../../../components/Avatar';
 import Badge from '../../../../components/Badge';
 import Card from '../../../../components/Card';
@@ -53,6 +53,10 @@ const DriverProfilePage = () => {
   const ratingValue = Number(driver.rating || 0);
   const ratingCount = Number(driver.ratingCount || 0);
   const vehicleCount = Array.isArray(driver.vehicleExperience) ? driver.vehicleExperience.length : 0;
+  // `/driver/profile` populates `homeZone`; the login snapshot only has the
+  // bare id, so fall back to `city` when we only have the cached copy.
+  const serviceZone =
+    driver.homeZone && typeof driver.homeZone === 'object' ? driver.homeZone : null;
 
   const personalRows = useMemo(
     () =>
@@ -61,8 +65,20 @@ const DriverProfilePage = () => {
         { icon: Mail, label: 'Email', value: driver.email || 'Not added' },
         driver.gender ? { icon: Users, label: 'Gender', value: capitalise(driver.gender) } : null,
         driver.dateOfBirth ? { icon: Calendar, label: 'Date of birth', value: formatDate(driver.dateOfBirth) } : null,
+        {
+          icon: MapPin,
+          label: 'Service zone',
+          // Admin-assigned, and changed from the admin panel — the row is
+          // always shown so a removed zone is visible rather than silent.
+          value: serviceZone?.name || driver.city || 'Not assigned',
+          sub: serviceZone
+            ? [serviceZone.city, serviceZone.isActive === false ? 'Inactive' : null]
+                .filter(Boolean)
+                .join(' · ') || null
+            : 'Contact support to get a zone assigned',
+        },
       ].filter(Boolean),
-    [driver, phone],
+    [driver, phone, serviceZone],
   );
 
   const drivingRows = useMemo(

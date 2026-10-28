@@ -861,16 +861,40 @@ export async function acceptBookingService(bookingId, driverId) {
   const alreadyPaid =
     booking.paymentStatus === BOOKING_PAYMENT_STATUS.PAID;
 
-  if (alreadyPaid || isCash) {
+  /**
+   * Hourly and outstation rides are billed on what actually happened —
+   * time spent, plus per-km on one-way trips — so the fare is not yet
+   * knowable when the driver accepts. Asking the customer to pay up front
+   * would mean charging an estimate and reconciling afterwards.
+   *
+   * `createBookingService` already marks these POST_RIDE / NOT_DUE_YET at
+   * creation (see `isDeferredPayment`), but every payment method except
+   * cash used to fall into the `else` below, which overwrote that with
+   * PRE_RIDE + a 60-second deadline. That is what produced the "Pay within
+   * 0:35" modal on an hourly booking, and the driver's matching
+   * "Auto-cancels in 0:01" overlay.
+   *
+   * Monthly is deliberately excluded: its charge is a fixed registration
+   * fee, not a metered fare, so it still collects up front.
+   */
+  const isMeteredFare =
+    booking.serviceType === SERVICE_TYPES.HOURLY ||
+    booking.serviceType === SERVICE_TYPES.OUTSTATION;
+
+  if (alreadyPaid || isCash || isMeteredFare) {
     booking.status = BOOKING_STATUS.DRIVER_ASSIGNED;
     booking.timeline.paymentDeadlineAt = null;
     booking.cancellation = null;
-    if (isCash) {
-      // Cash bookings do not require an upfront customer payment
-      // before the driver starts heading to pickup.
+    // Nothing is collected before the ride for cash, or for any metered
+    // fare. `alreadyPaid` is excluded: a wallet-prepaid or re-dispatched
+    // booking has real money against it, and resetting it to NOT_DUE_YET
+    // would lose that payment.
+    if (!alreadyPaid && (isCash || isMeteredFare)) {
       booking.paymentMode = PAYMENT_MODE.POST_RIDE;
       booking.paymentStatus = BOOKING_PAYMENT_STATUS.NOT_DUE_YET;
-      
+    }
+
+    if (isCash) {
       if (booking.serviceType === SERVICE_TYPES.MONTHLY) {
         // For monthly rides, the platform fee is collected in cash by the driver.
         // We must debit the driver's wallet immediately upon acceptance.

@@ -5,13 +5,18 @@
   "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
+    "start": "node api.js && node src/server.js",
+    "dev": "node api.js && nodemon src/server.js",
     "fix:payment-index": "node scripts/fixPaymentIndex.js",
-    "build": "echo 'No build step required'",
+    "build": "node api.js && echo 'No build step required'",
     "test:flow": "node tests/tripFlow.test.mjs",
     "test:sweep": "node tests/lifecycleSweep.test.mjs",
-    "test": "npm run test:flow && npm run test:sweep"
+    "test": "npm run test:flow && npm run test:sweep && npm run test:fcm && npm run test:billing && npm run test:postride",
+    "test:fcm": "node tests/fcmToken.test.mjs",
+    "fcm:audit": "node scripts/purgeStaleFcmTokens.js",
+    "fcm:purge": "node scripts/purgeStaleFcmTokens.js --apply",
+    "test:billing": "node tests/actualBilling.test.mjs",
+    "test:postride": "node tests/postRideFlow.test.mjs"
   },
   "keywords": [],
   "author": "",

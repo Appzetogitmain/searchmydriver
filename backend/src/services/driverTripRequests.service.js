@@ -10,6 +10,7 @@ import {
   TRIP_TYPE,
 } from '../constants/bookingStatus.js';
 import { SERVICE_TYPES } from '../constants/serviceTypes.js';
+import { findDriverActiveBooking } from './driverConflict.service.js';
 
 // Same zone the pricing engine uses — format in the customer's local time,
 // not the server's (hosted servers usually run in UTC).
@@ -64,7 +65,7 @@ function formatDateTimeStrings(dateObj) {
 /**
  * Format single booking item for driver trip request view.
  */
-function formatTripRequestItem(booking, driver, carDoc, carTypeDoc) {
+function formatTripRequestItem(booking, driver, carDoc, carTypeDoc, { driverIsBusy = false } = {}) {
   const driverIdStr = String(driver._id);
   const isTaken =
     booking.status !== BOOKING_STATUS.SEARCHING &&
@@ -176,6 +177,17 @@ function formatTripRequestItem(booking, driver, carDoc, carTypeDoc) {
   const driverWalletBalance = Number(driver.wallet?.balance || 0);
   const cashBlocked = isCash && driverWalletBalance < 0;
 
+  // One ride at a time. `acceptBookingService` refuses instant bookings while
+  // the driver has a committed ride, so the list has to say so up front —
+  // otherwise the driver taps Accept on a request that can never succeed.
+  // Scheduled and monthly bookings are deliberately exempt, matching the
+  // exemption on the accept path.
+  const busyBlocked =
+    driverIsBusy &&
+    booking.serviceType !== SERVICE_TYPES.MONTHLY &&
+    booking.bookingType !== BOOKING_TYPE.SCHEDULED &&
+    !isAssignedToMe;
+
   return {
     _id: String(booking._id),
     bookingId: String(booking._id),
@@ -217,7 +229,12 @@ function formatTripRequestItem(booking, driver, carDoc, carTypeDoc) {
     isTaken,
     takenByOther,
     isAssignedToMe,
-    canAccept: !isTaken && !cashBlocked && driver.approvalStatus !== 'suspended',
+    busyBlocked,
+    canAccept:
+      !isTaken &&
+      !cashBlocked &&
+      !busyBlocked &&
+      driver.approvalStatus !== 'suspended',
   };
 }
 
@@ -242,6 +259,13 @@ export async function getDriverEligibleTripRequestsService(driverId, filters = {
 
   // Time window for recently taken/assigned bookings so other drivers see "Booked" transition
   const recentTakenCutoff = new Date(Date.now() - 45 * 1000); // 45 seconds grace window
+
+  // Does this driver already hold a committed ride? The dispatch wave already
+  // excludes busy drivers from instant offers, but this list is a separate
+  // query that didn't, so a driver mid-trip was shown instant requests the
+  // accept endpoint would always refuse with `driver_busy`.
+  const activeBooking = await findDriverActiveBooking(driverId);
+  const driverIsBusy = Boolean(activeBooking);
 
   // Build booking query
   const queryOrConditions = [
@@ -323,7 +347,9 @@ export async function getDriverEligibleTripRequestsService(driverId, filters = {
     const carDoc = booking.carId || null;
     const carTypeDoc = carDoc?.carTypeId ? carTypeMap.get(String(carDoc.carTypeId)) : null;
 
-    const formatted = formatTripRequestItem(booking, driver, carDoc, carTypeDoc);
+    const formatted = formatTripRequestItem(booking, driver, carDoc, carTypeDoc, {
+      driverIsBusy,
+    });
 
     // Apply category filter if passed
     if (filters.category && filters.category !== 'all') {
