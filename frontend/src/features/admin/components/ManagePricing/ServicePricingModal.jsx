@@ -24,6 +24,7 @@ const buildDefaultForm = (serviceType) => ({
   // Hourly
   slabs: [],
   extraHourCharge: serviceType === SERVICE_TYPES.HOURLY ? 150 : 0,
+  minBillableHours: serviceType === SERVICE_TYPES.HOURLY ? 2 : 0,
   waitingCharge: {
     freeWaitingMinutes: 15,
     chargePerMinute: 2,
@@ -290,6 +291,18 @@ const ServicePricingModal = ({ isOpen, onClose, serviceType, existing, onSaved }
                   min={0}
                   value={form.extraHourCharge}
                   onChange={(e) => update({ extraHourCharge: Number(e.target.value) })}
+                />
+                {/* Time is billed on the clock, so without a floor a long
+                    booking used for a few minutes costs a few minutes. This
+                    is what the driver is guaranteed for holding the slot. */}
+                <Input
+                  label="Minimum billable hours"
+                  type="number"
+                  min={0}
+                  step="0.5"
+                  value={form.minBillableHours}
+                  onChange={(e) => update({ minBillableHours: Number(e.target.value) })}
+                  helper="Shortest duration a ride can be billed for. 0 = bill purely on actual time."
                 />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <Input

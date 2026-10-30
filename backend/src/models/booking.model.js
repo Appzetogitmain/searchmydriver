@@ -513,6 +513,15 @@ const bookingSchema = new mongoose.Schema(
       driverShare: { type: Number, default: 0 },
       companyShare: { type: Number, default: 0 },
       /**
+       * A ride cancelled *after it started* is billed as the short ride it
+       * was — metered time and distance, floored at `minBillableHours` —
+       * rather than as a cancellation fee. This records that amount.
+       *
+       * Mutually exclusive with `feeCharged`: whichever path applies, the
+       * other stays 0. They must never be summed.
+       */
+      settledFareRupees: { type: Number, default: 0 },
+      /**
        * Free-form tier id stamped by the cancellation policy engine
        * (e.g. `outstation_more_than_24h`, `outstation_arrived`,
        * `outstation_driver_within_6h`). Drives FE copy + admin audits

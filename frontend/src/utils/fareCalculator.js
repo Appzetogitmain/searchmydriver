@@ -184,12 +184,20 @@ export function calculateHourlyFare({
       ? quotedPackagePrice / bookedWindowHours
       : pricing.customHours?.ratePerHour || 0;
 
+  // Minimum billable duration. The floor raises the window as well as the
+  // minutes — flooring only the minutes would bill overtime that never
+  // happened on bookings shorter than the minimum.
+  const minBillableMin = Math.max(0, Number(pricing.minBillableHours) || 0) * 60;
+
   const isQuote = actualDurationMin == null;
-  const billedMinutes = isQuote
+  const actualMinutes = isQuote
     ? bookedWindowHours * 60
     : Math.max(0, Math.round(actualDurationMin));
-  const withinWindowMin = Math.min(billedMinutes, bookedWindowHours * 60);
-  const overflowMin = Math.max(0, billedMinutes - bookedWindowHours * 60);
+  const billedMinutes = Math.max(actualMinutes, minBillableMin);
+  const effectiveWindowMin = Math.max(bookedWindowHours * 60, minBillableMin);
+  const withinWindowMin = Math.min(billedMinutes, effectiveWindowMin);
+  const overflowMin = Math.max(0, billedMinutes - effectiveWindowMin);
+  const minimumApplied = !isQuote && billedMinutes > actualMinutes;
 
   const slabPrice = round2((withinWindowMin / 60) * hourlyRate);
   const slabMaxHours = bookedWindowHours;
@@ -234,6 +242,9 @@ export function calculateHourlyFare({
     packagePrice: round2(slabPrice),
     quotedPackagePrice: round2(quotedPackagePrice),
     bookedWindowMinutes: bookedWindowHours * 60,
+    actualMinutes,
+    minBillableMinutes: minBillableMin,
+    minimumApplied,
     billedMinutes,
     billedHours: Math.round((billedMinutes / 60) * 100) / 100,
     hourlyRate: round2(hourlyRate),

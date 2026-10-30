@@ -486,6 +486,20 @@ const servicePricingSchema = new mongoose.Schema(
     slabs: { type: [slabSchema], default: [] },
     /** ₹ per extra hour beyond the booked slab (hourly only). */
     extraHourCharge: { type: Number, default: 0, min: 0 },
+    /**
+     * Hourly-only: the shortest ride the customer can be billed for.
+     *
+     * Time is otherwise billed on the clock, so a 2h booking used for 20
+     * minutes would cost 20 minutes' worth. This floor is what the driver is
+     * guaranteed for showing up and committing the slot — they turned down
+     * other work for that window.
+     *
+     * `slab.minHours` is NOT this: that one only selects which slab applies to
+     * a booked duration, and has no effect on billing.
+     *
+     * Set to 0 to disable the floor entirely and bill purely on actual time.
+     */
+    minBillableHours: { type: Number, default: 2, min: 0 },
     waitingCharge: { type: waitingChargeSchema, default: () => ({}) },
     /** Hourly-only: opt-in custom-duration knob, lets users go beyond slabs. */
     customHours: { type: customHoursSchema, default: () => ({}) },

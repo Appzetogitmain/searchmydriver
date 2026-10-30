@@ -75,8 +75,8 @@ const booking = await Booking.create({
   city: 'Indore',
   pickup: { address: 'Pickup', city: 'Indore', location: { type: 'Point', coordinates: [PICKUP.lng, PICKUP.lat] } },
   dropoff: { address: 'Drop', city: 'Indore', location: { type: 'Point', coordinates: [75.90, 22.75] } },
-  hourly: { scheduledStartAt: new Date(), durationHours: 2, isCustomDuration: true, tripType: 'one_way', estimatedKm: 6 },
-  fareSnapshot: { baseFare: 240, total: 330 },
+  hourly: { scheduledStartAt: new Date(), durationHours: 5, isCustomDuration: true, tripType: 'one_way', estimatedKm: 6 },
+  fareSnapshot: { baseFare: 600, total: 700 },
   // What createBookingService stamps for an online hourly booking.
   paymentMethod: 'online',
   paymentMode: 'post_ride',
@@ -158,12 +158,14 @@ check('idling at the light added nothing',
   b.trip.pingCount === 10, `(pingCount ${b.trip.pingCount})`);
 
 /* ------------------------------------------------------------------ */
-console.log('\n[5] Customer ends the trip after 30 min of a 2 h booking');
+console.log('\n[5] Customer ends the trip after 3 h of a 5 h booking');
 /* ------------------------------------------------------------------ */
-// Backdate the start so the ride reads as 30 minutes long.
+// Above the 2-hour minimum, so this exercises real pro-rating: the customer
+// reserved 5 h, used 3 h, and should pay for 3 h. (The minimum itself is
+// covered in section [10] and in the billing suite.)
 await Booking.updateOne(
   { _id: booking._id },
-  { $set: { 'timeline.startedAt': new Date(Date.now() - 30 * MIN) } },
+  { $set: { 'timeline.startedAt': new Date(Date.now() - 180 * MIN) } },
 );
 
 const ended = await trip.userEndTripService(user._id, booking._id);
@@ -176,13 +178,17 @@ console.log(`        billed ${bd.billedMinutes} min @ ₹${bd.hourlyRate}/h` +
   ` = ₹${bd.packagePrice}  |  ${bd.estimatedKm} km @ ₹${bd.oneWayPerKmRate}/km = ₹${bd.oneWayCharge}` +
   `  |  total ₹${b.fareSnapshot.total}`);
 
-check('billed for ~30 min, not the booked 2 h',
-  bd.billedMinutes >= 29 && bd.billedMinutes <= 31, `(${bd.billedMinutes} min)`);
-check('time charge is pro-rated, not the 2 h package',
-  near(bd.packagePrice, bd.hourlyRate * 0.5, 5), `(₹${bd.packagePrice} vs ₹${bd.hourlyRate}/h)`);
+check('billed for ~3 h, not the booked 5 h',
+  bd.billedMinutes >= 179 && bd.billedMinutes <= 182, `(${bd.billedMinutes} min)`);
+check('above the 2 h minimum, so the floor does not apply',
+  bd.minimumApplied === false, `(minimumApplied ${bd.minimumApplied})`);
+check('time charge is pro-rated to ~3 h, not the 5 h package',
+  near(bd.packagePrice, bd.hourlyRate * 3, 10), `(₹${bd.packagePrice} vs ₹${bd.hourlyRate}/h)`);
 check('flagged pro-rated for the invoice', bd.isProRated === true);
-check('quoted package price retained for comparison',
+check('quoted 5 h package retained for comparison',
   bd.quotedPackagePrice > bd.packagePrice, `(quoted ₹${bd.quotedPackagePrice}, billed ₹${bd.packagePrice})`);
+check('no phantom overtime inside the booked window',
+  bd.extraHours === 0, `(extraHours ${bd.extraHours})`);
 
 check('per-km charged on the MEASURED distance, not the 6 km estimate',
   near(bd.estimatedKm, measuredKm, 0.05), `(fare used ${bd.estimatedKm} km, meter said ${measuredKm.toFixed(3)})`);
@@ -261,6 +267,47 @@ const kmAtEnd = (await reload()).trip.actualKm;
 await accumulateTripDistance(driver._id, { lat: PICKUP.lat + 0.05, lng: PICKUP.lng, accuracy: 8 });
 check('driving away adds no billable distance',
   near((await reload()).trip.actualKm, kmAtEnd), '(meter kept running)');
+
+/* ------------------------------------------------------------------ */
+console.log('\n[10] Cancelling mid-ride is billed as a short ride');
+/* ------------------------------------------------------------------ */
+// Regression guard. Moving payment post-ride broke the old fee model:
+// `computeUserCancellation` charges a percentage of what has been PAID, and
+// under post-ride nothing is paid until the end — so a mid-ride cancellation
+// returned a ₹0 fee and the driver was paid nothing for the time they gave.
+// A started ride is now settled as the short ride it was, floored at the
+// minimum, so the customer owes the minimum and the driver is covered.
+const booking2 = await Booking.create({
+  bookingNumber: `PRC${Date.now()}`,
+  userId: user._id, driverId: driver._id,
+  serviceType: 'hourly', bookingType: 'instant', city: 'Indore',
+  pickup: { address: 'Pickup', city: 'Indore', location: { type: 'Point', coordinates: [PICKUP.lng, PICKUP.lat] } },
+  hourly: { scheduledStartAt: new Date(), durationHours: 2, isCustomDuration: true, tripType: 'one_way', estimatedKm: 6 },
+  fareSnapshot: { baseFare: 240, total: 330 },
+  paymentMethod: 'online', paymentMode: 'post_ride', paymentStatus: 'not_due_yet',
+  status: 'started',
+  timeline: { startedAt: new Date(Date.now() - 10 * MIN) },
+});
+
+const booking2Svc = await imp('services/booking.service.js');
+await booking2Svc.cancelBookingByUserService(user._id, booking2._id, 'changed my mind');
+
+const c = await Booking.findById(booking2._id).lean();
+check('booking is cancelled', c.status === 'cancelled', c.status);
+check('a mid-ride cancellation leaves an amount OWING, not ₹0',
+  c.paymentStatus === 'pending', c.paymentStatus);
+check('the amount owed is greater than zero',
+  c.fareSnapshot.total > 0, `(₹${c.fareSnapshot.total})`);
+check('billed at the 2-hour minimum despite a 10-minute ride',
+  c.fareSnapshot.breakdown?.minimumApplied === true &&
+    c.fareSnapshot.breakdown?.billedMinutes === 120,
+  `(billed ${c.fareSnapshot.breakdown?.billedMinutes} min, actual ${c.fareSnapshot.breakdown?.actualMinutes})`);
+check('settled amount recorded on the cancellation for audit',
+  near(c.cancellation?.settledFareRupees, c.fareSnapshot.total, 0.02),
+  `(₹${c.cancellation?.settledFareRupees})`);
+check('no cancellation fee stacked on top of the settled fare',
+  (c.cancellation?.feeCharged || 0) === 0, `(fee ₹${c.cancellation?.feeCharged})`);
+console.log(`        cancelled after 10 min -> billed ${c.fareSnapshot.breakdown?.billedMinutes} min = ₹${c.fareSnapshot.total}`);
 
 await new Promise((r) => setTimeout(r, 1500)); // let fire-and-forget writes finish
 console.log(`\n${pass} passed, ${fail} failed`);

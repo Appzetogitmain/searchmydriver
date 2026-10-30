@@ -43,10 +43,16 @@ function buildHourlyRows(bd) {
   // Time is billed on the clock, not the booked window, so the base-fare row
   // has to say which minutes it covers \u2014 otherwise a customer who booked 2 h
   // and rode 30 min has no way to tell why the amount differs from the quote.
-  const timeLabel =
-    bd.billedMinutes != null && bd.hourlyRate
-      ? `Time (${formatMinutes(bd.billedMinutes)} \u00d7 \u20B9${bd.hourlyRate}/h)`
-      : 'Base fare';
+  //
+  // When the minimum kicks in the row must say so explicitly. Rendering
+  // "Time (2 h \u00d7 \u20B9150/h)" for a 30-minute ride reads as an arithmetic error
+  // to the one person best placed to notice it.
+  let timeLabel = 'Base fare';
+  if (bd.billedMinutes != null && bd.hourlyRate) {
+    timeLabel = bd.minimumApplied
+      ? `Time (${formatMinutes(bd.minBillableMinutes)} minimum \u00d7 \u20B9${bd.hourlyRate}/h)`
+      : `Time (${formatMinutes(bd.billedMinutes)} \u00d7 \u20B9${bd.hourlyRate}/h)`;
+  }
 
   return [
     [timeLabel, bd.packagePrice || 0],
@@ -171,11 +177,27 @@ const FareCard = ({ estimate, estimating = false, error = null, dense = false, f
               on the clock instead of the package. Said plainly and up front \u2014
               a final amount lower than the quote is otherwise just as
               confusing as one that's higher. */}
+          {/* The ride was shorter than the minimum billable duration, so it
+              was rounded up. Stated plainly: a customer who rode 20 minutes
+              and sees a 2-hour charge will otherwise assume a bug. */}
+          {breakdown.minimumApplied && (
+            <div className="bg-amber-50 text-amber-800 text-[11px] p-3 rounded-xl mb-3 border border-amber-100 leading-snug">
+              <strong className="block mb-0.5 text-xs">
+                Minimum {formatMinutes(breakdown.minBillableMinutes)} charge applies
+              </strong>
+              Your ride took {formatMinutes(breakdown.actualMinutes)}. Every booking is
+              billed for at least {formatMinutes(breakdown.minBillableMinutes)}, since the
+              driver reserved that time for you.
+            </div>
+          )}
+          {/* The ride used less than the window it reserved, so it was billed
+              on the clock instead of the package. A final amount lower than
+              the quote is otherwise just as confusing as one that's higher. */}
           {breakdown.isProRated && breakdown.quotedPackagePrice > breakdown.packagePrice && (
             <div className="bg-success/10 text-success text-[11px] p-3 rounded-xl mb-3 border border-success/20 leading-snug">
               <strong className="block mb-0.5 text-xs">You only paid for the time you used</strong>
               You booked {formatMinutes(breakdown.bookedWindowMinutes)} (\u20b9{breakdown.quotedPackagePrice})
-              {' '}and used {formatMinutes(breakdown.billedMinutes)} \u2014 saving{' '}
+              {' '}and were billed for {formatMinutes(breakdown.billedMinutes)} \u2014 saving{' '}
               {rupees(breakdown.quotedPackagePrice - breakdown.packagePrice)}.
             </div>
           )}

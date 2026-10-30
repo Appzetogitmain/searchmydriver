@@ -494,12 +494,27 @@ export function calculateHourlyFare({
         : pricing.customHours?.ratePerHour || 0;
   }
 
+  /**
+   * Minimum billable duration — what the driver is guaranteed for committing
+   * the slot, regardless of how little of it the customer uses.
+   *
+   * The floor has to raise the *window* as well as the minutes. Flooring only
+   * the minutes creates overtime that never happened: on a 1h booking with a
+   * 2h floor, 20 minutes of driving would floor to 120 min, overflow the
+   * 60-min window by an hour, and bill an extra hour at the overtime rate.
+   * Raising both keeps the floored time inside the window where it belongs.
+   */
+  const minBillableMin = Math.max(0, Number(pricing.minBillableHours) || 0) * 60;
+
   const isQuote = actualDurationMin == null;
-  const billedMinutes = isQuote
+  const actualMinutes = isQuote
     ? bookedWindowHours * 60
     : Math.max(0, Math.round(actualDurationMin));
-  const withinWindowMin = Math.min(billedMinutes, bookedWindowHours * 60);
-  const overflowMin = Math.max(0, billedMinutes - bookedWindowHours * 60);
+  const billedMinutes = Math.max(actualMinutes, minBillableMin);
+  const effectiveWindowMin = Math.max(bookedWindowHours * 60, minBillableMin);
+  const withinWindowMin = Math.min(billedMinutes, effectiveWindowMin);
+  const overflowMin = Math.max(0, billedMinutes - effectiveWindowMin);
+  const minimumApplied = !isQuote && billedMinutes > actualMinutes;
 
   // Pro-rated per minute: 30 minutes of a ₹150/h package is ₹75.
   const packagePrice = round2((withinWindowMin / 60) * hourlyRate);
@@ -610,9 +625,15 @@ export function calculateHourlyFare({
      */
     quotedPackagePrice: round2(quotedPackagePrice),
     bookedWindowMinutes: bookedWindowHours * 60,
+    /** What the clock actually read, before any minimum was applied. */
+    actualMinutes,
+    /** What was charged for — `actualMinutes` raised to the minimum. */
     billedMinutes,
     billedHours: Math.round((billedMinutes / 60) * 100) / 100,
     hourlyRate: round2(hourlyRate),
+    minBillableMinutes: minBillableMin,
+    /** True when the ride was shorter than the minimum and got rounded up. */
+    minimumApplied,
     isProRated: !isQuote && billedMinutes < bookedWindowHours * 60,
     extraHours,
     extraHourCharge: round2(extraHourCharge),

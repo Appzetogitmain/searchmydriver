@@ -56,9 +56,13 @@ const IMPLIED_RATE = SLAB.price / SLAB.maxHours; // ₹150/h
 const customRate = pricing?.customHours?.ratePerHour || 120;
 const extraRate = pricing?.extraHourCharge || 0;
 
+// Sections A-D predate the minimum and assert pure pro-rata, so they pin the
+// floor off explicitly. Section I below covers the floor itself.
+const noFloorPricing = { ...pricing, minBillableHours: 0 };
+
 const fareFor = (actualDurationMin, over = {}) =>
   calculateHourlyFare({
-    pricing,
+    pricing: noFloorPricing,
     slab: SLAB,
     isCustomDuration: false,
     actualDurationMin,
@@ -118,7 +122,7 @@ check('a full hour past the window is still 1 extra hour',
 console.log('\n[D] Custom-duration bookings pro-rate on their own rate');
 /* ------------------------------------------------------------------ */
 const custom = calculateHourlyFare({
-  pricing, slab: null, isCustomDuration: true,
+  pricing: noFloorPricing, slab: null, isCustomDuration: true,
   actualDurationMin: 30, bookedHours: 5, tripType: 'round_trip',
 });
 check(`30 min of a custom 5h booking bills 30 min at ₹${customRate}/h`,
@@ -225,6 +229,67 @@ check('distance is frozen once the trip is ended',
 await Booking.updateOne({ _id: live._id }, { $set: { status: 'completed' } });
 const res = await accumulateTripDistance(driver._id, { lat: 22.7400, lng: 75.8577, accuracy: 10 });
 check('a driver with no started trip accrues nothing', res === null, JSON.stringify(res));
+
+/* ------------------------------------------------------------------ */
+console.log('\n[I] Minimum billable duration');
+/* ------------------------------------------------------------------ */
+// The driver reserved the slot and turned down other work, so a ride shorter
+// than the minimum is still billed for the minimum.
+const floored = { ...pricing, minBillableHours: 2 };
+const withFloor = (actualDurationMin, slab, bookedHours) =>
+  calculateHourlyFare({
+    pricing: floored, slab, isCustomDuration: !slab,
+    actualDurationMin, bookedHours, tripType: 'round_trip', estimatedKm: 0,
+  });
+
+const short2h = withFloor(30, SLAB, 2);
+check('30 min on a 2h slab bills the full 2h minimum',
+  near(short2h.packagePrice, SLAB.price), `(₹${short2h.packagePrice})`);
+check('…flagged so the invoice can explain it', short2h.minimumApplied === true);
+check('…actual minutes still reported for display',
+  short2h.actualMinutes === 30, `(${short2h.actualMinutes})`);
+check('…billed minutes raised to the floor',
+  short2h.billedMinutes === 120, `(${short2h.billedMinutes})`);
+
+const short5h = withFloor(30, null, 5);
+check('30 min on a 5h custom booking bills 2h, not 5h',
+  near(short5h.packagePrice, customRate * 2), `(₹${short5h.packagePrice})`);
+check('…so the floor raises, but never to the whole booked window',
+  short5h.packagePrice < customRate * 5);
+
+// THE TRAP: flooring only the minutes would overflow a sub-minimum window and
+// bill overtime the customer never used.
+const SHORT_SLAB = { price: 180, maxHours: 1, minHours: 0 };
+const trap = withFloor(20, SHORT_SLAB, 1);
+check('20 min on a 1h slab charges NO phantom extra hour',
+  trap.extraHours === 0, `(extraHours ${trap.extraHours}, charge ₹${trap.extraHourCharge})`);
+check('…and bills exactly 2h at the slab rate',
+  near(trap.packagePrice, (SHORT_SLAB.price / SHORT_SLAB.maxHours) * 2), `(₹${trap.packagePrice})`);
+
+// Above the floor, nothing changes.
+const above = withFloor(180, SLAB, 2);
+check('a 3h ride is unaffected by the floor', above.minimumApplied === false);
+check('…and still bills package + 1 extra hour',
+  near(above.packagePrice, SLAB.price) && above.extraHours === 1,
+  `(₹${above.packagePrice}, extraHours ${above.extraHours})`);
+
+const exact = withFloor(120, SLAB, 2);
+check('a ride exactly at the floor is not flagged', exact.minimumApplied === false);
+
+// The floor must be genuinely optional.
+const noFloor = calculateHourlyFare({
+  pricing: { ...pricing, minBillableHours: 0 }, slab: SLAB,
+  isCustomDuration: false, actualDurationMin: 30, bookedHours: 2, tripType: 'round_trip',
+});
+check('minBillableHours = 0 restores pure pro-rata',
+  near(noFloor.packagePrice, IMPLIED_RATE * 0.5) && noFloor.minimumApplied === false,
+  `(₹${noFloor.packagePrice})`);
+
+// The quote must still show the booked package, not the floor.
+const flooredQuote = withFloor(null, SLAB, 2);
+check('a quote is never "minimum applied"', flooredQuote.minimumApplied === false);
+check('…and still quotes the booked package price',
+  near(flooredQuote.packagePrice, SLAB.price), `(₹${flooredQuote.packagePrice})`);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 await mongoose.disconnect();

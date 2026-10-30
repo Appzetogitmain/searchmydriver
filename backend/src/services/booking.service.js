@@ -1270,6 +1270,60 @@ export async function createBookingService(userId, body) {
 /* Cancel                                                              */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Settle a ride that was cancelled after it started, by billing it as the
+ * short ride it was: actual time on the clock and actual metered distance,
+ * floored at the service's `minBillableHours`.
+ *
+ * Mutates `booking` in place (`fareSnapshot`, `paymentStatus`); the caller
+ * saves. Returns the amount now owed so the cancellation record can state it.
+ */
+async function settleCancelledRideFare(booking) {
+  const startedAt = booking.timeline?.startedAt
+    ? new Date(booking.timeline.startedAt)
+    : null;
+  const endedAt = new Date();
+  const actualDurationMin = startedAt
+    ? Math.ceil((endedAt.getTime() - startedAt.getTime()) / 60_000)
+    : 0;
+
+  const { calculateFinalTripFare } = await import('./pricing.service.js');
+  const { tripKm } = await import('./tripDistance.service.js');
+
+  const finalFare = await calculateFinalTripFare({
+    booking,
+    actualDurationMin,
+    actualKm: tripKm(booking),
+  });
+  const bd = finalFare?.fareBreakdown;
+  if (!bd) return 0;
+
+  const baseFare = bd.packagePrice ?? 0;
+  const subtotal = bd.subtotal ?? 0;
+  booking.fareSnapshot = {
+    pricingId: finalFare.pricingId || booking.fareSnapshot?.pricingId || null,
+    baseFare: round2(Number(baseFare)),
+    extras: round2(Math.max(0, Number(subtotal) - Number(baseFare))),
+    serviceCharge: round2(Number(bd.serviceCharge || 0)),
+    gst: round2(Number(bd.gstAmount || 0)),
+    discount: round2(Number(bd.subscriptionDiscount || 0)),
+    total: round2(Number(bd.totalPayable || 0)),
+    breakdown: bd,
+  };
+
+  // The ride is over and the meter has stopped, so this amount is due now.
+  booking.timeline.tripEndedAt = booking.timeline.tripEndedAt || endedAt;
+  // `tripEndedBy` is an enum of who stopped the clock, not why — the fact
+  // that this was a cancellation is recorded in `cancellation.reason`.
+  booking.timeline.tripEndedBy = booking.timeline.tripEndedBy || 'user';
+  booking.paymentStatus =
+    booking.fareSnapshot.total > 0
+      ? BOOKING_PAYMENT_STATUS.PENDING
+      : BOOKING_PAYMENT_STATUS.PAID;
+
+  return booking.fareSnapshot.total;
+}
+
 export async function cancelBookingByUserService(userId, bookingId, reason = '') {
   const booking = await Booking.findOne({ _id: bookingId, userId, isDeleted: false });
   if (!booking) throw new ApiError(404, 'Booking not found');
@@ -1281,6 +1335,38 @@ export async function cancelBookingByUserService(userId, bookingId, reason = '')
   // `driverSharePercent` knob on the same policy.
   const policy = await loadCancellationPolicy(booking.serviceType);
   const breakdown = computeUserCancellation(booking, policy);
+
+  /**
+   * A ride already under way is not really "cancelled" — the driver showed
+   * up and drove. Under post-ride payment the old fee model cannot express
+   * that: `computeUserCancellation` charges a percentage of what has been
+   * paid, and for a metered fare nothing is paid until the end, so it
+   * returned a ₹0 fee and the driver got nothing for the time they gave.
+   *
+   * So a mid-ride cancellation is settled as what it actually is: a short
+   * ride. The fare is recomputed from the clock and the metered distance and
+   * floored at `minBillableHours`, exactly as a completed ride would be. The
+   * customer owes the minimum; the driver is paid for the slot they committed.
+   *
+   * Pre-start cancellations keep the existing flat/percentage fee — no ride
+   * happened, so there is nothing to meter.
+   */
+  const settledAsShortRide =
+    breakdown.tripStarted &&
+    booking.paymentStatus !== BOOKING_PAYMENT_STATUS.PAID;
+
+  let settledFareRupees = 0;
+  if (settledAsShortRide) {
+    try {
+      settledFareRupees = await settleCancelledRideFare(booking);
+    } catch (err) {
+      console.warn(
+        '[booking] mid-ride cancellation fare settle failed for',
+        String(booking._id), '-', err?.message,
+      );
+    }
+  }
+
   const {
     feeCharged,
     refundAmount,
@@ -1309,6 +1395,10 @@ export async function cancelBookingByUserService(userId, bookingId, reason = '')
     tier: tier || '',
     hoursUntilPickup:
       typeof hoursUntilPickup === 'number' ? hoursUntilPickup : null,
+    // A mid-ride cancellation is billed as a short ride rather than as a
+    // cancellation fee, so the amount owed lives here for the audit trail.
+    // `feeCharged` stays 0 in that case — the two must never be added.
+    settledFareRupees: round2(settledFareRupees),
   };
   booking.timeline.cancelledAt = new Date();
   booking.dispatch.pendingOfferIds = [];
