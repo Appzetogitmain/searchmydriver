@@ -224,14 +224,10 @@ function PageLoader() {
 }
 
 function App() {
+  // Push registration. The permission prompt itself lives in
+  // EnableNotificationsBanner (user tap): prompting on page load is rejected
+  // on iPhone and makes Chrome silently block future prompts.
   useFcm();
-
-  // Request native notification permission on startup
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => {});
-    }
-  }, []);
 
   // Global in-app notification sound: play a short alert when any
   // S2C_NOTIFICATION arrives while the SPA is foregrounded. We listen

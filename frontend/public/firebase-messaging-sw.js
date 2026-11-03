@@ -34,9 +34,11 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// Give the service worker access to Firebase Messaging.
-importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
+// Give the service worker access to Firebase Messaging. Keep this version equal
+// to the `firebase` package in package.json: the page and this worker share
+// the same IndexedDB token store, and mismatched SDKs can corrupt it.
+importScripts('https://www.gstatic.com/firebasejs/12.13.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/12.13.0/firebase-messaging-compat.js');
 
 // Initialize the Firebase app in the service worker by passing in query params.
 // This allows us to load configurations dynamically from the frontend.

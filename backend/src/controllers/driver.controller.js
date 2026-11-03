@@ -2,9 +2,9 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { AUDIENCES, setAuthCookies, clearAuthCookies } from '../utils/cookie.util.js';
 import * as driverService from '../services/driver.service.js';
-import { sendFcmNotification } from '../config/firebase.js';
+import { validateFcmToken } from '../config/firebase.js';
 import { emitNotification } from '../utils/socketEmitters.js';
-import { claimFcmTokenExclusively } from '../utils/fcmToken.util.js';
+import { claimFcmTokenExclusively, releaseFcmToken } from '../utils/fcmToken.util.js';
 
 export const sendOtp = asyncHandler(async (req, res) => {
   const result = await driverService.sendOtpService(req.body.phone, req.body.referralCode);
@@ -124,6 +124,19 @@ export const deleteMyAccount = asyncHandler(async (req, res) => {
 
 export const updateDriverFcmToken = asyncHandler(async (req, res) => {
   const { token } = req.body;
+  // Reject a token FCM can't deliver to (unsubscribed, or minted against
+  // another Firebase project's VAPID key — "SenderId mismatch") instead of
+  // storing it and having every later push fail silently. The client reacts
+  // to FCM_TOKEN_STALE by minting a fresh token and posting again.
+  if (token) {
+    const check = await validateFcmToken(token);
+    if (!check.valid) {
+      await releaseFcmToken(token);
+      return res
+        .status(422)
+        .json(new ApiResponse(422, { code: 'FCM_TOKEN_STALE', reason: check.code }, 'FCM token rejected by Firebase'));
+    }
+  }
   req.driver.fcmToken = token || '';
   await req.driver.save();
   // One token, one account — see claimFcmTokenExclusively. Without this a

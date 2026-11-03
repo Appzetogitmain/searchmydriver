@@ -121,11 +121,79 @@ export function isFirebaseConfigured() {
   return getFirebaseApp() !== null;
 }
 
+const SW_PATH = '/firebase-messaging-sw.js';
+
+/** ArrayBuffer → unpadded base64url, the encoding VAPID keys are written in. */
+function toBase64Url(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
 /**
- * Requests FCM notification permissions and returns the FCM Device Registration Token.
- * Registers the background service worker with search parameters.
+ * Unregister any service worker on our scope that isn't ours for THIS
+ * Firebase project. Every app served from the same origin (e.g. another
+ * project on the same localhost port) shares one service-worker slot and one
+ * push subscription; a leftover worker from elsewhere keeps receiving — and
+ * swallowing — our pushes.
  */
-export async function requestFcmToken() {
+async function removeForeignServiceWorkers(senderId) {
+  const scope = new URL('/', window.location.origin).href;
+  const registrations = await navigator.serviceWorker.getRegistrations();
+  await Promise.all(
+    registrations.map(async (reg) => {
+      if (reg.scope !== scope) return;
+      const script = (reg.active || reg.waiting || reg.installing)?.scriptURL;
+      if (!script) return;
+      const url = new URL(script);
+      const ours = url.pathname === SW_PATH && url.searchParams.get('messagingSenderId') === senderId;
+      if (!ours) {
+        console.warn('[firebase] Unregistering foreign service worker:', url.pathname);
+        await reg.unregister();
+      }
+    }),
+  );
+}
+
+/**
+ * Drop the push subscription when it can't produce a token for our project.
+ *
+ * Firebase's getToken() reuses ANY existing push subscription on the worker
+ * without checking which VAPID key created it. If another app subscribed this
+ * origin with its own key, the token Firebase mints is bound to that other
+ * project and every send from our backend fails with "SenderId mismatch".
+ * Unsubscribing forces getToken() to subscribe again with our key and mint a
+ * brand-new token.
+ */
+async function dropMismatchedSubscription(registration, vapidKey, force) {
+  const sub = await registration.pushManager.getSubscription();
+  if (!sub) return;
+  const subKey = sub.options?.applicationServerKey;
+  const mismatched = Boolean(
+    vapidKey && subKey && toBase64Url(subKey) !== vapidKey.replace(/=+$/, ''),
+  );
+  if (force || mismatched) {
+    if (mismatched) console.warn('[firebase] Push subscription was made with another VAPID key — resubscribing');
+    await sub.unsubscribe();
+  }
+}
+
+/**
+ * Returns this device's FCM registration token, or null.
+ *
+ * Registers the background service worker (config passed as query params).
+ *
+ * @param {object}  [opts]
+ * @param {boolean} [opts.prompt=false]       ask for notification permission if
+ *   not decided yet. Only pass true from a user tap — iPhone rejects the prompt
+ *   otherwise and Chrome starts silently blocking repeated prompts.
+ * @param {boolean} [opts.forceRefresh=false] discard the cached token and push
+ *   subscription and mint a new token. Used when the server reports the
+ *   current one as dead; without it Firebase hands back the same cached token
+ *   for up to a week.
+ */
+export async function requestFcmToken({ prompt = false, forceRefresh = false } = {}) {
   const app = getFirebaseApp();
   if (!app) return null;
 
@@ -146,25 +214,27 @@ export async function requestFcmToken() {
     return null;
   }
 
+  let permission = Notification.permission;
+  if (permission === 'default' && prompt) {
+    permission = await Notification.requestPermission();
+  }
+  if (permission !== 'granted') {
+    if (prompt) console.warn('[firebase] Notification permission not granted');
+    return null;
+  }
+
   try {
-    const registration = await navigator.serviceWorker.register(
-      `/firebase-messaging-sw.js?${qs}`,
-      { scope: '/' }
-    );
+    await removeForeignServiceWorkers(config.messagingSenderId);
+    const registration = await navigator.serviceWorker.register(`${SW_PATH}?${qs}`, { scope: '/' });
 
     const messaging = getFcmMessaging();
     if (!messaging) return null;
 
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      console.warn('[firebase] Notification permission not granted');
-      return null;
-    }
+    const vapidKey = env.VITE_FIREBASE_VAPID_KEY;
+    await dropMismatchedSubscription(registration, vapidKey, forceRefresh);
 
     const tokenOptions = { serviceWorkerRegistration: registration };
-    if (env.VITE_FIREBASE_VAPID_KEY) {
-      tokenOptions.vapidKey = env.VITE_FIREBASE_VAPID_KEY;
-    }
+    if (vapidKey) tokenOptions.vapidKey = vapidKey;
 
     const token = await getToken(messaging, tokenOptions);
     return token;

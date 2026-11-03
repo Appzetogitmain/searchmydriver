@@ -65,7 +65,7 @@ const EnableNotificationsBanner = ({ role = 'user' }) => {
   const handleEnable = async () => {
     setBusy(true);
     try {
-      const ok = await registerPushToken(role);
+      const ok = await registerPushToken(role, { prompt: true });
       if (ok) {
         toast.success('Notifications enabled');
         setMode(null);

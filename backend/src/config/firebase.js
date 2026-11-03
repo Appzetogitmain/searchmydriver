@@ -122,8 +122,45 @@ export function isFirebaseReady() {
 }
 
 /**
+ * FCM error codes meaning the token is permanently unusable for this project:
+ * the device unsubscribed, the token is malformed, or it was issued against a
+ * different Firebase project / VAPID key ("SenderId mismatch"). Retrying never
+ * helps — the device has to mint a fresh token.
+ */
+export const INVALID_TOKEN_CODES = new Set([
+  'messaging/registration-token-not-registered',
+  'messaging/invalid-registration-token',
+  'messaging/mismatched-credential',
+]);
+
+/**
+ * Ask FCM whether `token` can receive pushes from this project, without
+ * delivering anything (dry run). Used when a device registers, so a dead or
+ * foreign token is rejected up front instead of silently failing on every
+ * later send.
+ *
+ * Fails open: when Firebase isn't configured or FCM is unreachable we cannot
+ * tell, so the token is treated as valid rather than blocking registration.
+ *
+ * @returns {Promise<{ valid: boolean, code?: string }>}
+ */
+export async function validateFcmToken(token) {
+  const admin = getFirebaseAdmin();
+  if (!admin || !token) return { valid: Boolean(token) };
+  try {
+    await admin.messaging().send({ token, data: { type: 'validate' } }, true);
+    return { valid: true };
+  } catch (err) {
+    if (INVALID_TOKEN_CODES.has(err?.code)) return { valid: false, code: err.code };
+    console.warn('[firebase] Could not validate FCM token (accepting it):', err?.code || err?.message);
+    return { valid: true };
+  }
+}
+
+/**
  * Sends a push notification to a specific token.
- * Returns true if sent successfully, false otherwise.
+ * Returns `{ success, error?, invalidToken? }`. Prefer `sendPushToRecipient`
+ * (utils/socketEmitters.js), which also clears dead tokens.
  */
 export async function sendFcmNotification(token, payload) {
   const admin = getFirebaseAdmin();
@@ -163,15 +200,11 @@ export async function sendFcmNotification(token, payload) {
     console.log('[firebase] FCM notification sent successfully:', response);
     return { success: true };
   } catch (err) {
-    console.error('[firebase] FCM send failed:', err.message);
+    console.error('[firebase] FCM send failed:', err?.code, err.message);
     // Token belongs to an uninstalled app / revoked permission, or was issued
     // by a different Firebase project ("SenderId mismatch") — callers should
-    // clear it so we stop retrying a dead token; the app re-registers on open.
-    const invalidToken = [
-      'messaging/registration-token-not-registered',
-      'messaging/invalid-registration-token',
-      'messaging/mismatched-credential',
-    ].includes(err?.code);
-    return { success: false, error: err.message, invalidToken };
+    // clear it so we stop retrying a dead token.
+    const invalidToken = INVALID_TOKEN_CODES.has(err?.code);
+    return { success: false, error: err.message, code: err?.code, invalidToken };
   }
 }

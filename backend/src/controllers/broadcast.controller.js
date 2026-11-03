@@ -4,7 +4,8 @@ import User from '../models/user.model.js';
 import { Driver } from '../models/driverModels/driver.model.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { getFirebaseAdmin } from '../config/firebase.js';
+import { getFirebaseAdmin, INVALID_TOKEN_CODES } from '../config/firebase.js';
+import { releaseFcmToken } from '../utils/fcmToken.util.js';
 import { getStaffScope, buildUserScopeFilter, buildDriverScopeFilter } from '../utils/staffScope.util.js';
 
 export const sendBroadcast = asyncHandler(async (req, res) => {
@@ -132,7 +133,17 @@ export const sendBroadcast = asyncHandler(async (req, res) => {
           data: { broadcastId: String(broadcast._id) },
           webpush: {
             headers: { Urgency: 'high' },
-            notification: { icon: '/logo.png', badge: '/logo.png' }
+            notification: { icon: '/icons/icon-192.png', badge: '/icons/icon-192.png' }
+          }
+        }).then(async (batch) => {
+          // Clear tokens FCM says are dead so later pushes stop failing on
+          // them; those devices get a fresh token on their next app open.
+          const dead = batch.responses
+            .map((r, idx) => (!r.success && INVALID_TOKEN_CODES.has(r.error?.code) ? chunk[idx] : null))
+            .filter(Boolean);
+          if (dead.length) {
+            await Promise.all(dead.map((t) => releaseFcmToken(t)));
+            console.warn(`[Broadcast] cleared ${dead.length} dead FCM token(s)`);
           }
         }).catch(err => console.error('[Broadcast] FCM chunk error:', err));
       }

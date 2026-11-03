@@ -15,7 +15,6 @@ import {
   S2C_EVENTS,
   SOCKET_ROOM_PREFIX,
 } from '../constants/socketEvents.js';
-import { sendFcmNotification } from '../config/firebase.js';
 import { attachDriverSocketHandlers } from '../controllers/driverSocket.controller.js';
 
 /**
@@ -245,19 +244,17 @@ function attachConnectionHandlers(socket) {
           }
         }
 
-        let fcmToken = null;
         if (recipientId && recipientType) {
-          const modelName = recipientType === 'driver' ? 'driver' : 'user';
-          const { default: Model } = await import(`../models/${modelName}.model.js`);
-          const doc = await Model.findById(recipientId).select('fcmToken').lean();
-          fcmToken = doc?.fcmToken;
-        }
-        if (fcmToken) {
-          await sendFcmNotification(fcmToken, {
-            title: 'Incoming Call',
-            body: `${principal.type === 'driver' ? 'Driver' : 'Customer'} is calling you`,
-            data: { bookingId, type: 'INCOMING_CALL' },
-          });
+          // Dynamic import: socketEmitters imports this module.
+          const { sendPushToRecipient } = await import('../utils/socketEmitters.js');
+          await sendPushToRecipient(
+            { model: recipientType === 'driver' ? 'Driver' : 'User', id: recipientId },
+            {
+              title: 'Incoming Call',
+              body: `${principal.type === 'driver' ? 'Driver' : 'Customer'} is calling you`,
+              data: { bookingId, type: 'INCOMING_CALL' },
+            },
+          );
         }
       } catch (e) {
         console.error('[socket] failed to send call push notification', e);

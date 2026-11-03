@@ -66,6 +66,8 @@ export const S2C_EVENTS = Object.freeze({
   BOOKING_RATED_BY_DRIVER: 'booking:rated:by_driver',
 
   NOTIFICATION: 'notification:new',
+  /** Server cleared this account's dead FCM token — re-register push. */
+  PUSH_TOKEN_INVALID: 'push:token:invalid',
   ADMIN_ALERT: 'admin:alert',
 
   /** WebRTC App-to-App Calling signaling */

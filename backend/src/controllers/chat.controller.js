@@ -4,9 +4,7 @@ import Booking from '../models/booking.model.js';
 import { ApiError } from '../utils/apiError.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { getIoOrNull } from '../config/socket.js';
-import User from '../models/user.model.js';
-import { Driver } from '../models/driverModels/driver.model.js';
-import { sendFcmNotification } from '../config/firebase.js';
+import { sendPushToRecipient } from '../utils/socketEmitters.js';
 
 export const getBookingChat = async (req, res, next) => {
   try {
@@ -63,29 +61,23 @@ export const sendMessage = async (req, res, next) => {
       io.to(`booking:${bookingId}`).emit('NEW_CHAT_MESSAGE', populatedMsg);
     }
 
-    // Send FCM push notification
-    try {
-      let fcmToken = '';
-      if (senderModel === 'User') {
-        const driver = await Driver.findById(booking.driverId).select('fcmToken').lean();
-        fcmToken = driver?.fcmToken;
-      } else if (senderModel === 'Driver') {
-        const user = await User.findById(booking.customerId).select('fcmToken').lean();
-        fcmToken = user?.fcmToken;
-      }
-      
-      if (fcmToken) {
-        sendFcmNotification(fcmToken, {
-          title: `New message from ${populatedMsg.senderId?.name || (senderModel === 'User' ? 'Customer' : 'Driver')}`,
-          body: message,
-          data: {
-            type: 'CHAT_MESSAGE',
-            bookingId: bookingId.toString()
-          }
-        }).catch(err => console.error('[FCM] chat message notify error:', err));
-      }
-    } catch (err) {
-      console.error('[Chat] FCM notification failed:', err);
+    // Push to the other party. Booking stores the customer as `userId`.
+    const recipient =
+      senderModel === 'User'
+        ? { model: 'Driver', id: booking.driverId }
+        : senderModel === 'Driver'
+          ? { model: 'User', id: booking.userId }
+          : null;
+    if (recipient?.id) {
+      // Fire-and-forget: never delays the chat response, never throws.
+      sendPushToRecipient(recipient, {
+        title: `New message from ${populatedMsg.senderId?.name || (senderModel === 'User' ? 'Customer' : 'Driver')}`,
+        body: message,
+        data: {
+          type: 'CHAT_MESSAGE',
+          bookingId: bookingId.toString(),
+        },
+      });
     }
 
     res.status(201).json(new ApiResponse(201, populatedMsg, 'Message sent successfully'));

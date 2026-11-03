@@ -156,6 +156,13 @@ export const S2C_EVENTS = Object.freeze({
   /** Generic toast / in-app notification. */
   NOTIFICATION: 'notification:new',
 
+  /**
+   * FCM rejected this account's stored device token (unsubscribed, or minted
+   * for another Firebase project) and the server has cleared it. An open app
+   * should mint a fresh token and re-register so push keeps working.
+   */
+  PUSH_TOKEN_INVALID: 'push:token:invalid',
+
   /** Operational alerts for admin dashboards (e.g. low driver count in zone). */
   ADMIN_ALERT: 'admin:alert',
 

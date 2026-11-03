@@ -75,6 +75,51 @@ export function emitToAdminRole(role, event, payload) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Push notifications                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Send an FCM push to one customer or driver. The single path every push
+ * should take, because it owns dead-token handling: when FCM rejects the
+ * stored token it is cleared (only if it is still the stored one — the device
+ * may have re-registered meanwhile) and the account's open app is told over
+ * the socket to mint a fresh token. Without that, a dead token is re-posted
+ * from the browser's cache on every app open and push stays broken for good.
+ *
+ * Never throws.
+ *
+ * @param {{ model: 'User'|'Driver', id: any }} recipient
+ * @param {{ title: string, body?: string, data?: object }} payload
+ * @returns {Promise<{ success: boolean, skipped?: string, invalidToken?: boolean }>}
+ */
+export async function sendPushToRecipient({ model, id }, payload) {
+  try {
+    const recipientId = toRoomId(id);
+    if (!recipientId || (model !== 'User' && model !== 'Driver')) {
+      return { success: false, skipped: 'no-recipient' };
+    }
+    const Model = model === 'Driver' ? Driver : User;
+    const doc = await Model.findById(recipientId).select('fcmToken').lean();
+    const fcmToken = doc?.fcmToken;
+    if (!fcmToken) return { success: false, skipped: 'no-token' };
+
+    const result = await sendFcmNotification(fcmToken, payload);
+    if (result?.invalidToken) {
+      await Model.updateOne({ _id: recipientId, fcmToken }, { $set: { fcmToken: '' } });
+      console.warn(
+        `[fcm] cleared dead token ...${String(fcmToken).slice(-8)} for ${model} ${recipientId} (${result.code})`,
+      );
+      const emit = model === 'Driver' ? emitToDriver : emitToUser;
+      emit(recipientId, S2C_EVENTS.PUSH_TOKEN_INVALID, { reason: result.code || 'invalid' });
+    }
+    return result;
+  } catch (err) {
+    console.error('[fcm] sendPushToRecipient failed:', err?.message || err);
+    return { success: false, error: err?.message };
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Sugar for common payload shapes                                     */
 /* ------------------------------------------------------------------ */
 
@@ -130,28 +175,17 @@ export async function emitNotification(target, notification) {
           data: payload.data,
         });
 
-        // Fetch user/driver fcmToken to send push notification
-        let fcmToken = '';
-        if (recipientModel === 'User') {
-          const user = await User.findById(recipientId).select('fcmToken').lean();
-          fcmToken = user?.fcmToken;
-        } else if (recipientModel === 'Driver') {
-          const driver = await Driver.findById(recipientId).select('fcmToken').lean();
-          fcmToken = driver?.fcmToken;
-        }
-
-        if (fcmToken) {
-          const result = await sendFcmNotification(fcmToken, {
-            title: payload.title,
-            body: payload.body,
-            // notificationId lets the app de-duplicate the push against the
-            // in-app socket notification for the same event.
-            data: { ...(payload.data || {}), notificationId: String(payload._id) },
-          });
-          if (result?.invalidToken) {
-            const Model = recipientModel === 'User' ? User : Driver;
-            await Model.updateOne({ _id: recipientId, fcmToken }, { $set: { fcmToken: '' } });
-          }
+        if (recipientModel !== 'Admin') {
+          await sendPushToRecipient(
+            { model: recipientModel, id: recipientId },
+            {
+              title: payload.title,
+              body: payload.body,
+              // notificationId lets the app de-duplicate the push against the
+              // in-app socket notification for the same event.
+              data: { ...(payload.data || {}), notificationId: String(payload._id) },
+            },
+          );
         }
       }
     } catch (err) {
