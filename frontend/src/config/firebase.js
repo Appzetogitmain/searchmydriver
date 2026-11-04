@@ -156,6 +156,33 @@ async function removeForeignServiceWorkers(senderId) {
   );
 }
 
+/** Resolve once `registration` has an activated worker (10s timeout). */
+function waitForActiveWorker(registration, timeoutMs = 10000) {
+  if (registration.active) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const worker = registration.installing || registration.waiting;
+    if (!worker) {
+      reject(new Error('No service worker installing'));
+      return;
+    }
+    const timer = setTimeout(() => reject(new Error('Service worker did not activate in time')), timeoutMs);
+    const onChange = () => {
+      if (worker.state === 'activated') {
+        clearTimeout(timer);
+        worker.removeEventListener('statechange', onChange);
+        resolve();
+      } else if (worker.state === 'redundant') {
+        clearTimeout(timer);
+        worker.removeEventListener('statechange', onChange);
+        // Replaced by a newer worker that is already active — that's fine.
+        if (registration.active) resolve();
+        else reject(new Error('Service worker became redundant'));
+      }
+    };
+    worker.addEventListener('statechange', onChange);
+  });
+}
+
 /**
  * Drop the push subscription when it can't produce a token for our project.
  *
@@ -226,6 +253,12 @@ export async function requestFcmToken({ prompt = false, forceRefresh = false } =
   try {
     await removeForeignServiceWorkers(config.messagingSenderId);
     const registration = await navigator.serviceWorker.register(`${SW_PATH}?${qs}`, { scope: '/' });
+    // Firebase only waits for activation when it registers its own default
+    // worker. With a registration passed in, getToken() subscribes straight
+    // away, and on a fresh install (first visit, cleared site data, updated
+    // worker) that fails with "Subscription failed - no active Service Worker"
+    // — so no token is ever saved.
+    await waitForActiveWorker(registration);
 
     const messaging = getFcmMessaging();
     if (!messaging) return null;
