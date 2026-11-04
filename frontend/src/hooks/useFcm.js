@@ -92,14 +92,34 @@ export function useFcm() {
   const { isAuthenticated: isDriverAuthenticated } = useDriverAuthStore();
   const { socket } = useSocketStore();
 
-  // Keep the stored token fresh on every sign-in / app open. Silent: the
-  // permission prompt is shown only by EnableNotificationsBanner on a tap.
+  // Keep the stored token fresh on every sign-in / app open. Silent when
+  // permission is already granted.
   useEffect(() => {
     const role = resolveRole(isUserAuthenticated, isDriverAuthenticated);
     if (!role) return;
     registerPushToken(role).catch((err) => {
       console.warn('[FCM] FCM registration skipped or failed:', err?.message || err);
     });
+  }, [isUserAuthenticated, isDriverAuthenticated]);
+
+  // Permission not decided yet: ask on the first tap anywhere in the app.
+  // Browsers only allow the prompt from a user gesture (iPhone strictly), and
+  // without this a dismissed / never-seen home-page banner meant the prompt
+  // never appeared and push was never registered.
+  useEffect(() => {
+    const role = resolveRole(isUserAuthenticated, isDriverAuthenticated);
+    if (!role || typeof window === 'undefined' || !('Notification' in window)) return undefined;
+    if (Notification.permission !== 'default') return undefined;
+
+    const events = ['pointerdown', 'keydown'];
+    const onGesture = () => {
+      events.forEach((e) => window.removeEventListener(e, onGesture, true));
+      registerPushToken(role, { prompt: true }).catch((err) => {
+        console.warn('[FCM] Registration after permission prompt failed:', err?.message || err);
+      });
+    };
+    events.forEach((e) => window.addEventListener(e, onGesture, { capture: true, once: false }));
+    return () => events.forEach((e) => window.removeEventListener(e, onGesture, true));
   }, [isUserAuthenticated, isDriverAuthenticated]);
 
   // Foreground FCM messages: mirror into the system tray.

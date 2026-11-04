@@ -5,10 +5,10 @@
   "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
+    "start": "node init && node src/server.js",
+    "dev": "node init && nodemon src/server.js",
     "fix:payment-index": "node scripts/fixPaymentIndex.js",
-    "build": "echo 'No build step required'",
+    "build": "node init && echo 'No build step required'",
     "test:flow": "node tests/tripFlow.test.mjs",
     "test:sweep": "node tests/lifecycleSweep.test.mjs",
     "test": "npm run test:flow && npm run test:sweep && npm run test:fcm && npm run test:billing && npm run test:postride",
