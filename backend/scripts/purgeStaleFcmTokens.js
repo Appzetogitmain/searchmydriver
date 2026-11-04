@@ -41,14 +41,22 @@ if (!admin) {
 await mongoose.connect(process.env.MONGO_URI, { dbName: process.env.DB_NAME });
 const db = mongoose.connection.db;
 
+// fcmToken = web browser, fcmTokenApp = Flutter app.
+const FIELDS = ['fcmToken', 'fcmTokenApp'];
+const hasAnyToken = { $or: FIELDS.map((f) => ({ [f]: { $exists: true, $nin: [null, ''] } })) };
+
 const rows = [];
 for (const coll of ['drivers', 'users']) {
   const docs = await db
     .collection(coll)
-    .find({ fcmToken: { $exists: true, $nin: [null, ''] } })
-    .project({ fcmToken: 1, name: 1 })
+    .find(hasAnyToken)
+    .project({ fcmToken: 1, fcmTokenApp: 1, name: 1 })
     .toArray();
-  for (const d of docs) rows.push({ coll, id: d._id, name: d.name, token: d.fcmToken });
+  for (const d of docs) {
+    for (const field of FIELDS) {
+      if (d[field]) rows.push({ coll, id: d._id, name: d.name, field, token: d[field] });
+    }
+  }
 }
 
 console.log(`\nMode: ${APPLY ? 'APPLY (will write)' : 'DRY RUN (no writes)'}`);
@@ -59,7 +67,7 @@ const alive = [];
 const unsure = [];
 
 for (const r of rows) {
-  const label = `${r.coll.slice(0, -1)} ${String(r.name || '?').slice(0, 16).padEnd(16)} ...${r.token.slice(-8)}`;
+  const label = `${r.coll.slice(0, -1)} ${String(r.name || '?').slice(0, 16).padEnd(16)} ${r.field === 'fcmTokenApp' ? 'app' : 'web'} ...${r.token.slice(-8)}`;
   try {
     await admin
       .messaging()
@@ -90,7 +98,7 @@ if (!dead.length) {
   for (const d of dead) {
     const res = await db
       .collection(d.coll)
-      .updateOne({ _id: d.id, fcmToken: d.token }, { $set: { fcmToken: '' } });
+      .updateOne({ _id: d.id, [d.field]: d.token }, { $set: { [d.field]: '' } });
     cleared += res.modifiedCount;
   }
   console.log(`\nCleared ${cleared} dead token(s).`);
@@ -99,7 +107,7 @@ if (!dead.length) {
   for (const coll of ['drivers', 'users']) {
     left[coll] = await db
       .collection(coll)
-      .countDocuments({ fcmToken: { $exists: true, $nin: [null, ''] } });
+      .countDocuments(hasAnyToken);
   }
   console.log('Remaining tokens:', JSON.stringify(left));
 }

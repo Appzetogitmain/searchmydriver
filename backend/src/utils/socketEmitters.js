@@ -11,6 +11,7 @@ import { Notification } from '../models/notification.model.js';
 import User from '../models/user.model.js';
 import { Driver } from '../models/driverModels/driver.model.js';
 import { sendFcmNotification } from '../config/firebase.js';
+import { FCM_TOKEN_FIELDS } from './fcmToken.util.js';
 
 /**
  * Thin wrappers around `io.to(room).emit(...)` so feature code never imports
@@ -99,20 +100,42 @@ export async function sendPushToRecipient({ model, id }, payload) {
       return { success: false, skipped: 'no-recipient' };
     }
     const Model = model === 'Driver' ? Driver : User;
-    const doc = await Model.findById(recipientId).select('fcmToken').lean();
-    const fcmToken = doc?.fcmToken;
-    if (!fcmToken) return { success: false, skipped: 'no-token' };
-
-    const result = await sendFcmNotification(fcmToken, payload);
-    if (result?.invalidToken) {
-      await Model.updateOne({ _id: recipientId, fcmToken }, { $set: { fcmToken: '' } });
-      console.warn(
-        `[fcm] cleared dead token ...${String(fcmToken).slice(-8)} for ${model} ${recipientId} (${result.code})`,
-      );
-      const emit = model === 'Driver' ? emitToDriver : emitToUser;
-      emit(recipientId, S2C_EVENTS.PUSH_TOKEN_INVALID, { reason: result.code || 'invalid' });
+    const fields = Object.values(FCM_TOKEN_FIELDS); // fcmToken (web), fcmTokenApp (app)
+    const doc = await Model.findById(recipientId).select(fields.join(' ')).lean();
+    // Every distinct token this account has: the browser and the phone app
+    // each get their own copy.
+    const targets = [];
+    for (const field of fields) {
+      const token = doc?.[field];
+      if (token && !targets.some((t) => t.token === token)) targets.push({ field, token });
     }
-    return result;
+    if (!targets.length) return { success: false, skipped: 'no-token' };
+
+    const results = await Promise.all(
+      targets.map(async ({ field, token }) => {
+        const result = await sendFcmNotification(token, payload);
+        if (result?.invalidToken) {
+          // Only clear it if it's still the stored one — the device may have
+          // re-registered meanwhile.
+          await Model.updateOne({ _id: recipientId, [field]: token }, { $set: { [field]: '' } });
+          console.warn(
+            `[fcm] cleared dead ${field} ...${String(token).slice(-8)} for ${model} ${recipientId} (${result.code})`,
+          );
+          // Only the web app listens for this; the Flutter app refreshes its
+          // native token on its own (onTokenRefresh) and on next launch.
+          if (field === FCM_TOKEN_FIELDS.web) {
+            const emit = model === 'Driver' ? emitToDriver : emitToUser;
+            emit(recipientId, S2C_EVENTS.PUSH_TOKEN_INVALID, { reason: result.code || 'invalid' });
+          }
+        }
+        return result;
+      }),
+    );
+    return {
+      success: results.some((r) => r?.success),
+      sent: results.filter((r) => r?.success).length,
+      invalidToken: results.some((r) => r?.invalidToken),
+    };
   } catch (err) {
     console.error('[fcm] sendPushToRecipient failed:', err?.message || err);
     return { success: false, error: err?.message };

@@ -22,46 +22,63 @@ import { Driver } from '../models/driverModels/driver.model.js';
  * the device we need to re-point.
  */
 
+/** Which account field stores each platform's token. */
+export const FCM_TOKEN_FIELDS = Object.freeze({ web: 'fcmToken', app: 'fcmTokenApp' });
+export const FCM_PLATFORMS = Object.keys(FCM_TOKEN_FIELDS);
+
+/** Normalise a client-supplied platform; anything unknown is `null`. */
+export function normalizeFcmPlatform(platform) {
+  const p = String(platform ?? 'web').trim().toLowerCase();
+  return FCM_TOKEN_FIELDS[p] ? p : null;
+}
+
+/** Clear `token` from whichever token field(s) of a matching account hold it. */
+async function clearTokenEverywhere(Model, token, extraFilter = {}) {
+  const results = await Promise.all(
+    Object.values(FCM_TOKEN_FIELDS).map((f) =>
+      Model.updateMany({ ...extraFilter, [f]: token }, { $set: { [f]: '' } }),
+    ),
+  );
+  return results.reduce((n, r) => n + (r.modifiedCount || 0), 0);
+}
+
 /**
- * Give `token` exclusively to one account: assign it to the owner and clear it
- * from every other customer and driver that still holds it.
+ * Give `token` exclusively to one account: store it in the owner's field for
+ * `platform` and clear it from every other customer and driver — and from the
+ * owner's other platform field — that still holds it.
  *
  * Assigning the owner is part of this function rather than left to the caller
- * on purpose. The callers happen to set it themselves first (they save the
- * account document anyway), but a "claim" that only ever *removed* the token
- * would be a trap: calling it on an owner that didn't already hold the token
- * would strip it from every account and leave it with nobody — the device would
- * silently stop receiving push. Owning both halves makes the postcondition
- * unconditional: afterwards, exactly this one account holds the token.
+ * on purpose: a "claim" that only ever *removed* the token would strip it from
+ * every account when called on an owner that didn't already hold it, and the
+ * device would silently stop receiving push. Afterwards, exactly this one
+ * account holds the token, in exactly one field.
  *
- * Returns the number of *other* accounts the token was taken from, so callers
- * can log a hand-off (useful for spotting shared devices in the wild).
+ * Returns the number of *other* account fields the token was taken from.
  *
  * @param {string} token              the FCM registration token
  * @param {object} owner
  * @param {string} owner.ownerId      account that keeps the token
  * @param {'User'|'Driver'} owner.ownerModel which collection the owner is in
+ * @param {'web'|'app'} [owner.platform='web'] which token field to store it in
  */
-export async function claimFcmTokenExclusively(token, { ownerId, ownerModel }) {
+export async function claimFcmTokenExclusively(token, { ownerId, ownerModel, platform = 'web' }) {
   if (!token || !ownerId) return 0;
+  const field = FCM_TOKEN_FIELDS[normalizeFcmPlatform(platform) || 'web'];
+  const otherField = Object.values(FCM_TOKEN_FIELDS).find((f) => f !== field);
 
-  // Clear from the same collection, except the owner, and from the other
-  // collection entirely. `updateMany` is a single indexed write per
-  // collection; the common case matches nothing and costs almost nothing.
   const sameCollection = ownerModel === 'Driver' ? Driver : User;
   const otherCollection = ownerModel === 'Driver' ? User : Driver;
 
   const [same, other] = await Promise.all([
-    sameCollection.updateMany(
-      { fcmToken: token, _id: { $ne: ownerId } },
-      { $set: { fcmToken: '' } },
-    ),
-    otherCollection.updateMany({ fcmToken: token }, { $set: { fcmToken: '' } }),
-    // Idempotent: a no-op when the caller already saved it.
-    sameCollection.updateOne({ _id: ownerId }, { $set: { fcmToken: token } }),
+    clearTokenEverywhere(sameCollection, token, { _id: { $ne: ownerId } }),
+    clearTokenEverywhere(otherCollection, token),
+    // The same token can't be both this account's web and app token.
+    sameCollection.updateOne({ _id: ownerId, [otherField]: token }, { $set: { [otherField]: '' } }),
   ]);
+  // Idempotent: a no-op when the caller already saved it.
+  await sameCollection.updateOne({ _id: ownerId }, { $set: { [field]: token } });
 
-  const stolenFrom = (same.modifiedCount || 0) + (other.modifiedCount || 0);
+  const stolenFrom = same + other;
   if (stolenFrom > 0) {
     console.log(
       `[fcm] token ...${String(token).slice(-8)} reassigned to ${ownerModel} ${ownerId}` +
@@ -72,8 +89,8 @@ export async function claimFcmTokenExclusively(token, { ownerId, ownerModel }) {
 }
 
 /**
- * Drop `token` from every account holding it. Used on logout, where the device
- * is explicitly giving up its subscription.
+ * Drop `token` from every account (either platform field) holding it. Used on
+ * logout, where the device is explicitly giving up its subscription.
  *
  * Deliberately requires no authentication: the only thing possessing a device
  * token lets you do here is unsubscribe that same device, which is exactly
@@ -82,9 +99,7 @@ export async function claimFcmTokenExclusively(token, { ownerId, ownerModel }) {
  */
 export async function releaseFcmToken(token) {
   if (!token) return 0;
-  const [u, d] = await Promise.all([
-    User.updateMany({ fcmToken: token }, { $set: { fcmToken: '' } }),
-    Driver.updateMany({ fcmToken: token }, { $set: { fcmToken: '' } }),
-  ]);
-  return (u.modifiedCount || 0) + (d.modifiedCount || 0);
+  const [u, d] = await Promise.all([clearTokenEverywhere(User, token), clearTokenEverywhere(Driver, token)]);
+  return u + d;
 }
+

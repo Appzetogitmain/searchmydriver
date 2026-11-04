@@ -789,6 +789,7 @@ export const purgeDriverAccount = async (driver) => {
         documents: [],
         liveVerificationVideo: { videoUrl: '', cloudinaryPublicId: '', recordedAt: null, durationSeconds: 0 },
         fcmToken: '',
+        fcmTokenApp: '',
         socketId: null,
         isOnline: false,
         isOnTrip: false,

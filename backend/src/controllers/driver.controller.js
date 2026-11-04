@@ -4,7 +4,12 @@ import { AUDIENCES, setAuthCookies, clearAuthCookies } from '../utils/cookie.uti
 import * as driverService from '../services/driver.service.js';
 import { validateFcmToken } from '../config/firebase.js';
 import { emitNotification } from '../utils/socketEmitters.js';
-import { claimFcmTokenExclusively, releaseFcmToken } from '../utils/fcmToken.util.js';
+import {
+  claimFcmTokenExclusively,
+  releaseFcmToken,
+  normalizeFcmPlatform,
+  FCM_TOKEN_FIELDS,
+} from '../utils/fcmToken.util.js';
 
 export const sendOtp = asyncHandler(async (req, res) => {
   const result = await driverService.sendOtpService(req.body.phone, req.body.referralCode);
@@ -124,6 +129,15 @@ export const deleteMyAccount = asyncHandler(async (req, res) => {
 
 export const updateDriverFcmToken = asyncHandler(async (req, res) => {
   const { token } = req.body;
+  // `platform`: "web" (browser / PWA, the default) or "app" (Flutter app,
+  // native FCM). Each is stored separately so both devices get every push.
+  const platform = normalizeFcmPlatform(req.body.platform);
+  if (!platform) {
+    return res
+      .status(400)
+      .json(new ApiResponse(400, null, 'platform must be "web" or "app"'));
+  }
+  const field = FCM_TOKEN_FIELDS[platform];
   // Reject a token FCM can't deliver to (unsubscribed, or minted against
   // another Firebase project's VAPID key — "SenderId mismatch") instead of
   // storing it and having every later push fail silently. The client reacts
@@ -137,19 +151,20 @@ export const updateDriverFcmToken = asyncHandler(async (req, res) => {
         .json(new ApiResponse(422, { code: 'FCM_TOKEN_STALE', reason: check.code }, 'FCM token rejected by Firebase'));
     }
   }
-  req.driver.fcmToken = token || '';
+  req.driver[field] = token || '';
   await req.driver.save();
   // One token, one account — see claimFcmTokenExclusively. Without this a
   // shared device keeps receiving the other account's ride notifications.
-  await claimFcmTokenExclusively(req.driver.fcmToken, {
+  await claimFcmTokenExclusively(req.driver[field], {
     ownerId: req.driver._id,
     ownerModel: 'Driver',
+    platform,
   });
-  return res.status(200).json(new ApiResponse(200, null, 'FCM token updated successfully'));
+  return res.status(200).json(new ApiResponse(200, { platform }, 'FCM token updated successfully'));
 });
 
 export const triggerDriverTestPush = asyncHandler(async (req, res) => {
-  if (!req.driver.fcmToken) {
+  if (!req.driver.fcmToken && !req.driver.fcmTokenApp) {
     return res.status(400).json(new ApiResponse(400, null, 'No FCM token registered for this driver'));
   }
 

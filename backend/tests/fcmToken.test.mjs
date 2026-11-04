@@ -146,6 +146,48 @@ check('no account holds the released token', remaining === 0, `(${remaining})`);
 check('unrelated tokens untouched by release',
   (await User.findById(keeper._id).lean()).fcmToken === 'tok_must_survive_12345678');
 
+/* ------------------------------------------------------------------ */
+console.log('\n[G] platform: web and app tokens are stored side by side');
+/* ------------------------------------------------------------------ */
+const { normalizeFcmPlatform } = await imp('utils/fcmToken.util.js');
+check('platform defaults to web', normalizeFcmPlatform(undefined) === 'web');
+check('platform "app" accepted (case/space-insensitive)', normalizeFcmPlatform(' App ') === 'app');
+check('unknown platform rejected', normalizeFcmPlatform('ios') === null);
+
+const WEB = 'tok_desktop_browser_WEB1';
+const APP = 'tok_flutter_phone_APP001';
+const dBoth = await mkDriver();
+await claimFcmTokenExclusively(WEB, { ownerId: dBoth._id, ownerModel: 'Driver', platform: 'web' });
+await claimFcmTokenExclusively(APP, { ownerId: dBoth._id, ownerModel: 'Driver', platform: 'app' });
+let both = await Driver.findById(dBoth._id).lean();
+check('web token stored in fcmToken', both.fcmToken === WEB);
+check('app token stored in fcmTokenApp without evicting web', both.fcmTokenApp === APP);
+
+// The phone app logs in to a different driver: the token moves with it.
+const dPhone2 = await mkDriver();
+await claimFcmTokenExclusively(APP, { ownerId: dPhone2._id, ownerModel: 'Driver', platform: 'app' });
+both = await Driver.findById(dBoth._id).lean();
+check('app token taken from the previous account', both.fcmTokenApp === '');
+check('previous account keeps its web token', both.fcmToken === WEB);
+check('new account holds the app token', (await Driver.findById(dPhone2._id).lean()).fcmTokenApp === APP);
+
+// A user account claiming the same phone token takes it across collections.
+const uPhone = await mkUser();
+await claimFcmTokenExclusively(APP, { ownerId: uPhone._id, ownerModel: 'User', platform: 'app' });
+check('app token moved from driver to user', (await Driver.findById(dPhone2._id).lean()).fcmTokenApp === '');
+check('user now holds the app token', (await User.findById(uPhone._id).lean()).fcmTokenApp === APP);
+
+// Same token re-registered under the other platform never sits in both fields.
+await claimFcmTokenExclusively(APP, { ownerId: uPhone._id, ownerModel: 'User', platform: 'web' });
+const uP = await User.findById(uPhone._id).lean();
+check('one token never sits in both fields', uP.fcmToken === APP && uP.fcmTokenApp === '');
+
+// Logout releases the token from either field.
+await User.updateOne({ _id: uPhone._id }, { $set: { fcmToken: '', fcmTokenApp: APP } });
+check('release clears an app token', (await releaseFcmToken(APP)) === 1);
+check('no account holds the released app token',
+  (await User.countDocuments({ fcmTokenApp: APP })) + (await Driver.countDocuments({ fcmTokenApp: APP })) === 0);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 await mongoose.disconnect();
 await mem.stop();

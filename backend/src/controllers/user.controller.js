@@ -4,7 +4,12 @@ import { AUDIENCES, setAuthCookies, clearAuthCookies } from '../utils/cookie.uti
 import * as userService from '../services/user.service.js';
 import { validateFcmToken } from '../config/firebase.js';
 import { emitNotification } from '../utils/socketEmitters.js';
-import { claimFcmTokenExclusively, releaseFcmToken } from '../utils/fcmToken.util.js';
+import {
+  claimFcmTokenExclusively,
+  releaseFcmToken,
+  normalizeFcmPlatform,
+  FCM_TOKEN_FIELDS,
+} from '../utils/fcmToken.util.js';
 
 export const sendUserOtp = asyncHandler(async (req, res) => {
   const result = await userService.sendUserOtpService(req.body.phone, req.body.referralCode);
@@ -113,6 +118,15 @@ export const deleteMyAccount = asyncHandler(async (req, res) => {
 
 export const updateUserFcmToken = asyncHandler(async (req, res) => {
   const { token } = req.body;
+  // `platform`: "web" (browser / PWA, the default) or "app" (Flutter app,
+  // native FCM). Each is stored separately so both devices get every push.
+  const platform = normalizeFcmPlatform(req.body.platform);
+  if (!platform) {
+    return res
+      .status(400)
+      .json(new ApiResponse(400, null, 'platform must be "web" or "app"'));
+  }
+  const field = FCM_TOKEN_FIELDS[platform];
   // Reject a token FCM can't deliver to (unsubscribed, or minted against
   // another Firebase project's VAPID key — "SenderId mismatch") instead of
   // storing it and having every later push fail silently. The client reacts
@@ -126,21 +140,22 @@ export const updateUserFcmToken = asyncHandler(async (req, res) => {
         .json(new ApiResponse(422, { code: 'FCM_TOKEN_STALE', reason: check.code }, 'FCM token rejected by Firebase'));
     }
   }
-  req.user.fcmToken = token || '';
+  req.user[field] = token || '';
   await req.user.save();
   // One token, one account. The same device token can already be stored on
   // another customer or driver (shared phone, a driver testing the rider app),
   // and leaving it there would deliver this account's notifications — pickup
   // address, OTP, fare — to that other person's device too.
-  await claimFcmTokenExclusively(req.user.fcmToken, {
+  await claimFcmTokenExclusively(req.user[field], {
     ownerId: req.user._id,
     ownerModel: 'User',
+    platform,
   });
-  return res.status(200).json(new ApiResponse(200, null, 'FCM token updated successfully'));
+  return res.status(200).json(new ApiResponse(200, { platform }, 'FCM token updated successfully'));
 });
 
 export const triggerUserTestPush = asyncHandler(async (req, res) => {
-  if (!req.user.fcmToken) {
+  if (!req.user.fcmToken && !req.user.fcmTokenApp) {
     return res.status(400).json(new ApiResponse(400, null, 'No FCM token registered for this user'));
   }
 

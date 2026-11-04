@@ -151,7 +151,11 @@ export async function validateFcmToken(token) {
     await admin.messaging().send({ token, data: { type: 'validate' } }, true);
     return { valid: true };
   } catch (err) {
-    if (INVALID_TOKEN_CODES.has(err?.code)) return { valid: false, code: err.code };
+    // This probe message is fixed and well-formed, so `invalid-argument` here
+    // can only mean the token itself is malformed (e.g. a placeholder string).
+    if (INVALID_TOKEN_CODES.has(err?.code) || err?.code === 'messaging/invalid-argument') {
+      return { valid: false, code: err.code };
+    }
     console.warn('[firebase] Could not validate FCM token (accepting it):', err?.code || err?.message);
     return { valid: true };
   }
@@ -181,6 +185,24 @@ export async function sendFcmNotification(token, payload) {
       data: payload.data ? Object.fromEntries(
         Object.entries(payload.data).map(([k, v]) => [k, String(v)])
       ) : {},
+      // Native Flutter app (fcmTokenApp). High priority so it wakes the phone
+      // and shows in the notification bar even when the app is killed.
+      android: {
+        priority: 'high',
+        notification: {
+          sound: 'default',
+          defaultVibrateTimings: true,
+          ...(payload.data?.notificationId
+            ? { tag: `notif-${payload.data.notificationId}` }
+            : payload.data?.bookingId
+              ? { tag: `booking-${payload.data.bookingId}` }
+              : {}),
+        },
+      },
+      apns: {
+        headers: { 'apns-priority': '10' },
+        payload: { aps: { sound: 'default' } },
+      },
       webpush: {
         headers: {
           Urgency: 'high',

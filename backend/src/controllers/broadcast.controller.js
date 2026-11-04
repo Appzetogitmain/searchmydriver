@@ -22,46 +22,46 @@ export const sendBroadcast = asyncHandler(async (req, res) => {
   // 1. Gather recipients based on audience
   if (audience === 'all_users' || audience === 'all') {
     usersToNotify = await User.find({ isDeleted: false, isActive: true })
-      .select('_id fcmToken')
+      .select('_id fcmToken fcmTokenApp')
       .lean();
   }
   
   if (audience === 'all_drivers' || audience === 'all') {
     driversToNotify = await Driver.find({ isDeleted: false, approvalStatus: 'approved' })
-      .select('_id fcmToken')
+      .select('_id fcmToken fcmTokenApp')
       .lean();
   }
 
   if (audience === 'specific_user') {
     if (!recipientId) return res.status(400).json(new ApiResponse(400, null, 'recipientId is required for specific_user'));
-    const user = await User.findById(recipientId).select('_id fcmToken').lean();
+    const user = await User.findById(recipientId).select('_id fcmToken fcmTokenApp').lean();
     if (user) usersToNotify.push(user);
   }
 
   if (audience === 'specific_driver') {
     if (!recipientId) return res.status(400).json(new ApiResponse(400, null, 'recipientId is required for specific_driver'));
-    const driver = await Driver.findById(recipientId).select('_id fcmToken').lean();
+    const driver = await Driver.findById(recipientId).select('_id fcmToken fcmTokenApp').lean();
     if (driver) driversToNotify.push(driver);
   }
 
   if (audience === 'city_users') {
     if (!targetCity) return res.status(400).json(new ApiResponse(400, null, 'targetCity is required for city_users'));
     usersToNotify = await User.find({ isDeleted: false, isActive: true, city: { $regex: new RegExp(`^${targetCity}$`, 'i') } })
-      .select('_id fcmToken')
+      .select('_id fcmToken fcmTokenApp')
       .lean();
   }
 
   if (audience === 'city_drivers') {
     if (!targetCity) return res.status(400).json(new ApiResponse(400, null, 'targetCity is required for city_drivers'));
     driversToNotify = await Driver.find({ isDeleted: false, approvalStatus: 'approved', city: { $regex: new RegExp(`^${targetCity}$`, 'i') } })
-      .select('_id fcmToken')
+      .select('_id fcmToken fcmTokenApp')
       .lean();
   }
 
   if (audience === 'zone_drivers') {
     if (!targetZone) return res.status(400).json(new ApiResponse(400, null, 'targetZone is required for zone_drivers'));
     driversToNotify = await Driver.find({ isDeleted: false, approvalStatus: 'approved', preferredOutstationZones: targetZone })
-      .select('_id fcmToken')
+      .select('_id fcmToken fcmTokenApp')
       .lean();
   }
 
@@ -100,6 +100,7 @@ export const sendBroadcast = asyncHandler(async (req, res) => {
       data: { broadcastId: String(broadcast._id) },
     });
     if (user.fcmToken) fcmTokens.push(user.fcmToken);
+    if (user.fcmTokenApp) fcmTokens.push(user.fcmTokenApp);
   }
 
   for (const driver of driversToNotify) {
@@ -112,6 +113,7 @@ export const sendBroadcast = asyncHandler(async (req, res) => {
       data: { broadcastId: String(broadcast._id) },
     });
     if (driver.fcmToken) fcmTokens.push(driver.fcmToken);
+    if (driver.fcmTokenApp) fcmTokens.push(driver.fcmTokenApp);
   }
 
   // Insert to DB in batches if needed, but mongoose insertMany handles large arrays reasonably well up to a few thousand
@@ -131,6 +133,8 @@ export const sendBroadcast = asyncHandler(async (req, res) => {
           tokens: chunk,
           notification: { title, body },
           data: { broadcastId: String(broadcast._id) },
+          android: { priority: 'high', notification: { sound: 'default' } },
+          apns: { headers: { 'apns-priority': '10' }, payload: { aps: { sound: 'default' } } },
           webpush: {
             headers: { Urgency: 'high' },
             notification: { icon: '/icons/icon-192.png', badge: '/icons/icon-192.png' }

@@ -16,7 +16,7 @@ let inFlight = null;
 
 async function postToken(role, token) {
   try {
-    await api.post(ENDPOINT[role] || ENDPOINT.user, { token });
+    await api.post(ENDPOINT[role] || ENDPOINT.user, { token, platform: 'web' });
     return 'ok';
   } catch (err) {
     // The server checks the token with FCM first and answers 422

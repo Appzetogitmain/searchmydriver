@@ -110,7 +110,14 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Push tokens, one per platform: `fcmToken` = web browser (service
+    // worker), `fcmTokenApp` = the Flutter mobile app (native FCM). Both get
+    // every push, so a desktop browser and the phone app don't evict each other.
     fcmToken: {
+      type: String,
+      default: '',
+    },
+    fcmTokenApp: {
       type: String,
       default: '',
     },

@@ -595,6 +595,7 @@ export const purgeUserAccount = async (user) => {
         gender: null,
         dateOfBirth: null,
         fcmToken: '',
+        fcmTokenApp: '',
         isEmailVerified: false,
         isPhoneVerified: false,
         savedLocations: [],
