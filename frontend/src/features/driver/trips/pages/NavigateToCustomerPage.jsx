@@ -8,6 +8,7 @@ import TripTrackingMap from '../../../../components/maps/TripTrackingMap';
 import useDriverActiveTripStore from '../../../../store/driver/useDriverActiveTripStore';
 import { useGeolocation } from '../../../../hooks/useGeolocation';
 import { formatDistance, estimateEtaMinutes, haversineMeters } from '../../../../utils/geo';
+import { placeCall } from '../../../../utils/placeCall';
 import DriverChatSheet from '../components/DriverChatSheet';
 
 /**
@@ -98,12 +99,15 @@ const NavigateToCustomerPage = () => {
               size="md"
               className="flex-1"
               icon={Phone}
-              disabled={!customerPhone}
-              onClick={() => {
-                if (customerPhone) {
-                  window.location.href = `tel:+91${String(customerPhone).replace(/\D/g, '')}`;
-                }
-              }}
+              disabled={!booking?._id && !customerPhone}
+              onClick={() =>
+                placeCall({
+                  bookingId: booking?._id,
+                  name: customerName || 'Customer',
+                  photo: customerPhoto,
+                  phone: customerPhone,
+                })
+              }
             >
               Call
             </Button>

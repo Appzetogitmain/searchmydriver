@@ -4,8 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "node init && vite",
+    "dev:https": "node init && node scripts/dev-https.mjs",
+    "build": "node init && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },

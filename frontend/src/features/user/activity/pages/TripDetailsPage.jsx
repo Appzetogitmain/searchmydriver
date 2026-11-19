@@ -42,6 +42,7 @@ import useUserActiveBookingStore from '../../../../store/user/useUserActiveBooki
 import { getCarBrandName, getCarModelName } from '../../../../utils/vehicleCatalog';
 import { formatPickupDateTime } from '../../../../utils/datetime';
 import { getDriverPhotoUrl } from '../../../../utils/documents';
+import { placeCall, telHref } from '../../../../utils/placeCall';
 
 /**
  * Per-booking detail screen, reachable from any card on /user/activity.
@@ -260,9 +261,7 @@ const TripDetailsPage = () => {
   const driver = booking?.driverId && typeof booking.driverId === 'object'
     ? booking.driverId
     : null;
-  const driverCallHref = driver?.phone_no
-    ? `tel:${String(driver.phone_no).replace(/[^+\d]/g, '')}`
-    : null;
+  const driverCallHref = telHref(driver?.phone_no);
 
   const fareBreakdown = booking?.fareSnapshot?.breakdown || {};
   const baseTotal = Number(booking?.fareSnapshot?.total || 0);
@@ -431,6 +430,17 @@ const TripDetailsPage = () => {
             photo={driverPhotoUrl}
             phone={driver.phone_no}
             callHref={driverCallHref}
+            onCall={
+              isLive
+                ? () =>
+                    placeCall({
+                      bookingId: booking?._id,
+                      name: driver.name || 'Driver',
+                      photo: driverPhotoUrl,
+                      phone: driver.phone_no,
+                    })
+                : undefined
+            }
             rating={driver.rating}
             experienceYears={driver.experienceYears}
           />
@@ -720,7 +730,7 @@ function DetailTile({ icon: Icon, label, value }) {
   );
 }
 
-function DriverCard({ driver, name, photo, phone, callHref, rating, experienceYears }) {
+function DriverCard({ driver, name, photo, phone, callHref, onCall, rating, experienceYears }) {
   return (
     <Card>
       <p className="text-[11px] uppercase tracking-wide text-text-muted font-semibold mb-3">
@@ -756,7 +766,16 @@ function DriverCard({ driver, name, photo, phone, callHref, rating, experienceYe
             )}
           </div>
         </div>
-        {callHref && (
+        {onCall ? (
+          <button
+            type="button"
+            onClick={onCall}
+            className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-sm hover:bg-emerald-600 transition-colors"
+            aria-label={`Call ${name || 'driver'}`}
+          >
+            <Phone className="w-4 h-4" />
+          </button>
+        ) : callHref ? (
           <a
             href={callHref}
             className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-sm hover:bg-emerald-600 transition-colors"
@@ -764,7 +783,7 @@ function DriverCard({ driver, name, photo, phone, callHref, rating, experienceYe
           >
             <Phone className="w-4 h-4" />
           </a>
-        )}
+        ) : null}
       </div>
     </Card>
   );
