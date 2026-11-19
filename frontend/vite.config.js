@@ -11,6 +11,11 @@ export default defineConfig({
   server: {
     port: 5190,
     host: true,
+    // Forward API + socket calls to the local backend during development
+    proxy: {
+      '/api': { target: 'http://localhost:9000', changeOrigin: true },
+      '/socket.io': { target: 'http://localhost:9000', changeOrigin: true, ws: true },
+    },
   },
   build: {
     // Bump warning threshold for heavy vendor chunks (Google Maps, Framer Motion)

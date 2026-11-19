@@ -404,8 +404,11 @@ const ServicePricingModal = ({ isOpen, onClose, serviceType, existing, onSaved }
                       </div>
                       <p className="text-text-muted mt-1">
                         Free wait {wc.freeWaitingMinutes || 0} min → reminder
-                        every {promptM} min (up to {maxP} re-prompts) →
-                        final {graceM} min grace → auto-complete. Worst-case
+                        every {promptM} min (up to {maxP} re-prompts + 1 last
+                        reminder) → reminders stop. The ride never auto-starts,
+                        auto-completes or auto-cancels: it waits for the customer&apos;s
+                        OTP or a manual cancel. Waiting charge is capped at max
+                        billable wait. Worst-case
                         billable wait: <span className="font-medium text-text">{worstCase} min</span>.
                       </p>
                       <p

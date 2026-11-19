@@ -415,9 +415,9 @@ export const rateCustomerByDriver = asyncHandler(async (req, res) => {
  *
  *   body: { response: 'on_my_way' | 'not_coming' }
  *
- * "on_my_way" cancels the auto-complete timer and reschedules the
- * prompt for another grace cycle. "not_coming" fires the auto-complete
- * immediately so the driver doesn't sit idle through the deadline.
+ * "on_my_way" resets the reminder window. "not_coming" stops reminders
+ * and notifies the driver. Neither starts, completes or cancels the
+ * booking — only the ride-start OTP or an explicit cancel does that.
  */
 export const respondToNoShowPrompt = asyncHandler(async (req, res) => {
   const response = String(req.body?.response || '').trim();
@@ -427,14 +427,13 @@ export const respondToNoShowPrompt = asyncHandler(async (req, res) => {
       'response must be "on_my_way" or "not_coming"',
     );
   }
-  // The booking is loaded inside the no-show service — we just trust
-  // `:id` here since the caller is authenticated as a user already
-  // and a stray bookingId is a no-op (no timer to cancel, no booking
-  // to update).
+  // The service scopes the lookup to `req.user._id` and 404s otherwise,
+  // so a user can't answer the prompt for someone else's booking.
+  // Neither answer changes the booking status — see the no-show service.
   if (response === 'on_my_way') {
-    await recordCustomerOnMyWay(req.params.id);
+    await recordCustomerOnMyWay(req.params.id, req.user._id);
   } else {
-    await recordCustomerNotComing(req.params.id);
+    await recordCustomerNotComing(req.params.id, req.user._id);
   }
   return res
     .status(200)

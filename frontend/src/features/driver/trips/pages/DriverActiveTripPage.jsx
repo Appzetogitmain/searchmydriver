@@ -835,6 +835,21 @@ const DriverActiveTripPage = () => {
           />
         )}
 
+        {/* Customer said "not coming" on the reminder. The trip does NOT
+            start, end or cancel by itself — the driver either waits for
+            the OTP or cancels from this screen. */}
+        {booking.status === BOOKING_STATUS.ARRIVED &&
+          booking.noShow?.customerResponse === 'not_coming' && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-sm font-semibold text-amber-800">
+                Customer says they are not coming
+              </p>
+              <p className="mt-0.5 text-xs leading-snug text-amber-700">
+                The trip stays open. Start it only with the customer&apos;s OTP, or cancel the ride if they don&apos;t show up.
+              </p>
+            </div>
+          )}
+
         {/* Extension OTP banner — pushed via socket when the customer
             taps "extend" in their app. The driver reads the 4-digit
             code out loud, the customer types it in, then pays. We keep
