@@ -52,7 +52,7 @@ import { SERVICE_TYPES, SERVICE_TYPE_LABELS } from '../../../../constants/servic
 import { formatDistance, haversineMeters } from '../../../../utils/geo';
 import { previewDriverCancellation } from '../../../user/booking/utils/cancellationPreview';
 import TripChatModal from '../../../../components/TripChatModal';
-import useCallStore from '../../../../store/useCallStore';
+import { placeCall } from '../../../../utils/placeCall';
 
 /**
  * Driver-side counterpart of `DriverAssignedPage` — one screen that adapts
@@ -142,7 +142,6 @@ const DriverActiveTripPage = () => {
   const { id: routeId } = useParams();
   const navigate = useNavigate();
   const { emit, isConnected } = useSocket();
-  const { startCall } = useCallStore();
 
   const booking = useDriverActiveTripStore((s) => s.booking);
   const loading = useDriverActiveTripStore((s) => s.loading);
@@ -168,16 +167,12 @@ const DriverActiveTripPage = () => {
     const customer = typeof booking?.userId === 'object' ? booking.userId : null;
     const name = customer?.name || customer?.fullName || 'Customer';
     const photo = customer?.profilePicture || customer?.avatar || null;
-    if (startCall && booking?._id) {
-      startCall(booking._id, name, photo);
-      return;
-    }
-    const phone = customer?.phone_no || customer?.phone || null;
-    if (phone) {
-      const cleanPhone = String(phone).replace(/\D/g, '');
-      const formattedPhone = cleanPhone.length === 10 ? `+91${cleanPhone}` : phone;
-      window.location.href = `tel:${formattedPhone}`;
-    }
+    placeCall({
+      bookingId: booking?._id,
+      name,
+      photo,
+      phone: customer?.phone_no || customer?.phone || null,
+    });
   };
 
   // Hydrate: prefer the route id (so refreshes and deep links work) and

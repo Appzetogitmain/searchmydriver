@@ -26,3 +26,5 @@ dist-ssr
 *.sln
 *.sw?
 .env
+# Self-signed dev HTTPS certificate (npm run dev:https)
+.cert/
