@@ -227,6 +227,24 @@ function assertStatus(booking, allowed, label) {
   }
 }
 
+/**
+ * Belt-and-braces: a ride can only be ended / completed if it really
+ * started through the OTP handshake. STARTED is only ever set by
+ * `startTripService` after the OTP matches, but this guard stops any
+ * future code path (or a hand-edited row) from closing out a ride the
+ * customer never verified. Bookings with no OTP at all (legacy rows
+ * from before the OTP flow) are let through.
+ */
+function assertRideOtpVerified(booking, label) {
+  const otp = booking.rideStartOtp;
+  if (otp?.code && !otp.verifiedAt) {
+    throw new ApiError(
+      409,
+      `Cannot ${label} — the ride was never started with the customer's OTP`,
+    );
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Transitions                                                         */
 /* ------------------------------------------------------------------ */
@@ -751,6 +769,7 @@ export async function userEndTripService(userId, bookingId) {
 
 async function endTripAndRequestPayment(booking, { actualKm = 0, endedBy }) {
   assertStatus(booking, [BOOKING_STATUS.STARTED], 'end the trip');
+  assertRideOtpVerified(booking, 'end the trip');
 
   const now = new Date();
   // Freeze the end of the ride on the first End-trip tap, so a second tap (or
@@ -849,6 +868,7 @@ async function endTripAndRequestPayment(booking, { actualKm = 0, endedBy }) {
 export async function completeTripService(driverId, bookingId, { actualKm = 0, paymentMethod } = {}) {
   const booking = await loadDriverBooking(driverId, bookingId);
   assertStatus(booking, [BOOKING_STATUS.STARTED], 'complete the ride');
+  assertRideOtpVerified(booking, 'complete the ride');
   if (!booking.timeline?.tripEndedAt) {
     throw new ApiError(409, 'Waiting for the customer to end the trip.');
   }

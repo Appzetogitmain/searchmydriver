@@ -248,9 +248,10 @@ const DriverAssignedPage = () => {
   // No-show prompt: backend pings us when the driver has been at the
   // pickup past the free-wait window and the user hasn't shown up. The
   // modal renders a server-anchored deadline countdown. Cadence is:
-  //   prompt 1 → user says yes → prompt 2 → … → prompt N+1 (final) →
-  //   grace → auto-complete. `isFinal: true` switches the copy to a
-  //   terminal warning since a "yes" no longer resets the cycle.
+  //   prompt 1 → prompt 2 → … → prompt N+1 (last reminder), then the
+  //   reminders stop. Reminders never start, end or cancel the ride —
+  //   only the OTP (or an explicit cancel) does. `isFinal` marks the
+  //   last reminder, which has no countdown.
   const [noShowPrompt, setNoShowPrompt] = useState(null);
   useSocketEvent(S2C_EVENTS.BOOKING_NOSHOW_PROMPT, (payload) => {
     if (!payload?.bookingId) return;
@@ -278,7 +279,7 @@ const DriverAssignedPage = () => {
     }
     const remaining = new Date(deadline).getTime() - Date.now();
     if (remaining <= 0) {
-      // Deadline already passed; backend will auto-complete momentarily.
+      // Deadline already passed; the next reminder is about to arrive.
       setNoShowPrompt(null);
       return;
     }
@@ -304,9 +305,10 @@ const DriverAssignedPage = () => {
       if (answer === 'on_my_way') {
         toast.success('Thanks — we let your driver know.');
       } else {
-        toast('Trip closed out. Driver has been paid for waiting.', {
-          icon: '\u26A0\uFE0F',
-        });
+        toast(
+          'We told your driver. The ride stays open — cancel it from this screen if you no longer need it.',
+          { icon: '\u2139\uFE0F', duration: 6000 },
+        );
       }
     } catch (err) {
       toast.error(
@@ -1430,10 +1432,9 @@ function formatRideClock(seconds) {
 
 /**
  * "Are you coming?" modal. Fires when the driver has been at the
- * pickup past the no-show prompt minutes. Shows a live countdown to
- * the auto-complete deadline so the customer understands the
- * urgency, and forces an explicit Yes / No answer (no overlay-click
- * dismiss — silence is what triggers auto-complete).
+ * pickup past the no-show prompt minutes. Shows a countdown to the
+ * next reminder and asks for an explicit Yes / No answer. Neither
+ * answer (nor silence) starts, ends or cancels the ride.
  */
 function NoShowPromptModal({
   open,
@@ -1500,8 +1501,8 @@ function NoShowPromptModal({
         </div>
         <p className="text-sm text-text-secondary leading-snug">
           {isFinal
-            ? `If you don't respond in time, the trip will be auto-closed as a no-show. The driver gets paid in full and the waiting time is deducted from your refundable buffer.`
-            : `Tap "Yes" to keep your ride. If you don't respond, we'll check in again. After ${(maxPrompts != null ? maxPrompts : 'a few')} reminders the ride is auto-closed.`}
+            ? `This is our last reminder. Your ride stays open — it only starts when you share your OTP with the driver. Waiting charges keep adding up (within your buffer) while the driver waits.`
+            : `Your driver is waiting at the pickup. Your ride only starts when you share your OTP with the driver. Waiting charges may apply after the free wait.`}
         </p>
         {remainingSec != null && (
           <div
@@ -1516,7 +1517,7 @@ function NoShowPromptModal({
                 isFinal ? 'text-red-800' : 'text-amber-800'
               }`}
             >
-              {isFinal ? 'Auto-close in' : 'Next reminder in'}
+              Next reminder in
             </span>
             <span
               className={`text-xl font-bold tabular-nums ${

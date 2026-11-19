@@ -88,6 +88,11 @@ const useDriverActiveTripStore = create((set, get) => ({
     if (typeof patch.otpRequired === 'boolean') {
       merged.otpRequired = patch.otpRequired;
     }
+    // Customer's answer to the "are you coming?" reminder. Informational
+    // only — the booking stays ARRIVED until the OTP is entered.
+    if (patch.noShow) {
+      merged.noShow = { ...(current.noShow || {}), ...patch.noShow };
+    }
     if (Array.isArray(patch.extensions)) {
       merged.extensions = patch.extensions;
     }
