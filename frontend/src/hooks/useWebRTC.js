@@ -15,6 +15,8 @@ const ICE_CACHE_MS = 5 * 60 * 1000;
 const RING_TIMEOUT_MS = 45_000;
 /** How long "disconnected" may last before we give up on the call. */
 const MEDIA_DISCONNECT_GRACE_MS = 10_000;
+/** Upper bound for one queued signalling step (ICE fetch is capped at 5s). */
+const SIGNAL_STEP_TIMEOUT_MS = 10_000;
 const AUDIO_CONSTRAINTS = {
   audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
 };
@@ -42,6 +44,12 @@ export function canUseAppCalling() {
       navigator.mediaDevices?.getUserMedia &&
       window.RTCPeerConnection,
   );
+}
+
+function createDeferred() {
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  return { promise, resolve };
 }
 
 function newCallId() {
@@ -100,6 +108,16 @@ export function useWebRTC() {
   const remoteCandidatesRef = useRef([]);
   /** Serialises signal handling so candidates never race the offer/answer. */
   const chainRef = useRef(Promise.resolve());
+  /**
+   * Resolved (and replaced) on every teardown. Per the WebRTC spec, an
+   * operation still pending when its RTCPeerConnection is closed never
+   * settles; racing queued work against this keeps one hung-up call from
+   * freezing the signal queue for every later call on the page.
+   */
+  const teardownSignalRef = useRef(null);
+  if (teardownSignalRef.current == null) {
+    teardownSignalRef.current = createDeferred();
+  }
   const ringTimerRef = useRef(null);
   const disconnectTimerRef = useRef(null);
   const iceCacheRef = useRef({ servers: null, at: 0 });
@@ -136,6 +154,9 @@ export function useWebRTC() {
     remoteCandidatesRef.current = [];
     setRemoteStream(null);
     useCallStore.getState().endCall();
+    // Release any queued step stuck on the now-closed peer connection.
+    teardownSignalRef.current.resolve();
+    teardownSignalRef.current = createDeferred();
   }, []);
 
   const sendSignal = useCallback((payload) => {
@@ -298,9 +319,19 @@ export function useWebRTC() {
   }, [setupIncoming, flushRemoteCandidates, addRemoteCandidate]);
 
   const enqueue = useCallback((fn) => {
-    chainRef.current = chainRef.current.then(fn).catch((err) => {
-      console.error('[call] signal handling error', err);
-    });
+    chainRef.current = chainRef.current
+      .then(() => {
+        // A step ends when it finishes, when the call it belongs to is torn
+        // down, or after a safety timeout — never "never".
+        const released = teardownSignalRef.current.promise;
+        let timer;
+        const timeout = new Promise((r) => { timer = setTimeout(r, SIGNAL_STEP_TIMEOUT_MS); });
+        return Promise.race([Promise.resolve().then(fn), released, timeout])
+          .finally(() => clearTimeout(timer));
+      })
+      .catch((err) => {
+        console.error('[call] signal handling error', err);
+      });
     return chainRef.current;
   }, []);
 
