@@ -42,7 +42,7 @@ import PaymentChoiceSheet from '../components/PaymentChoiceSheet';
 import PostRidePaymentModal from '../components/PostRidePaymentModal';
 import RideStartOtpCard from '../components/RideStartOtpCard';
 import ExtendRideModal from '../components/ExtendRideModal';
-import useCallStore from '../../../../store/useCallStore';
+import { placeCall } from '../../../../utils/placeCall';
 import ConfirmDialog from '../../../../components/ConfirmDialog';
 import DriverIdCard from '../../../../components/DriverIdCard';
 import TripChatModal from '../../../../components/TripChatModal';
@@ -119,23 +119,18 @@ const DriverAssignedPage = () => {
   const fetchWallet = useUserWalletStore((s) => s.fetchWallet);
   const wallet = useUserWalletStore((s) => s.wallet);
   const { emit, isConnected } = useSocket();
-  const { startCall } = useCallStore();
 
   const handleCallClick = (e) => {
     if (e?.stopPropagation) e.stopPropagation();
     const driverObj = typeof booking?.driverId === 'object' ? booking.driverId : null;
     const name = driverObj?.name || driverObj?.fullName || 'Driver';
     const photo = getDriverPhotoUrl(driverObj);
-    if (startCall && booking?._id) {
-      startCall(booking._id, name, photo);
-      return;
-    }
-    const phone = driverObj?.phone_no || driverObj?.phone || null;
-    if (phone) {
-      const cleanPhone = String(phone).replace(/\D/g, '');
-      const formattedPhone = cleanPhone.length === 10 ? `+91${cleanPhone}` : phone;
-      window.location.href = `tel:${formattedPhone}`;
-    }
+    placeCall({
+      bookingId: booking?._id,
+      name,
+      photo,
+      phone: driverObj?.phone_no || driverObj?.phone || null,
+    });
   };
 
   const [cancelling, setCancelling] = useState(false);

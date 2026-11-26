@@ -5,6 +5,7 @@ import Card from '../../../../components/Card';
 import Button from '../../../../components/Button';
 import TripTrackingMap from '../../../../components/maps/TripTrackingMap';
 import TripChatModal from '../../../../components/TripChatModal';
+import { placeCall } from '../../../../utils/placeCall';
 import useDriverActiveTripStore from '../../../../store/driver/useDriverActiveTripStore';
 import { useGeolocation } from '../../../../hooks/useGeolocation';
 import { SERVICE_TYPES, SERVICE_TYPE_LABELS } from '../../../../constants/serviceTypes';
@@ -118,13 +119,21 @@ const DriverTripInProgressPage = () => {
           </Button>
         </Card>
         <div className="flex gap-3 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
-          <a
-            href={booking?.userId?.phone_no ? `tel:+91${String(booking.userId.phone_no).replace(/\D/g, '')}` : '#'}
+          <button
+            type="button"
+            onClick={() =>
+              placeCall({
+                bookingId: booking?._id,
+                name: booking?.userId?.name || 'Customer',
+                photo: booking?.userId?.profilePicture || null,
+                phone: booking?.userId?.phone_no || booking?.userId?.phone || null,
+              })
+            }
             className="flex-1 flex flex-col items-center gap-1.5 p-3 bg-emerald-50 text-emerald-700 rounded-2xl shadow-card hover:bg-emerald-100 transition"
           >
             <Phone className="w-5 h-5" />
             <span className="text-[10px] font-bold">Call</span>
-          </a>
+          </button>
           <button
             type="button"
             onClick={() => setChatOpen(true)}

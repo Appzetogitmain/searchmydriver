@@ -24,6 +24,10 @@ export const C2S_EVENTS = Object.freeze({
   CALL_SIGNAL: 'call:signal',
   CALL_REJECT: 'call:reject',
   CALL_END: 'call:end',
+  /** Ack-based: returns `{ iceServers }` (STUN + optional TURN). */
+  CALL_ICE_SERVERS: 'call:ice-servers',
+  /** Ack-based: returns a call still ringing for this account (app opened from push). */
+  CALL_FETCH_PENDING: 'call:fetch-pending',
 });
 
 /** Server → Client */

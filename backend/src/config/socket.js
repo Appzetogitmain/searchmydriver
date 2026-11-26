@@ -16,6 +16,7 @@ import {
   SOCKET_ROOM_PREFIX,
 } from '../constants/socketEvents.js';
 import { attachDriverSocketHandlers } from '../controllers/driverSocket.controller.js';
+import { attachCallSocketHandlers, canAccessBooking } from '../controllers/callSocket.controller.js';
 
 /**
  * Socket.IO server bootstrap.
@@ -203,9 +204,16 @@ function attachConnectionHandlers(socket) {
     if (typeof ack === 'function') ack(reply);
   });
 
-  socket.on(C2S_EVENTS.BOOKING_JOIN, ({ bookingId } = {}) => {
+  socket.on(C2S_EVENTS.BOOKING_JOIN, async ({ bookingId } = {}) => {
     if (!bookingId) return;
-    socket.join(roomForBooking(bookingId));
+    try {
+      // Only the booking's own customer/driver (or staff) may listen in.
+      if (await canAccessBooking(String(bookingId), principal)) {
+        socket.join(roomForBooking(bookingId));
+      }
+    } catch (err) {
+      console.error('[socket] booking:join check failed', err?.message || err);
+    }
   });
 
   socket.on(C2S_EVENTS.BOOKING_LEAVE, ({ bookingId } = {}) => {
@@ -213,66 +221,8 @@ function attachConnectionHandlers(socket) {
     socket.leave(roomForBooking(bookingId));
   });
 
-  // --- WebRTC App-to-App Calling ---
-  socket.on(C2S_EVENTS.CALL_SIGNAL, async (payload) => {
-    const { bookingId, type } = payload || {};
-    if (!bookingId) return;
-    // Broadcast signal (offer, answer, ice-candidate) to the other party in the room
-    socket.to(roomForBooking(bookingId)).emit(S2C_EVENTS.CALL_SIGNAL, { 
-      ...payload, 
-      from: principal.id, 
-      fromType: principal.type 
-    });
-
-    // If this is an outgoing offer, send a high‑urgency push notification to the recipient
-    if (type === 'offer') {
-      try {
-        let recipientId = payload?.recipientId;
-        let recipientType = payload?.recipientType;
-
-        if (!recipientId || !recipientType) {
-          const { default: Booking } = await import('../models/booking.model.js');
-          const bookingDoc = await Booking.findById(bookingId).select('userId driverId').lean();
-          if (bookingDoc) {
-            if (principal.type === 'driver') {
-              recipientId = bookingDoc.userId;
-              recipientType = 'user';
-            } else {
-              recipientId = bookingDoc.driverId;
-              recipientType = 'driver';
-            }
-          }
-        }
-
-        if (recipientId && recipientType) {
-          // Dynamic import: socketEmitters imports this module.
-          const { sendPushToRecipient } = await import('../utils/socketEmitters.js');
-          await sendPushToRecipient(
-            { model: recipientType === 'driver' ? 'Driver' : 'User', id: recipientId },
-            {
-              title: 'Incoming Call',
-              body: `${principal.type === 'driver' ? 'Driver' : 'Customer'} is calling you`,
-              data: { bookingId, type: 'INCOMING_CALL' },
-            },
-          );
-        }
-      } catch (e) {
-        console.error('[socket] failed to send call push notification', e);
-      }
-    }
-  });
-
-  socket.on(C2S_EVENTS.CALL_REJECT, (payload) => {
-    const { bookingId } = payload || {};
-    if (!bookingId) return;
-    socket.to(roomForBooking(bookingId)).emit(S2C_EVENTS.CALL_REJECTED, { from: principal.id });
-  });
-
-  socket.on(C2S_EVENTS.CALL_END, (payload) => {
-    const { bookingId } = payload || {};
-    if (!bookingId) return;
-    socket.to(roomForBooking(bookingId)).emit(S2C_EVENTS.CALL_ENDED, { from: principal.id });
-  });
+  // WebRTC app-to-app calling (routes to personal rooms, not booking rooms).
+  attachCallSocketHandlers(socket);
 
   // Driver-specific handlers (location stream, online/offline mirror).
   if (principal.type === 'driver') {

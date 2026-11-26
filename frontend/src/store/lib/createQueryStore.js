@@ -93,14 +93,19 @@ export function createQueryStore(fetcher) {
 
     refresh: (cacheKey, params) => get().fetch(cacheKey, params, { force: true }),
 
+    // No matcher → drop every entry. Callers do `invalidate()` after a
+    // mutation; without this guard `matcher(key)` threw a TypeError, which
+    // surfaced as a failure even though the server call had succeeded.
     invalidate: (matcher) => {
       set((state) => {
         const entries = { ...state.entries };
         Object.keys(entries).forEach((key) => {
           const match =
-            typeof matcher === 'string'
-              ? key.startsWith(matcher)
-              : matcher(key);
+            matcher == null
+              ? true
+              : typeof matcher === 'string'
+                ? key.startsWith(matcher)
+                : matcher(key);
           if (match) delete entries[key];
         });
         return { entries };

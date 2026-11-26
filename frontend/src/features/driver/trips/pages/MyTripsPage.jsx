@@ -15,7 +15,12 @@ import {
 import useDriverActiveTripStore from '../../../../store/driver/useDriverActiveTripStore';
 import { useSocketEvent } from '../../../../hooks/useSocket';
 import { S2C_EVENTS } from '../../../../constants/socketEvents';
-import { isBookingGoneReason, acceptErrorReason } from '../../../../utils/bookingOfferReasons';
+import {
+  isBookingGoneReason,
+  acceptErrorReason,
+  acceptErrorMessage,
+} from '../../../../utils/bookingOfferReasons';
+import useDriverAuthStore from '../../../../store/useDriverAuthStore';
 import {
   ACTIVE_BOOKING_STATUSES,
   BOOKING_STATUS,
@@ -110,6 +115,8 @@ const MyTripsPage = () => {
   // Active Trip store
   const activeBooking = useDriverActiveTripStore((s) => s.booking);
   const fetchActive = useDriverActiveTripStore((s) => s.fetchActive);
+  const fetchById = useDriverActiveTripStore((s) => s.fetchById);
+  const myDriverId = useDriverAuthStore((s) => s.driver?._id || s.driver?.id);
   const applyActiveUpdate = useDriverActiveTripStore((s) => s.applyUpdate);
   const setActiveBooking = useDriverActiveTripStore((s) => s.setBooking);
   const clearActiveBooking = useDriverActiveTripStore((s) => s.clear);
@@ -148,14 +155,19 @@ const MyTripsPage = () => {
           payload.status === BOOKING_STATUS.DRIVER_ASSIGNED ||
           payload.status === BOOKING_STATUS.AWAITING_PAYMENT
         ) {
-          if (payload.bookingId) {
+          // Only another driver's win greys the card out. When this driver
+          // accepted it themselves the card must not read "Booked by
+          // another driver".
+          const isMine =
+            payload.driverId && myDriverId && String(payload.driverId) === String(myDriverId);
+          if (payload.bookingId && !isMine) {
             markBookingTaken(payload.bookingId);
           }
         }
         refetchTripsRef.current?.().catch(() => {});
         refetchRequestsRef.current?.().catch(() => {});
       },
-      [applyActiveUpdate, clearActiveBooking, markBookingTaken],
+      [applyActiveUpdate, clearActiveBooking, markBookingTaken, myDriverId],
     ),
   );
 
@@ -190,25 +202,10 @@ const MyTripsPage = () => {
     setActionError(null);
 
     try {
-      const res = await api.post(`/driver/bookings/${reqItem.bookingId}/accept`);
-      const booking = res?.data?.data?.booking || res?.data?.data;
-      
-      // Invalidate queries
-      useDriverEligibleRequestsQueryStore.getState().invalidate();
-      useDriverTripsListStore.getState().invalidate();
-
-      if (booking?._id || reqItem.bookingId) {
-        const targetId = booking?._id || reqItem.bookingId;
-        setActiveBooking(booking);
-        navigate(`/driver/trip/${targetId}`);
-      }
+      await api.post(`/driver/bookings/${reqItem.bookingId}/accept`);
     } catch (err) {
       const reason = acceptErrorReason(err);
-      const msg =
-        err?.response?.data?.message ||
-        err?.message ||
-        'Could not accept booking. It may have been claimed by another driver.';
-      setActionError(msg);
+      setActionError(acceptErrorMessage(err));
       // Only grey the card out when the booking is actually gone. A
       // `driver_busy` / negative-wallet / city-mismatch refusal is about this
       // driver — the booking is still SEARCHING and the customer is still
@@ -217,9 +214,25 @@ const MyTripsPage = () => {
         markBookingTaken(reqItem.bookingId);
       }
       refetchRequestsRef.current?.().catch(() => {});
-    } finally {
       setAcceptingId(null);
+      return;
     }
+
+    // The accept succeeded on the server. Nothing below may surface as an
+    // accept failure: the endpoint only returns `{ ok, status }` (no booking),
+    // so load the real booking by id instead of storing that stub as the
+    // active trip, and navigate even if that load fails — the trip page
+    // fetches by route id on its own.
+    const bookingId = String(reqItem.bookingId);
+    useDriverEligibleRequestsQueryStore.getState().invalidate();
+    useDriverTripsListStore.getState().invalidate();
+    try {
+      await fetchById(bookingId);
+    } catch {
+      // Trip page retries the load from the URL.
+    }
+    setAcceptingId(null);
+    navigate(`/driver/trip/${bookingId}`);
   };
 
   const [tripToDelete, setTripToDelete] = useState(null);
@@ -247,9 +260,13 @@ const MyTripsPage = () => {
 
   const trips = tripsData?.data || [];
   const pagination = tripsData?.pagination || { total: 0, page: 1, pages: 1 };
+  // The live active trip only belongs on tabs whose filter includes active
+  // statuses. Merging it everywhere put an ongoing "Resume trip" card on the
+  // Completed and Cancelled tabs.
+  const showsActiveTrips = tab === 'all' || tab === 'ongoing';
   const visibleTrips = useMemo(
-    () => mergeLiveBookingIntoList(activeBooking, trips),
-    [activeBooking, trips],
+    () => (showsActiveTrips ? mergeLiveBookingIntoList(activeBooking, trips) : trips),
+    [showsActiveTrips, activeBooking, trips],
   );
 
   // Map requests and inject live taken status
@@ -432,6 +449,7 @@ const MyTripsPage = () => {
               request={reqItem}
               onAccept={handleAcceptRequest}
               onDecline={handleDeclineRequest}
+              onOpenTrip={(r) => navigate(`/driver/trip/${r.bookingId}`)}
               isAccepting={acceptingId === reqItem.bookingId}
               className="animate-fade-in-up"
               style={{ animationDelay: `${idx * 0.04}s` }}
@@ -467,7 +485,7 @@ const MyTripsPage = () => {
             </Card>
           )}
 
-          {!tripsLoading && !tripsError && trips.length === 0 && (
+          {!tripsLoading && !tripsError && visibleTrips.length === 0 && (
             <Card className="flex flex-col items-center justify-center py-14 text-center">
               <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
                 <Inbox className="w-6 h-6 text-primary" />
