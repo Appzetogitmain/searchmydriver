@@ -11,6 +11,7 @@ import {
 } from '../constants/bookingStatus.js';
 import { SERVICE_TYPES } from '../constants/serviceTypes.js';
 import { findDriverActiveBooking } from './driverConflict.service.js';
+import { driverEarningFromFareSnapshot } from './booking.service.js';
 
 // Same zone the pricing engine uses — format in the customer's local time,
 // not the server's (hosted servers usually run in UTC).
@@ -129,13 +130,14 @@ function formatTripRequestItem(booking, driver, carDoc, carTypeDoc, { driverIsBu
     packageTitle = 'Monthly Driver Plan';
   }
 
-  // Driver Earning Calculation
+  // Driver earning — the same helper the trip page and the offer pop-up use,
+  // so all three show one number. This used to read fields the fare snapshot
+  // never stores (`breakdown.driverShare`, top-level `driverEarning`) and fell
+  // through to a made-up `total × 0.8`, i.e. 80% of the customer's
+  // GST-inclusive total rather than the real fare-minus-commission figure.
+  // Monthly is 0 here on purpose: that fare is negotiated with the driver.
   const fareTotal = Number(booking.fareSnapshot?.total || 0);
-  const driverEarning = Number(
-    booking.fareSnapshot?.breakdown?.driverShare ||
-      booking.fareSnapshot?.driverEarning ||
-      Math.round(fareTotal > 0 ? fareTotal * 0.8 : 250),
-  );
+  const driverEarning = driverEarningFromFareSnapshot(booking.fareSnapshot);
 
   // Payment Mode
   // `paymentMethod` is what the customer chose. `paymentMode` only says
@@ -182,6 +184,12 @@ function formatTripRequestItem(booking, driver, carDoc, carTypeDoc, { driverIsBu
   // otherwise the driver taps Accept on a request that can never succeed.
   // Scheduled and monthly bookings are deliberately exempt, matching the
   // exemption on the accept path.
+  // PENDING_ASSIGNMENT bookings are assigned by staff (outstation) or flipped
+  // to SEARCHING by the scheduler closer to pickup. The accept endpoint only
+  // takes SEARCHING bookings, so Accept on these always failed with
+  // `no_longer_searching`.
+  const awaitingAssignment = booking.status === BOOKING_STATUS.PENDING_ASSIGNMENT;
+
   const busyBlocked =
     driverIsBusy &&
     booking.serviceType !== SERVICE_TYPES.MONTHLY &&
@@ -230,8 +238,11 @@ function formatTripRequestItem(booking, driver, carDoc, carTypeDoc, { driverIsBu
     takenByOther,
     isAssignedToMe,
     busyBlocked,
+    awaitingAssignment,
+    isMonthly,
     canAccept:
       !isTaken &&
+      !awaitingAssignment &&
       !cashBlocked &&
       !busyBlocked &&
       driver.approvalStatus !== 'suspended',

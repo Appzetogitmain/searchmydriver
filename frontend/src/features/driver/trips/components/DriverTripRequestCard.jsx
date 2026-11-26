@@ -18,6 +18,7 @@ const DriverTripRequestCard = ({
   request,
   onAccept,
   onDecline,
+  onOpenTrip,
   isAccepting = false,
   className = '',
 }) => {
@@ -50,6 +51,9 @@ const DriverTripRequestCard = ({
     carCategory = 'Standard',
     isTaken = false,
     takenByOther = false,
+    isAssignedToMe = false,
+    awaitingAssignment = false,
+    isMonthly = false,
     busyBlocked = false,
     canAccept = true,
   } = request;
@@ -111,7 +115,7 @@ const DriverTripRequestCard = ({
         </div>
 
         <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-bold bg-emerald-600 text-white shrink-0">
-          Earning: {formatCurrency(driverEarning)}
+          Earning: {isMonthly ? 'Negotiated' : formatCurrency(driverEarning)}
         </span>
       </div>
 
@@ -228,10 +232,29 @@ const DriverTripRequestCard = ({
 
       {/* Action Footer */}
       <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-        {isTaken || takenByOther ? (
+        {isAssignedToMe ? (
+          /* This driver accepted it. The list keeps recently-assigned
+             bookings for a short window; without this branch the driver's
+             own trip read "Booked by another driver". */
+          <button
+            type="button"
+            onClick={() => onOpenTrip?.(request)}
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-emerald-50 text-emerald-800 font-bold text-xs border border-emerald-200 hover:bg-emerald-100 transition"
+          >
+            <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" />
+            <span>Accepted by you · Open trip →</span>
+          </button>
+        ) : isTaken || takenByOther ? (
           <div className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-slate-100 text-slate-600 font-bold text-xs border border-slate-200">
             <AlertCircle className="w-3.5 h-3.5 text-slate-500" />
             <span>Booked by another driver</span>
+          </div>
+        ) : awaitingAssignment ? (
+          /* Staff-assigned / not yet open for acceptance. Accept would
+             always be refused by the server, so don't offer it. */
+          <div className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-slate-50 text-slate-600 font-semibold text-xs border border-slate-200">
+            <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <span>Opens for acceptance closer to pickup</span>
           </div>
         ) : busyBlocked ? (
           /* Still unclaimed — this driver just can't take it until their

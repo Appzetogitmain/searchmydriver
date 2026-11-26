@@ -32,6 +32,12 @@ const STATUS_VARIANTS = {
   [BOOKING_STATUS.NO_DRIVERS_FOUND]: { variant: 'default', label: 'Unfulfilled' },
 };
 
+const IN_PROGRESS_STATUSES = [
+  BOOKING_STATUS.EN_ROUTE,
+  BOOKING_STATUS.ARRIVED,
+  BOOKING_STATUS.STARTED,
+];
+
 function statusBadge(status) {
   return STATUS_VARIANTS[status] || { variant: 'default', label: status || '—' };
 }
@@ -99,6 +105,9 @@ const DriverTripCard = ({ trip, onClick, onDelete, className = '', style }) => {
   const pickupLabel = trip?.pickup?.address || 'Pickup pending';
   const dropoffLabel = trip?.dropoff?.address;
   const isOngoing = ACTIVE_BOOKING_STATUSES.includes(trip.status);
+  // "Resume" only once the driver is actually moving on this trip; an
+  // assigned-but-not-started (or scheduled) trip is opened, not resumed.
+  const isInProgress = IN_PROGRESS_STATUSES.includes(trip.status);
   // Only finished trips can be removed from the list.
   const canDelete = Boolean(onDelete) && TERMINAL_BOOKING_STATUSES.includes(trip.status);
 
@@ -183,7 +192,7 @@ const DriverTripCard = ({ trip, onClick, onDelete, className = '', style }) => {
           </div>
           {isOngoing ? (
             <span className="inline-flex items-center gap-1 text-primary font-semibold">
-              Resume trip →
+              {isInProgress ? 'Resume trip →' : 'Open trip →'}
             </span>
           ) : onClick ? (
             <span className="inline-flex items-center gap-1 text-primary-dark font-medium">

@@ -15,7 +15,7 @@ import { ACTIVE_BOOKING_STATUSES } from '../constants/bookingStatus';
 export function mergeLiveBookingIntoList(activeBooking, listBookings) {
   const list = Array.isArray(listBookings) ? listBookings : [];
   const storeLive =
-    activeBooking && ACTIVE_BOOKING_STATUSES.includes(activeBooking.status)
+    activeBooking?._id && ACTIVE_BOOKING_STATUSES.includes(activeBooking.status)
       ? activeBooking
       : null;
   if (!storeLive) return list;

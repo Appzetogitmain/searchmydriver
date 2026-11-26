@@ -42,3 +42,28 @@ export function isBookingGoneReason(reason) {
 export function acceptErrorReason(err) {
   return err?.response?.data?.data?.reason || null;
 }
+
+/**
+ * Driver-readable text for each accept-path refusal. The server only sends a
+ * `message` for some of them; without this map the raw code (`city_mismatch`)
+ * was shown to the driver verbatim.
+ */
+const ACCEPT_REASON_MESSAGES = {
+  no_longer_searching: 'This trip has already been booked by another driver.',
+  not_found: 'This trip is no longer available.',
+  driver_not_found: 'Your driver account could not be found. Please log in again.',
+  driver_suspended: 'Your account is suspended. You cannot accept rides.',
+  driver_busy: 'You already have an ongoing ride. Complete it to accept new requests.',
+  negative_wallet_cash_blocked:
+    'Cannot accept cash bookings while your wallet balance is negative. Please recharge your wallet.',
+  city_mismatch: 'This trip is outside your service city or zone.',
+};
+
+/** Human-readable message for a failed accept call. */
+export function acceptErrorMessage(err) {
+  const reason = acceptErrorReason(err);
+  const serverMessage = err?.response?.data?.message;
+  if (serverMessage && serverMessage !== reason) return serverMessage;
+  if (reason && ACCEPT_REASON_MESSAGES[reason]) return ACCEPT_REASON_MESSAGES[reason];
+  return 'Could not accept this trip. Please try again.';
+}
